@@ -1,122 +1,65 @@
+// src/app/api/places/[id]/rating/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { TSValue } from "@prisma/client";
+
+type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
 
 function clampPoints(n: unknown) {
   const x = typeof n === "number" ? n : Number(n);
-  if (!Number.isFinite(x)) return 1;
-  if (x < 0) return 0;
-  if (x > 2) return 2;
-  return x;
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(14, Math.round(x)));
 }
 
-function calcTotal(p: {
-  pUmgebung: number;
-  pPlatzStruktur: number;
-  pSanitaer: number;
-  pBuchung: number;
-  pHilde: number;
-  pPreisLeistung: number;
-  pNachklang: number;
-}) {
-  return (
-    p.pUmgebung +
-    p.pPlatzStruktur +
-    p.pSanitaer +
-    p.pBuchung +
-    p.pHilde +
-    p.pPreisLeistung +
-    p.pNachklang
-  );
+function normTS(v: unknown): TSValue {
+  const s = String(v ?? "OKAY").toUpperCase();
+  if (s === "STIMMIG") return "STIMMIG";
+  if (s === "PASST_NICHT") return "PASST_NICHT";
+  return "OKAY";
 }
 
-export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
     const placeId = Number(id);
-    if (!Number.isFinite(placeId)) {
-      return NextResponse.json({ ok: false, error: "invalid id" }, { status: 400 });
-    }
+    if (!Number.isFinite(placeId)) return new NextResponse("Bad id", { status: 400 });
 
-    const body = (await req.json()) as Partial<{
-      tsUmgebung: TSValue;
-      tsPlatzStruktur: TSValue;
-      tsSanitaer: TSValue;
-      tsBuchung: TSValue;
-      tsHilde: TSValue;
-      tsPreisLeistung: TSValue;
-      tsNachklang: TSValue;
+    const body = await req.json().catch(() => ({} as any));
+    const rd = body?.ratingDetail ?? body ?? {};
 
-      pUmgebung: number;
-      pPlatzStruktur: number;
-      pSanitaer: number;
-      pBuchung: number;
-      pHilde: number;
-      pPreisLeistung: number;
-      pNachklang: number;
-
-      note: string | null;
-    }>;
-
-    // Defaults - falls Rating neu angelegt wird
-    const defaults = {
-      tsUmgebung: TSValue.OKAY,
-      tsPlatzStruktur: TSValue.OKAY,
-      tsSanitaer: TSValue.OKAY,
-      tsBuchung: TSValue.OKAY,
-      tsHilde: TSValue.OKAY,
-      tsPreisLeistung: TSValue.OKAY,
-      tsNachklang: TSValue.OKAY,
-
-      pUmgebung: 1,
-      pPlatzStruktur: 1,
-      pSanitaer: 1,
-      pBuchung: 1,
-      pHilde: 1,
-      pPreisLeistung: 1,
-      pNachklang: 1,
-
-      note: null as string | null,
+    const payload: any = {
+      tsUmgebung: normTS(rd.tsUmgebung),
+      tsPlatzStruktur: normTS(rd.tsPlatzStruktur),
+      tsSanitaer: normTS(rd.tsSanitaer),
+      tsBuchung: normTS(rd.tsBuchung),
+      tsHilde: normTS(rd.tsHilde),
+      tsPreisLeistung: normTS(rd.tsPreisLeistung),
+      tsNachklang: normTS(rd.tsNachklang),
+      totalPoints: clampPoints(rd.totalPoints),
+      note: String(rd.note ?? ""),
+      cUmgebung: String(rd.cUmgebung ?? ""),
+      cPlatzStruktur: String(rd.cPlatzStruktur ?? ""),
+      cSanitaer: String(rd.cSanitaer ?? ""),
+      cBuchung: String(rd.cBuchung ?? ""),
+      cHilde: String(rd.cHilde ?? ""),
+      cPreisLeistung: String(rd.cPreisLeistung ?? ""),
+      cNachklang: String(rd.cNachklang ?? ""),
     };
 
-    const next = {
-      tsUmgebung: body.tsUmgebung ?? defaults.tsUmgebung,
-      tsPlatzStruktur: body.tsPlatzStruktur ?? defaults.tsPlatzStruktur,
-      tsSanitaer: body.tsSanitaer ?? defaults.tsSanitaer,
-      tsBuchung: body.tsBuchung ?? defaults.tsBuchung,
-      tsHilde: body.tsHilde ?? defaults.tsHilde,
-      tsPreisLeistung: body.tsPreisLeistung ?? defaults.tsPreisLeistung,
-      tsNachklang: body.tsNachklang ?? defaults.tsNachklang,
-
-      pUmgebung: clampPoints(body.pUmgebung ?? defaults.pUmgebung),
-      pPlatzStruktur: clampPoints(body.pPlatzStruktur ?? defaults.pPlatzStruktur),
-      pSanitaer: clampPoints(body.pSanitaer ?? defaults.pSanitaer),
-      pBuchung: clampPoints(body.pBuchung ?? defaults.pBuchung),
-      pHilde: clampPoints(body.pHilde ?? defaults.pHilde),
-      pPreisLeistung: clampPoints(body.pPreisLeistung ?? defaults.pPreisLeistung),
-      pNachklang: clampPoints(body.pNachklang ?? defaults.pNachklang),
-
-      note: body.note ?? defaults.note,
-    };
-
-    const totalPoints = calcTotal(next);
-
-    const saved = await prisma.placeRating.upsert({
-      where: { placeId },
-      create: {
-        placeId,
-        ...next,
-        totalPoints,
+    const updated = await prisma.place.update({
+      where: { id: placeId },
+      data: {
+        ratingDetail: {
+          upsert: {
+            create: payload,
+            update: payload,
+          },
+        },
       },
-      update: {
-        ...next,
-        totalPoints,
-      },
+      include: { ratingDetail: true },
     });
 
-    return NextResponse.json({ ok: true, rating: saved });
+    return NextResponse.json(updated.ratingDetail);
   } catch (e: any) {
-    console.error("PATCH /api/places/[id]/rating failed:", e);
-    return NextResponse.json({ ok: false, error: e?.message ?? "unknown error" }, { status: 500 });
+    return new NextResponse(e?.message || "Rating update failed", { status: 500 });
   }
 }

@@ -1,0 +1,89 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum PlaceType {
+  STELLPLATZ
+  CAMPINGPLATZ
+  SEHENSWUERDIGKEIT
+}
+
+enum TSValue {
+  STIMMIG
+  OKAY
+  PASST_NICHT
+}
+
+model Place {
+  id               Int       @id @default(autoincrement())
+  name             String
+  type             PlaceType @default(CAMPINGPLATZ)
+  lat              Float
+  lng              Float
+
+  dogAllowed       Boolean   @default(false)
+  sanitary         Boolean   @default(false)
+  yearRound        Boolean   @default(false)
+  onlineBooking    Boolean   @default(false)
+  gastronomy       Boolean   @default(false)
+
+  thumbnailImageId Int?
+  thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)
+
+  ratingDetail     PlaceRating?
+  images           Image[]
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+}
+
+model PlaceRating {
+  id              Int     @id @default(autoincrement())
+
+  placeId         Int     @unique
+  place           Place   @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  tsUmgebung      TSValue @default(OKAY)
+  tsPlatzStruktur TSValue @default(OKAY)
+  tsSanitaer      TSValue @default(OKAY)
+  tsBuchung       TSValue @default(OKAY)
+  tsHilde         TSValue @default(OKAY)
+  tsPreisLeistung TSValue @default(OKAY)
+  tsNachklang     TSValue @default(OKAY)
+
+  totalPoints     Int     @default(7)
+
+  note            String  @default("")
+  cUmgebung       String  @default("")
+  cPlatzStruktur  String  @default("")
+  cSanitaer       String  @default("")
+  cBuchung        String  @default("")
+  cHilde          String  @default("")
+  cPreisLeistung  String  @default("")
+  cNachklang      String  @default("")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+}
+
+model Image {
+  id           Int      @id @default(autoincrement())
+
+  placeId      Int
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  filename     String
+
+  thumbnailFor Place[]  @relation("PlaceThumbnail")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([placeId])
+}

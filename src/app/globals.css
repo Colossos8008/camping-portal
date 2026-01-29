@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* =========================
+   Farb-Variablen (Light)
+   ========================= */
+:root {
+  --background: #ffffff;
+  --foreground: #111827; /* angenehmes Dunkelgrau statt Rein-Schwarz */
+}
+
+/* =========================
+   Farb-Variablen (Dark)
+   ========================= */
+.dark {
+  --background: #0b0d10; /* sehr dunkles Blau-Grau - augenschonend */
+  --foreground: #e5e7eb; /* helles Grau - kein grelles Weiß */
+}
+
+/* =========================
+   Base Layout
+   ========================= */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+/* =========================
+   Default Text Tweaks
+   ========================= */
+p {
+  color: inherit;
+}
+
+small {
+  color: #6b7280;
+}
+
+.dark small {
+  color: #9ca3af;
+}
+
+/* =========================
+   Links
+   ========================= */
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.dark a {
+  color: #60a5fa;
+}
+
+/* =========================
+   Scrollbar (optional, nice)
+   ========================= */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #9ca3af;
+  border-radius: 8px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}

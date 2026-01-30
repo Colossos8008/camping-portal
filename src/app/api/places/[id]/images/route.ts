@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import fs from "fs";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+
+const BUCKET = "place-images";
 
 function getPlaceIdFromPath(req: NextRequest): number {
   // /api/places/:id/images  -> :id
@@ -13,46 +14,67 @@ function getPlaceIdFromPath(req: NextRequest): number {
   return Number(idStr);
 }
 
-function ensureUploadDir(): string {
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  return uploadDir;
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) throw new Error("Missing env SUPABASE_URL");
+  if (!serviceRoleKey) throw new Error("Missing env SUPABASE_SERVICE_ROLE_KEY");
+
+  return createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
-function safeFilename(original: string) {
-  const base = String(original || "image")
-    .replace(/[^a-zA-Z0-9.\-_]/g, "_")
-    .replace(/_+/g, "_");
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}-${base}`;
-}
-
+/**
+ * Erwartet JSON Body:
+ * {
+ *   "files": [
+ *     { "path": "places/123/170...-image.jpg", "originalName": "image.jpg", "contentType": "image/jpeg", "size": 12345 }
+ *   ]
+ * }
+ *
+ * WICHTIG:
+ * - Die Datei wird NICHT hier hochgeladen
+ * - Upload passiert direkt vom Browser nach Supabase Storage
+ * - Diese Route speichert nur DB-Metadaten
+ */
 export async function POST(req: NextRequest) {
   const placeId = getPlaceIdFromPath(req);
-  if (!Number.isFinite(placeId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  if (!Number.isFinite(placeId)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
-  const formData = await req.formData();
-  const files = formData.getAll("files");
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Invalid JSON body. This endpoint no longer accepts multipart uploads. Upload files directly to Supabase Storage, then POST metadata here.",
+      },
+      { status: 400 }
+    );
+  }
 
-  if (!files.length) return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
+  const files = Array.isArray(body?.files) ? body.files : [];
+  if (!files.length) {
+    return NextResponse.json({ error: "No files provided" }, { status: 400 });
+  }
 
-  const uploadDir = ensureUploadDir();
   const created: any[] = [];
 
   for (const f of files) {
-    if (!(f instanceof File)) continue;
+    const storagePath = String(f?.path || "").trim();
+    if (!storagePath) continue;
 
-    const arrayBuf = await f.arrayBuffer();
-    const buf = Buffer.from(arrayBuf);
-
-    const filename = safeFilename(f.name);
-    const absPath = path.join(uploadDir, filename);
-
-    fs.writeFileSync(absPath, buf);
-
+    // Wir verwenden das bestehende Feld "filename" weiter - jetzt ist es der Storage-Pfad
+    // Keine Schema-Aenderung notwendig
     const img = await prisma.image.create({
       data: {
         placeId,
-        filename,
+        filename: storagePath,
       },
     });
 
@@ -62,18 +84,47 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ images: created });
 }
 
+/**
+ * DELETE loescht:
+ * - Datei aus Supabase Storage (Bucket place-images)
+ * - DB-Eintrag (prisma.image)
+ *
+ * Query:
+ * - ?imageId=123
+ */
 export async function DELETE(req: NextRequest) {
   const placeId = getPlaceIdFromPath(req);
-  if (!Number.isFinite(placeId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  if (!Number.isFinite(placeId)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
   const imageId = Number(req.nextUrl.searchParams.get("imageId"));
-  if (!Number.isFinite(imageId)) return NextResponse.json({ error: "Invalid imageId" }, { status: 400 });
+  if (!Number.isFinite(imageId)) {
+    return NextResponse.json({ error: "Invalid imageId" }, { status: 400 });
+  }
 
   const img = await prisma.image.findUnique({ where: { id: imageId } });
-  if (!img || img.placeId !== placeId) return NextResponse.json({ error: "Image not found" }, { status: 404 });
+  if (!img || img.placeId !== placeId) {
+    return NextResponse.json({ error: "Image not found" }, { status: 404 });
+  }
 
-  const absPath = path.join(process.cwd(), "public", "uploads", img.filename);
-  if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+  const storagePath = img.filename;
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.storage.from(BUCKET).remove([storagePath]);
+    if (error) {
+      return NextResponse.json(
+        { error: `Storage delete failed: ${error.message}` },
+        { status: 500 }
+      );
+    }
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: `Storage delete failed: ${e?.message || String(e)}` },
+      { status: 500 }
+    );
+  }
 
   await prisma.image.delete({ where: { id: imageId } });
 

@@ -1,27 +1,31 @@
 // src/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
 declare global {
   // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 
-function createPrismaClient() {
-  const url = process.env.DATABASE_URL || "file:./prisma/dev.db";
-
-  // SQLite via Driver Adapter (required when engineType = "client")
-  if (url.startsWith("file:") || url === ":memory:") {
-    const adapter = new PrismaBetterSqlite3({ url });
-    return new PrismaClient({ adapter });
+function createClient() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error('Missing env DATABASE_URL. Put it into ".env.local".');
   }
 
-  // Postgres etc. (later: Supabase)
-  return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  const pool = new Pool({
+    connectionString: url,
+    // Supabase will require SSL in most setups
+    ssl: { rejectUnauthorized: false },
   });
+
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
 }
 
-export const prisma = global.prisma ?? createPrismaClient();
+export const prisma = global.prisma ?? createClient();
 
-if (process.env.NODE_ENV !== "production") global.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  global.prisma = prisma;
+}

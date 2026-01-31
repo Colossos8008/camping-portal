@@ -60,6 +60,43 @@ function clampText(s: string, max = 46) {
   return t.slice(0, Math.max(0, max - 1)) + "…";
 }
 
+function escapeHtml(s: string) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+// Supabase Public URL (Bucket: place-images)
+// - Fallback: /uploads/<filename> (falls Env nicht verfügbar)
+function publicUrlForObjectKey(filename: string | null | undefined) {
+  const key = String(filename ?? "").trim();
+  if (!key) return null;
+
+  if (key.startsWith("http://") || key.startsWith("https://")) return key;
+
+  const supabaseUrl =
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+    // falls es bei deinem Build doch verfügbar ist
+    (process.env.SUPABASE_URL as string | undefined) ||
+    "";
+
+  const bucket =
+    (process.env.NEXT_PUBLIC_SUPABASE_BUCKET as string | undefined) ||
+    (process.env.SUPABASE_BUCKET as string | undefined) ||
+    "place-images";
+
+  if (supabaseUrl) {
+    const base = supabaseUrl.replace(/\/+$/, "");
+    const encodedKey = encodeURIComponent(key).replaceAll("%2F", "/");
+    return `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodedKey}`;
+  }
+
+  return `/uploads/${encodeURIComponent(key)}`;
+}
+
 function heroFilename(p: Place): string | null {
   const imgs = Array.isArray(p.images) ? p.images : [];
   if (!imgs.length) return null;
@@ -121,8 +158,12 @@ function markerHtml(p: Place, v: MarkerVariant) {
 
 function hoverTooltipHtml(p: Place) {
   const hero = heroFilename(p);
+  const heroUrl = hero ? publicUrlForObjectKey(hero) : null;
+
   const score = Number(p.ratingDetail?.totalPoints ?? 0);
-  const name = clampText(p.name ?? "");
+  const name = escapeHtml(clampText(p.name ?? ""));
+  const typeText = escapeHtml(String(p.type ?? ""));
+
   const dist =
     typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm)
       ? p.distanceKm < 10
@@ -130,8 +171,8 @@ function hoverTooltipHtml(p: Place) {
         : `${p.distanceKm.toFixed(0)} km`
       : null;
 
-  const imgHtml = hero
-    ? `<img src="/uploads/${hero}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" />`
+  const imgHtml = heroUrl
+    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" />`
     : `<div style="width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);"></div>`;
 
   return `
@@ -156,7 +197,7 @@ function hoverTooltipHtml(p: Place) {
       </div>
 
       <div style="margin-top:4px;font-size:11px;opacity:0.75;">
-        ${p.type}
+        ${typeText}
       </div>
 
       <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -184,7 +225,7 @@ function hoverTooltipHtml(p: Place) {
                 font-size:11px;
                 opacity:0.9;
               ">
-                📏 ${dist}
+                📏 ${escapeHtml(dist)}
               </div>`
             : ``
         }
@@ -234,7 +275,7 @@ function ringLabelIcon(text: string) {
       -webkit-backdrop-filter: blur(6px);
       white-space:nowrap;
       pointer-events:none;
-    ">${text}</div>`,
+    ">${escapeHtml(text)}</div>`,
     iconSize: [w, h],
     iconAnchor: [w / 2, h / 2],
   });

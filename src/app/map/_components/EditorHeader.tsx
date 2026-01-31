@@ -4,6 +4,7 @@
 import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
+import { getSupabasePublicUrl } from "../_lib/image-url";
 
 export default function EditorHeader(props: {
   editingNew: boolean;
@@ -31,12 +32,14 @@ export default function EditorHeader(props: {
   const title = props.formName || (props.editingNew ? "Ort neu" : "Ort bearbeiten");
   const dist = formatDistanceKm(props.distanceKm);
 
+  const heroSrc = props.heroImage?.filename ? getSupabasePublicUrl(props.heroImage.filename) : "";
+
   return (
     <div className="shrink-0 border-b border-white/10">
       <div className="relative overflow-hidden">
-        {props.heroImage ? (
+        {heroSrc ? (
           <button type="button" onClick={() => props.onOpenLightbox(0)} className="block w-full" title="Bild öffnen">
-            <img src={`/uploads/${props.heroImage.filename}`} alt="" className="h-36 w-full object-cover" loading="lazy" />
+            <img src={heroSrc} alt="" className="h-36 w-full object-cover" loading="lazy" />
           </button>
         ) : (
           <div className="h-36 w-full bg-black/30" />
@@ -54,9 +57,7 @@ export default function EditorHeader(props: {
             {props.imagesCount ? (
               <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">{props.imagesCount} Bilder</span>
             ) : null}
-            {dist ? (
-              <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">📏 {dist}</span>
-            ) : null}
+            {dist ? <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">📏 {dist}</span> : null}
           </div>
 
           {/* Törtchen Score bewusst nochmal eine Zeile tiefer */}
@@ -100,22 +101,29 @@ export default function EditorHeader(props: {
 
           <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
             {props.headerImages.length ? (
-              props.headerImages.slice(0, 12).map((img: any, idx: number) => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => props.onOpenLightbox(idx)}
-                  className="shrink-0"
-                  title="Bild öffnen"
-                >
-                  <img
-                    src={`/uploads/${img.filename}`}
-                    alt=""
-                    className={`h-10 w-10 rounded-lg object-cover ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`}
-                    loading="lazy"
-                  />
-                </button>
-              ))
+              props.headerImages.slice(0, 12).map((img: any, idx: number) => {
+                const src = getSupabasePublicUrl(String(img.filename ?? ""));
+                return (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => props.onOpenLightbox(idx)}
+                    className="shrink-0"
+                    title="Bild öffnen"
+                  >
+                    {src ? (
+                      <img
+                        src={src}
+                        alt=""
+                        className={`h-10 w-10 rounded-lg object-cover ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className={`h-10 w-10 rounded-lg bg-black/30 ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`} />
+                    )}
+                  </button>
+                );
+              })
             ) : (
               <div className="h-10 w-10 shrink-0 rounded-lg border border-white/10 bg-black/30" />
             )}

@@ -1,6 +1,8 @@
 // src/app/map/_components/ImagesPanel.tsx
 "use client";
 
+import { getSupabasePublicUrl } from "../_lib/image-url";
+
 export default function ImagesPanel(props: {
   placeId: number | null;
 
@@ -50,15 +52,21 @@ export default function ImagesPanel(props: {
         <div className="mt-3 grid grid-cols-3 gap-2">
           {(Array.isArray(props.images) ? props.images : []).map((img: any) => {
             const isThumb = Number(props.thumbnailImageId) === Number(img.id);
+            const src = getSupabasePublicUrl(String(img.filename ?? ""));
+
             return (
               <div key={img.id} className="rounded-xl border border-white/10 bg-black/30 p-1">
                 <button type="button" onClick={() => props.onOpenLightboxById(Number(img.id))} className="w-full" title="Bild öffnen">
-                  <img
-                    src={`/uploads/${img.filename}`}
-                    alt=""
-                    className={`h-20 w-full rounded-lg object-cover ${isThumb ? "ring-2 ring-white/60" : ""}`}
-                    loading="lazy"
-                  />
+                  {src ? (
+                    <img
+                      src={src}
+                      alt=""
+                      className={`h-20 w-full rounded-lg object-cover ${isThumb ? "ring-2 ring-white/60" : ""}`}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className={`h-20 w-full rounded-lg bg-black/30 ${isThumb ? "ring-2 ring-white/60" : ""}`} />
+                  )}
                 </button>
 
                 <button

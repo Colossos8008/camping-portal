@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { getSupabasePublicUrl } from "../_lib/image-url";
 
 export default function Lightbox(props: {
   open: boolean;
@@ -12,6 +13,7 @@ export default function Lightbox(props: {
   onNext: () => void;
 }) {
   const current = props.images[props.index] ?? null;
+  const src = current?.filename ? getSupabasePublicUrl(current.filename) : "";
 
   useEffect(() => {
     if (!props.open) return;
@@ -68,12 +70,18 @@ export default function Lightbox(props: {
         </button>
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-          <img
-            src={`/uploads/${current.filename}`}
-            alt=""
-            className="max-h-[80svh] w-full select-none object-contain"
-            draggable={false}
-          />
+          {src ? (
+            <img
+              src={src}
+              alt=""
+              className="max-h-[80svh] w-full select-none object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="flex h-[60svh] w-full items-center justify-center text-xs text-white/70">
+              Bild nicht verfügbar
+            </div>
+          )}
         </div>
 
         <div className="mt-2 text-center text-xs text-white/70">Pfeile links rechts - ESC schließt</div>

@@ -17,7 +17,23 @@ import EditorHeader from "./_components/EditorHeader";
 import ImagesPanel from "./_components/ImagesPanel";
 import Lightbox from "./_components/Lightbox";
 
+import { createClient } from "@supabase/supabase-js";
+
 const MapClient = dynamic(() => import("./map-client"), { ssr: false });
+
+const SUPABASE_BUCKET = "place-images";
+
+function sanitizeFilename(name: string) {
+  return String(name || "image")
+    .replace(/[^a-zA-Z0-9.\-_]/g, "_")
+    .replace(/_+/g, "_");
+}
+
+function makeObjectKey(placeId: number, originalName: string) {
+  const safe = sanitizeFilename(originalName);
+  const rand = Math.random().toString(16).slice(2);
+  return `places/${placeId}/${Date.now()}-${rand}-${safe}`;
+}
 
 export default function MapPage() {
   const [places, setPlaces] = useState<Place[]>([]);
@@ -74,6 +90,16 @@ export default function MapPage() {
 
   const [lbOpen, setLbOpen] = useState(false);
   const [lbIndex, setLbIndex] = useState(0);
+
+  const supabase = useMemo(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url) throw new Error("Missing env NEXT_PUBLIC_SUPABASE_URL");
+    if (!anon) throw new Error("Missing env NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+    return createClient(url, anon);
+  }, []);
 
   async function refreshPlaces(keepSelection = true) {
     const data = await fetch("/api/places", { cache: "no-store" }).then((r) => r.json());
@@ -315,13 +341,36 @@ export default function MapPage() {
 
     setUploading(true);
     try {
-      const fd = new FormData();
-      for (const f of pickedFiles) fd.append("files", f);
+      const placeId = Number(form.id);
+      const objectKeys: string[] = [];
 
-      const res = await fetch(`/api/places/${form.id}/images`, { method: "POST", body: fd });
+      for (const f of pickedFiles) {
+        const objectKey = makeObjectKey(placeId, f.name);
+
+        const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectKey, f, {
+          contentType: f.type || "application/octet-stream",
+          upsert: false,
+        });
+
+        if (error) {
+          setUploadMsg(`Supabase Upload fehlgeschlagen: ${error.message}`);
+          return;
+        }
+
+        objectKeys.push(objectKey);
+      }
+
+      const res = await fetch(`/api/places/${placeId}/images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          images: objectKeys.map((filename) => ({ filename })),
+        }),
+      });
+
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        setUploadMsg(txt || "Upload fehlgeschlagen");
+        setUploadMsg(txt || "Upload (Register) fehlgeschlagen");
         return;
       }
 

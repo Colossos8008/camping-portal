@@ -4,9 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && next build",
+
     "start": "next start",
     "lint": "eslint",
+
+    "prisma:generate": "dotenv -e .env -- prisma generate",
+    "db:migrate": "dotenv -e .env -- prisma migrate dev",
+    "db:deploy": "dotenv -e .env -- prisma migrate deploy",
+
+    "db:push": "node scripts/blocked-db-push.mjs",
+
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -30,6 +40,7 @@
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",

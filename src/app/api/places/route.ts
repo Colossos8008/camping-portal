@@ -1,10 +1,11 @@
+// src/app/api/places/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
 type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
-type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT";
+type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
 type RatingDetail = {
   tsUmgebung: TSValue;
@@ -60,7 +61,7 @@ function asString(v: any): string {
 }
 
 function normalizePlaceType(v: any): PlaceType {
-  if (v === "STELLPLATZ" || v === "CAMPINGPLATZ" || v === "SEHENSWUERDIGKEIT") return v;
+  if (v === "STELLPLATZ" || v === "CAMPINGPLATZ" || v === "SEHENSWUERDIGKEIT" || v === "HVO_TANKSTELLE") return v;
   return "CAMPINGPLATZ";
 }
 
@@ -100,13 +101,13 @@ function normalizeRatingDetail(input: any): RatingDetail {
   };
 }
 
+/**
+ * GET /api/places
+ * TEMP FIX: kein include, um Production zu stabilisieren
+ */
 export async function GET() {
   const places = await prisma.place.findMany({
     orderBy: { updatedAt: "desc" },
-    include: {
-      ratingDetail: true,
-      images: true,
-    },
   });
 
   return NextResponse.json({ places });
@@ -142,8 +143,78 @@ export async function POST(req: NextRequest) {
       gastronomy: !!body?.gastronomy,
       ratingDetail: { create: { ...rd } },
     },
-    include: { ratingDetail: true, images: true },
   });
 
   return NextResponse.json(created);
+}
+
+function getIdFromPath(req: NextRequest): number {
+  const parts = req.nextUrl.pathname.split("/").filter(Boolean);
+  const last = parts[parts.length - 1] ?? "";
+  return Number(last);
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const id = getIdFromPath(req);
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const name = asString(body?.name).trim();
+    const type = normalizePlaceType(body?.type);
+
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+
+    if (!name) {
+      return NextResponse.json({ error: "Name fehlt" }, { status: 400 });
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return NextResponse.json({ error: "Koordinaten ungültig", lat: body?.lat, lng: body?.lng }, { status: 400 });
+    }
+
+    const rd = normalizeRatingDetail(body?.ratingDetail);
+
+    const updated = await prisma.place.update({
+      where: { id },
+      data: {
+        name,
+        type,
+        lat,
+        lng,
+        dogAllowed: !!body?.dogAllowed,
+        sanitary: !!body?.sanitary,
+        yearRound: !!body?.yearRound,
+        onlineBooking: !!body?.onlineBooking,
+        gastronomy: !!body?.gastronomy,
+        ratingDetail: {
+          upsert: {
+            create: { ...rd },
+            update: { ...rd },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(updated);
+  } catch (e: any) {
+    const msg = typeof e?.message === "string" ? e.message : "PATCH failed";
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const id = getIdFromPath(req);
+  if (!Number.isFinite(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
+
+  await prisma.place.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
 }

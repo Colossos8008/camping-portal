@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT";
+type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
 type PlaceImage = { id: number; filename: string };
 
@@ -51,6 +51,7 @@ function makeDivIcon(html: string, size: number) {
 function typeEmoji(t: PlaceType) {
   if (t === "STELLPLATZ") return "🅿️";
   if (t === "CAMPINGPLATZ") return "⛺";
+  if (t === "HVO_TANKSTELLE") return "⛽";
   return "📍";
 }
 
@@ -78,10 +79,7 @@ function publicUrlForObjectKey(filename: string | null | undefined) {
   if (key.startsWith("http://") || key.startsWith("https://")) return key;
 
   const supabaseUrl =
-    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
-    // falls es bei deinem Build doch verfügbar ist
-    (process.env.SUPABASE_URL as string | undefined) ||
-    "";
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) || (process.env.SUPABASE_URL as string | undefined) || "";
 
   const bucket =
     (process.env.NEXT_PUBLIC_SUPABASE_BUCKET as string | undefined) ||
@@ -297,8 +295,7 @@ function destinationPoint(lat: number, lng: number, distanceKm: number, bearingD
 
   const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
   const lon2 =
-    lon1 +
-    Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+    lon1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
 
   return { lat: toDeg(lat2), lng: ((toDeg(lon2) + 540) % 360) - 180 };
 }

@@ -13,6 +13,8 @@ export default function FiltersPanel(props: {
   setShowCampingplatz: Dispatch<SetStateAction<boolean>>;
   showSehens: boolean;
   setShowSehens: Dispatch<SetStateAction<boolean>>;
+  showHvoTankstelle: boolean;
+  setShowHvoTankstelle: Dispatch<SetStateAction<boolean>>;
 
   fDog: boolean;
   setFDog: Dispatch<SetStateAction<boolean>>;
@@ -27,6 +29,10 @@ export default function FiltersPanel(props: {
 
   onRefresh: () => void;
 }) {
+  // Defensive: falls der Parent aus Versehen was Falsches übergibt, nicht crashen
+  const setShowHvo =
+    typeof props.setShowHvoTankstelle === "function" ? props.setShowHvoTankstelle : () => {};
+
   return (
     <div className={`rounded-2xl border border-white/10 bg-white/5 ${props.filtersOpen ? "p-4" : "p-3"}`}>
       <div className="flex items-center justify-between">
@@ -68,6 +74,7 @@ export default function FiltersPanel(props: {
               />
               Stellplatz
             </label>
+
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -76,9 +83,15 @@ export default function FiltersPanel(props: {
               />
               Campingplatz
             </label>
+
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={props.showSehens} onChange={(e) => props.setShowSehens(e.target.checked)} />
               Sehenswürdigkeit
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={props.showHvoTankstelle} onChange={(e) => setShowHvo(e.target.checked)} />
+              HVO Tankstelle
             </label>
 
             <div className="col-span-2 my-1 h-px bg-white/10" />

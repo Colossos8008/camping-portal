@@ -1,5 +1,5 @@
 // src/app/map/_lib/types.ts
-export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT";
+export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
 export type PlaceImage = {
   id: number;
@@ -28,7 +28,7 @@ export type Place = {
   images?: PlaceImage[];
   thumbnailImageId?: number | null;
 
-  // optional – wird in page.tsx berechnet wenn myPos gesetzt
+  // optional - wird in page.tsx berechnet wenn myPos gesetzt
   distanceKm?: number | null;
 };
 

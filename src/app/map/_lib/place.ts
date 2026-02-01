@@ -1,28 +1,75 @@
 // src/app/map/_lib/place.ts
-import type { Place, PlaceType } from "./types";
+import { Place, PlaceType } from "./types";
 
-export function safePlacesFromApi(data: any): Place[] {
-  const arr = Array.isArray(data) ? data : Array.isArray(data?.places) ? data.places : [];
-  return arr
-    .map((p: any) => ({
-      id: Number(p.id),
-      name: String(p.name ?? ""),
-      type: (p.type ?? "CAMPINGPLATZ") as PlaceType,
-      lat: Number(p.lat),
-      lng: Number(p.lng),
+export const PLACE_TYPE_LABEL: Record<PlaceType, string> = {
+  CAMPINGPLATZ: "Campingplatz",
+  STELLPLATZ: "Stellplatz",
+  SEHENSWUERDIGKEIT: "Sehenswürdigkeit",
+  HVO_TANKSTELLE: "HVO-Tankstelle",
+};
 
-      dogAllowed: !!p.dogAllowed,
-      sanitary: !!p.sanitary,
-      yearRound: !!p.yearRound,
-      onlineBooking: !!p.onlineBooking,
-      gastronomy: !!p.gastronomy,
+export const PLACE_TYPE_ORDER: PlaceType[] = [
+  "CAMPINGPLATZ",
+  "STELLPLATZ",
+  "SEHENSWUERDIGKEIT",
+  "HVO_TANKSTELLE",
+];
 
-      ratingDetail: (p.ratingDetail ?? null) as any | null,
+export const PLACE_TYPES_WITH_RATING: PlaceType[] = [
+  "CAMPINGPLATZ",
+  "STELLPLATZ",
+];
 
-      images: Array.isArray(p.images) ? p.images : [],
-      thumbnailImageId: p.thumbnailImageId ?? null,
+/**
+ * Normalisiert /api/places Response
+ * – robust gegen leere, fehlerhafte oder alte Daten
+ * – entfernt keine Features
+ */
+export function safePlacesFromApi(input: any): Place[] {
+  const raw = Array.isArray(input?.places)
+    ? input.places
+    : Array.isArray(input)
+    ? input
+    : [];
 
-      distanceKm: null,
-    }))
-    .filter((p: Place) => Number.isFinite(p.id) && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  return raw
+    .map((p: any) => {
+      if (
+        typeof p?.id !== "number" ||
+        typeof p?.lat !== "number" ||
+        typeof p?.lng !== "number"
+      ) {
+        return null;
+      }
+
+      const type: PlaceType =
+        p.type === "CAMPINGPLATZ" ||
+        p.type === "STELLPLATZ" ||
+        p.type === "SEHENSWUERDIGKEIT" ||
+        p.type === "HVO_TANKSTELLE"
+          ? p.type
+          : "CAMPINGPLATZ";
+
+      return {
+        id: p.id,
+        name: String(p.name ?? ""),
+        type,
+        lat: p.lat,
+        lng: p.lng,
+
+        dogAllowed: !!p.dogAllowed,
+        sanitary: !!p.sanitary,
+        yearRound: !!p.yearRound,
+        onlineBooking: !!p.onlineBooking,
+        gastronomy: !!p.gastronomy,
+
+        ratingDetail: p.ratingDetail ?? null,
+        images: Array.isArray(p.images) ? p.images : [],
+        thumbnailImageId:
+          typeof p.thumbnailImageId === "number"
+            ? p.thumbnailImageId
+            : null,
+      } as Place;
+    })
+    .filter(Boolean) as Place[];
 }

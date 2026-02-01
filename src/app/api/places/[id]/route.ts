@@ -1,8 +1,11 @@
+// src/app/api/places/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const runtime = "nodejs";
+
 type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
-type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT";
+type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
 type RatingDetail = {
   tsUmgebung: TSValue;
@@ -58,7 +61,10 @@ function asString(v: any): string {
 }
 
 function normalizePlaceType(v: any): PlaceType {
-  if (v === "STELLPLATZ" || v === "CAMPINGPLATZ" || v === "SEHENSWUERDIGKEIT") return v;
+  if (v === "STELLPLATZ") return "STELLPLATZ";
+  if (v === "CAMPINGPLATZ") return "CAMPINGPLATZ";
+  if (v === "SEHENSWUERDIGKEIT") return "SEHENSWUERDIGKEIT";
+  if (v === "HVO_TANKSTELLE") return "HVO_TANKSTELLE";
   return "CAMPINGPLATZ";
 }
 
@@ -102,7 +108,6 @@ function normalizeRatingDetail(input: any): RatingDetail {
 }
 
 function getIdFromPath(req: NextRequest): number {
-  // erwartet: /api/places/:id
   const parts = req.nextUrl.pathname.split("/").filter(Boolean);
   const last = parts[parts.length - 1] ?? "";
   return Number(last);

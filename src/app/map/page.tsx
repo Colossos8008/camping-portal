@@ -21,7 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const MapClient = dynamic(() => import("./map-client"), { ssr: false });
 
-const SUPABASE_BUCKET = "place-images";
+const SUPABASE_BUCKET_DEFAULT = "place-images";
 
 function sanitizeFilename(name: string) {
   return String(name || "image")
@@ -49,12 +49,12 @@ export default function MapPage() {
 
   const [myPosFocusToken, setMyPosFocusToken] = useState(0);
 
-  // NEW
   const [showMyRings, setShowMyRings] = useState(true);
 
   const [showStellplatz, setShowStellplatz] = useState(true);
   const [showCampingplatz, setShowCampingplatz] = useState(true);
   const [showSehens, setShowSehens] = useState(true);
+  const [showHvoTankstelle, setShowHvoTankstelle] = useState(true);
 
   const [fDog, setFDog] = useState(false);
   const [fSan, setFSan] = useState(false);
@@ -95,10 +95,14 @@ export default function MapPage() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!url) throw new Error("Missing env NEXT_PUBLIC_SUPABASE_URL");
-    if (!anon) throw new Error("Missing env NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    // kein Crash - Upload zeigt Fehlermeldung
+    if (!url || !anon) return null;
 
     return createClient(url, anon);
+  }, []);
+
+  const supabaseBucket = useMemo(() => {
+    return (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || SUPABASE_BUCKET_DEFAULT).trim() || SUPABASE_BUCKET_DEFAULT;
   }, []);
 
   async function refreshPlaces(keepSelection = true) {
@@ -134,6 +138,7 @@ export default function MapPage() {
       if (p.type === "STELLPLATZ" && !showStellplatz) return false;
       if (p.type === "CAMPINGPLATZ" && !showCampingplatz) return false;
       if (p.type === "SEHENSWUERDIGKEIT" && !showSehens) return false;
+      if (p.type === "HVO_TANKSTELLE" && !showHvoTankstelle) return false;
 
       if (fDog && !p.dogAllowed) return false;
       if (fSan && !p.sanitary) return false;
@@ -143,7 +148,18 @@ export default function MapPage() {
 
       return true;
     });
-  }, [placesWithDistance, showStellplatz, showCampingplatz, showSehens, fDog, fSan, fYear, fOnline, fGastro]);
+  }, [
+    placesWithDistance,
+    showStellplatz,
+    showCampingplatz,
+    showSehens,
+    showHvoTankstelle,
+    fDog,
+    fSan,
+    fYear,
+    fOnline,
+    fGastro,
+  ]);
 
   const sortedPlaces = useMemo(() => {
     const list = [...filteredPlaces];
@@ -330,6 +346,12 @@ export default function MapPage() {
 
   async function uploadImages() {
     setUploadMsg("");
+
+    if (!supabase) {
+      setUploadMsg("Supabase ENV fehlt im Client-Bundle - Upload wird blockiert (kein Crash).");
+      return;
+    }
+
     if (!form.id) {
       setUploadMsg("Ort erst speichern, dann Bilder hochladen.");
       return;
@@ -347,7 +369,7 @@ export default function MapPage() {
       for (const f of pickedFiles) {
         const objectKey = makeObjectKey(placeId, f.name);
 
-        const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectKey, f, {
+        const { error } = await supabase.storage.from(supabaseBucket).upload(objectKey, f, {
           contentType: f.type || "application/octet-stream",
           upsert: false,
         });
@@ -544,6 +566,8 @@ export default function MapPage() {
               setShowCampingplatz={setShowCampingplatz}
               showSehens={showSehens}
               setShowSehens={setShowSehens}
+              showHvoTankstelle={showHvoTankstelle}
+              setShowHvoTankstelle={setShowHvoTankstelle}
               fDog={fDog}
               setFDog={setFDog}
               fSan={fSan}
@@ -589,6 +613,7 @@ export default function MapPage() {
                     onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
                   />
 
+                  {/* Typ-Dropdown: HVO + Stellplatz enthalten */}
                   <select
                     className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
                     value={(form.type ?? "CAMPINGPLATZ") as string}
@@ -597,6 +622,7 @@ export default function MapPage() {
                     <option value="CAMPINGPLATZ">Campingplatz</option>
                     <option value="STELLPLATZ">Stellplatz</option>
                     <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
+                    <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
                   </select>
 
                   <div className="flex items-center gap-2">

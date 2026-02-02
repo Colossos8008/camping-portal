@@ -1,4 +1,3 @@
-// src/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -16,8 +15,7 @@ function createClient() {
 
   const pool = new Pool({
     connectionString: url,
-    // Supabase will require SSL in most setups
-    ssl: { rejectUnauthorized: false },
+    ssl: true, // FIX: Supabase Pooler TLS
   });
 
   const adapter = new PrismaPg(pool);

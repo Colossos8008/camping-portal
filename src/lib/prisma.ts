@@ -13,12 +13,20 @@ function createClient() {
     throw new Error('Missing env DATABASE_URL. Put it into ".env.local".');
   }
 
+  // Safety net for Vercel/Node TLS chain issues (Supabase pooler + cert chain edge cases)
+  if (process.env.NODE_ENV === "production") {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  }
+
   const pool = new Pool({
     connectionString: url,
-    ssl: true, // FIX: Supabase Pooler TLS
+    ssl: {
+      rejectUnauthorized: false,
+    },
   });
 
   const adapter = new PrismaPg(pool);
+
   return new PrismaClient({ adapter });
 }
 

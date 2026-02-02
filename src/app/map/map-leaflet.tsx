@@ -1,14 +1,9 @@
-'use client';
+// src/app/map/map-leaflet.tsx
+"use client";
 
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  useMap,
-} from 'react-leaflet';
-import L from 'leaflet';
-import { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import { useEffect } from "react";
 
 type Place = {
   id: number;
@@ -39,15 +34,8 @@ export default function MapLeaflet({
   onSelectPlace: (id: number) => void;
 }) {
   return (
-    <MapContainer
-      center={[50.3, 7.6]}
-      zoom={7}
-      className="h-full w-full rounded-xl"
-    >
-      <TileLayer
-        attribution="© OpenStreetMap"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+    <MapContainer center={[50.3, 7.6]} zoom={7} className="h-full w-full rounded-xl">
+      <TileLayer attribution="© OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
       <Focus place={selectedPlace} />
 
@@ -59,7 +47,7 @@ export default function MapLeaflet({
             click: () => onSelectPlace(p.id),
           }}
           icon={L.icon({
-            iconUrl: '/icons/stellplatz.png',
+            iconUrl: "/icons/stellplatz.png",
             iconSize: [32, 32],
             iconAnchor: [16, 32],
           })}

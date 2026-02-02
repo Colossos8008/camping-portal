@@ -520,8 +520,12 @@ export default function MapPage() {
 
   return (
     <div className="h-[100svh] w-full bg-black text-white">
-      <div className="mx-auto flex h-full max-w-[1800px] gap-4 px-4 py-4">
-        <div className="w-[320px] shrink-0">
+      {/* RESPONSIVE FIX:
+          - auf kleinen Screens: Spalten untereinander
+          - die Karte bekommt eine feste Höhe, damit sie nicht auf 0 schrumpft
+      */}
+      <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row">
+        <div className="w-full lg:w-[320px] lg:shrink-0">
           <PlacesList
             places={sortedPlaces}
             selectedId={selectedId}
@@ -537,7 +541,7 @@ export default function MapPage() {
           />
         </div>
 
-        <div className="relative flex-1 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+        <div className="relative h-[40svh] min-h-[280px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 lg:h-auto lg:flex-1">
           <MapClient
             places={sortedPlaces}
             selectedId={selectedId}
@@ -555,7 +559,7 @@ export default function MapPage() {
           />
         </div>
 
-        <div className="w-[420px] shrink-0">
+        <div className="w-full lg:w-[420px] lg:shrink-0">
           <div className="flex h-full flex-col gap-4">
             <FiltersPanel
               filtersOpen={filtersOpen}
@@ -613,7 +617,6 @@ export default function MapPage() {
                     onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
                   />
 
-                  {/* Typ-Dropdown: HVO + Stellplatz enthalten */}
                   <select
                     className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
                     value={(form.type ?? "CAMPINGPLATZ") as string}
@@ -655,11 +658,36 @@ export default function MapPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
-                    <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
-                    <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
-                    <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
-                    <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
+                    <TogglePill
+                      on={!!form.dogAllowed}
+                      icon="🐕"
+                      label="Hunde"
+                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
+                    />
+                    <TogglePill
+                      on={!!form.sanitary}
+                      icon="🚿"
+                      label="Sanitär"
+                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
+                    />
+                    <TogglePill
+                      on={!!form.yearRound}
+                      icon="📆"
+                      label="Ganzjährig"
+                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
+                    />
+                    <TogglePill
+                      on={!!form.onlineBooking}
+                      icon="🌐"
+                      label="Online"
+                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
+                    />
+                    <TogglePill
+                      on={!!form.gastronomy}
+                      icon="🍽️"
+                      label="Gastro"
+                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
+                    />
                   </div>
 
                   <div className="my-2 h-px bg-white/10" />

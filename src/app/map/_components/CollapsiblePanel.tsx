@@ -6,25 +6,42 @@ import { useEffect, useId, useState } from "react";
 export default function CollapsiblePanel(props: {
   title: string;
   defaultOpen?: boolean;
+
+  // optional controlled mode
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+
   rightHint?: string | null;
   className?: string;
   children: React.ReactNode;
 }) {
   const id = useId();
-  const [open, setOpen] = useState(props.defaultOpen ?? true);
 
-  // keep stable default on first render
+  const isControlled = typeof props.open === "boolean" && typeof props.onOpenChange === "function";
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(props.defaultOpen ?? true);
+
   useEffect(() => {
     if (props.defaultOpen == null) return;
-    setOpen(props.defaultOpen);
+    if (isControlled) return;
+    setUncontrolledOpen(props.defaultOpen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const open = isControlled ? (props.open as boolean) : uncontrolledOpen;
+
+  function setOpen(next: boolean) {
+    if (isControlled) {
+      props.onOpenChange?.(next);
+      return;
+    }
+    setUncontrolledOpen(next);
+  }
 
   return (
     <div className={`overflow-hidden rounded-2xl border border-white/10 bg-white/5 ${props.className ?? ""}`}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/5"
         aria-controls={id}
         aria-expanded={open}

@@ -1,3 +1,4 @@
+// src/app/map/map-client.tsx
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
@@ -16,12 +17,7 @@ type Place = {
   lat: number;
   lng: number;
 
-  dogAllowed?: boolean;
-  sanitary?: boolean;
-  yearRound?: boolean;
-  onlineBooking?: boolean;
-  gastronomy?: boolean;
-
+  // TS2 - nur relevant für CAMPINGPLATZ / STELLPLATZ
   ts2?: { haltung?: TSHaltung | null } | null;
 
   images?: PlaceImage[];
@@ -408,6 +404,11 @@ export default function MapClient(props: Props) {
     m.setIcon(makeDivIcon(markerHtml(p, v), markerSize(v)));
   }
 
+  function selectFromMarker(p: Place) {
+    if (pickModeRef.current) return;
+    props.onSelect(p.id);
+  }
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -423,7 +424,11 @@ export default function MapClient(props: Props) {
       const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
 
       if (!marker) {
-        const m = L.marker([p.lat, p.lng], { icon: makeDivIcon(markerHtml(p, v), markerSize(v)) });
+        const m = L.marker([p.lat, p.lng], {
+          icon: makeDivIcon(markerHtml(p, v), markerSize(v)),
+          keyboard: false,
+        });
+
         m.addTo(map);
 
         m.bindTooltip(hoverTooltipHtml(p), {
@@ -447,10 +452,12 @@ export default function MapClient(props: Props) {
           m.closeTooltip();
         });
 
-        m.on("click", () => {
-          if (pickModeRef.current) return;
-          props.onSelect(p.id);
-        });
+        // Desktop
+        m.on("click", () => selectFromMarker(p));
+
+        // Mobile reliability (tap)
+        m.on("touchend", () => selectFromMarker(p));
+        m.on("pointerup", () => selectFromMarker(p));
 
         markersRef.current.set(p.id, m);
       } else {

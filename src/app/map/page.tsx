@@ -2,7 +2,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TsEditor, { RatingDetail } from "./ts-editor";
 
 import type { Place, PlaceType, SortMode } from "./_lib/types";
@@ -111,6 +111,29 @@ export default function MapPage() {
 
   const [lbOpen, setLbOpen] = useState(false);
   const [lbIndex, setLbIndex] = useState(0);
+
+  // mobile detection (lg breakpoint)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mql = window.matchMedia("(max-width: 1023px)");
+    const apply = () => setIsMobile(!!mql.matches);
+    apply();
+
+    const handler = () => apply();
+    if ("addEventListener" in mql) mql.addEventListener("change", handler);
+    else (mql as any).addListener(handler);
+
+    return () => {
+      if ("removeEventListener" in mql) mql.removeEventListener("change", handler);
+      else (mql as any).removeListener(handler);
+    };
+  }, []);
+
+  // control editor open on mobile (so we can open it on map tap)
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(true);
+  const editorPanelRef = useRef<HTMLDivElement | null>(null);
 
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -255,10 +278,23 @@ export default function MapPage() {
     });
   }, [selectedPlace]);
 
-  function selectPlace(id: number) {
+  function scrollEditorIntoView() {
+    if (!isMobile) return;
+
+    setMobileEditorOpen(true);
+
+    // scroll after state update
+    requestAnimationFrame(() => {
+      editorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function selectPlace(id: number, source: "map" | "list" = "list") {
     setSelectedId(id);
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
+
+    if (source === "map") scrollEditorIntoView();
   }
 
   function newPlace() {
@@ -285,6 +321,13 @@ export default function MapPage() {
       images: [],
       thumbnailImageId: null,
     });
+
+    if (isMobile) {
+      setMobileEditorOpen(true);
+      requestAnimationFrame(() => {
+        editorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }
 
   async function save() {
@@ -586,7 +629,6 @@ export default function MapPage() {
 
   const showTS2Editor = isTS2Type(String(form.type ?? "CAMPINGPLATZ"));
 
-  // ---- Panel hints (small status lines)
   const filtersActiveCount = useMemo(() => {
     const ko = Number(!!fDog) + Number(!!fSan) + Number(!!fYear) + Number(!!fOnline) + Number(!!fGastro);
     const typeHidden =
@@ -616,17 +658,11 @@ export default function MapPage() {
     return base;
   }, [sortedPlaces.length, selectedPlace?.id]);
 
-  // --- MOBILE ORDER REQUIREMENT:
-  // 1 Filter
-  // 2 Map
-  // 3 Editor
-  // 4 Orte
-  // --- DESKTOP (lg) bleibt klassisch: Orte | Map | Filter+Editor
   return (
     <div className="w-full bg-black text-white">
       <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 lg:h-[100svh] lg:flex-row">
-        {/* MOBILE: 1 Filter (top) */}
-        <div className="order-1 lg:order-3 lg:hidden">
+        {/* MOBILE: 1 Filter */}
+        <div className="order-1 lg:hidden">
           <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
             <div className="p-3">
               <FiltersPanel
@@ -663,7 +699,7 @@ export default function MapPage() {
               <PlacesList
                 places={sortedPlaces}
                 selectedId={selectedId}
-                onSelect={selectPlace}
+                onSelect={(id) => selectPlace(id, "list")}
                 sortMode={sortMode}
                 setSortMode={setSortMode}
                 geoStatus={geoStatus}
@@ -677,16 +713,15 @@ export default function MapPage() {
           </CollapsiblePanel>
         </div>
 
-        {/* 2 Map */}
+        {/* 2 Map - mobile 50% höher */}
         <div className="order-2 lg:order-2 lg:h-full lg:flex-1">
           <CollapsiblePanel title="🗺️ Map" defaultOpen={true} rightHint={mapHint}>
-            <div className="relative h-[42svh] min-h-[280px] w-full overflow-hidden bg-white/5 lg:h-[calc(100svh-32px)] lg:rounded-none">
-              <div className="absolute inset-0 rounded-2xl border border-white/10 lg:rounded-2xl" />
-              <div className="relative h-full w-full overflow-hidden rounded-2xl">
+            <div className="relative h-[63svh] min-h-[360px] w-full overflow-hidden bg-white/5 lg:h-[calc(100svh-32px)]">
+              <div className="relative h-full w-full overflow-hidden rounded-2xl border border-white/10">
                 <MapClient
                   places={sortedPlaces}
                   selectedId={selectedId}
-                  onSelect={(id: number) => selectPlace(id)}
+                  onSelect={(id: number) => selectPlace(id, "map")}
                   pickMode={pickMode}
                   onPick={(lat: number, lng: number) => {
                     setForm((f: any) => ({ ...f, lat, lng }));
@@ -703,10 +738,10 @@ export default function MapPage() {
           </CollapsiblePanel>
         </div>
 
-        {/* 3 Editor (desktop right column, includes Filter on lg) */}
-        <div className="order-3 lg:order-3 lg:h-full lg:w-[420px] lg:shrink-0">
+        {/* 3 Editor - controlled open on mobile */}
+        <div className="order-3 lg:order-3 lg:h-full lg:w-[420px] lg:shrink-0" ref={editorPanelRef}>
           <div className="flex flex-col gap-4 lg:h-full">
-            {/* DESKTOP: Filter oben in rechter Spalte */}
+            {/* DESKTOP: Filter */}
             <div className="hidden lg:block">
               <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
                 <div className="p-3">
@@ -737,7 +772,13 @@ export default function MapPage() {
               </CollapsiblePanel>
             </div>
 
-            <CollapsiblePanel title="✍️ Editor" defaultOpen={true} rightHint={saving ? "speichert..." : editorHint}>
+            <CollapsiblePanel
+              title="✍️ Editor"
+              defaultOpen={true}
+              open={isMobile ? mobileEditorOpen : undefined}
+              onOpenChange={isMobile ? setMobileEditorOpen : undefined}
+              rightHint={saving ? "speichert..." : editorHint}
+            >
               <div className="min-h-0 rounded-2xl border border-white/10 bg-white/5">
                 <EditorHeader
                   editingNew={editingNew}

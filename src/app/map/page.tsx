@@ -1,4 +1,3 @@
-// src/app/map/page.tsx
 "use client";
 
 import dynamic from "next/dynamic";
@@ -23,6 +22,9 @@ const MapClient = dynamic(() => import("./map-client"), { ssr: false });
 
 const SUPABASE_BUCKET_DEFAULT = "place-images";
 
+type TSHaltung = "DNA" | "EXPLORER";
+type TS2Detail = { haltung: TSHaltung; note: string };
+
 function sanitizeFilename(name: string) {
   return String(name || "image")
     .replace(/[^a-zA-Z0-9.\-_]/g, "_")
@@ -33,6 +35,17 @@ function makeObjectKey(placeId: number, originalName: string) {
   const safe = sanitizeFilename(originalName);
   const rand = Math.random().toString(16).slice(2);
   return `places/${placeId}/${Date.now()}-${rand}-${safe}`;
+}
+
+function isTS2Type(t: any): boolean {
+  return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
+}
+
+function normalizeTs2(raw: any): TS2Detail | null {
+  if (!raw) return null;
+  const h = raw?.haltung === "EXPLORER" ? ("EXPLORER" as TSHaltung) : ("DNA" as TSHaltung);
+  const note = typeof raw?.note === "string" ? raw.note : String(raw?.note ?? "");
+  return { haltung: h, note };
 }
 
 export default function MapPage() {
@@ -84,6 +97,7 @@ export default function MapPage() {
     onlineBooking: false,
     gastronomy: false,
     ratingDetail: blankRating(),
+    ts2: { haltung: "DNA" as TSHaltung, note: "" },
     images: [],
     thumbnailImageId: null,
   });
@@ -107,14 +121,37 @@ export default function MapPage() {
 
   async function refreshPlaces(keepSelection = true) {
     const data = await fetch("/api/places", { cache: "no-store" }).then((r) => r.json());
-    const arr = safePlacesFromApi(data);
-    setPlaces(arr);
+
+    // defensive parsing (bestehendes Verhalten beibehalten)
+    const parsed = safePlacesFromApi(data);
+
+    // additiv: ts2 aus raw API wieder rein-merge'n (falls safePlacesFromApi es droppt)
+    const rawPlaces: any[] = Array.isArray(data?.places) ? data.places : [];
+    const ts2ById = new Map<number, TS2Detail | null>();
+    for (const rp of rawPlaces) {
+      const id = Number(rp?.id);
+      if (!Number.isFinite(id)) continue;
+      ts2ById.set(id, normalizeTs2(rp?.ts2));
+    }
+
+    const merged = parsed.map((p: any) => {
+      const id = Number(p?.id);
+      if (!Number.isFinite(id)) return p;
+
+      if (ts2ById.has(id)) {
+        const ts2 = ts2ById.get(id) ?? null;
+        return { ...p, ts2 };
+      }
+      return p;
+    });
+
+    setPlaces(merged);
 
     if (!keepSelection) {
-      const first = arr[0]?.id ?? null;
+      const first = merged[0]?.id ?? null;
       setSelectedId(first);
     } else {
-      if (selectedId == null && arr.length) setSelectedId(arr[0].id);
+      if (selectedId == null && merged.length) setSelectedId(merged[0].id);
     }
   }
 
@@ -190,6 +227,9 @@ export default function MapPage() {
     setUploadMsg("");
     setPickedFiles([]);
 
+    const rawTs2 = (selectedPlace as any)?.ts2;
+    const initialTS2 = isTS2Type(selectedPlace.type) ? normalizeTs2(rawTs2) ?? { haltung: "DNA" as TSHaltung, note: "" } : { haltung: "DNA" as TSHaltung, note: "" };
+
     setForm({
       id: selectedPlace.id,
       name: selectedPlace.name ?? "",
@@ -202,8 +242,9 @@ export default function MapPage() {
       onlineBooking: !!selectedPlace.onlineBooking,
       gastronomy: !!selectedPlace.gastronomy,
       ratingDetail: (selectedPlace.ratingDetail ?? blankRating()) as RatingDetail,
-      images: Array.isArray(selectedPlace.images) ? selectedPlace.images : [],
-      thumbnailImageId: selectedPlace.thumbnailImageId ?? null,
+      ts2: initialTS2,
+      images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
+      thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
     });
   }, [selectedPlace]);
 
@@ -233,6 +274,7 @@ export default function MapPage() {
       onlineBooking: false,
       gastronomy: false,
       ratingDetail: blankRating(),
+      ts2: { haltung: "DNA" as TSHaltung, note: "" },
       images: [],
       thumbnailImageId: null,
     });
@@ -245,9 +287,11 @@ export default function MapPage() {
     try {
       const isNew = editingNew || !form.id;
 
+      const placeType = String(form.type ?? "CAMPINGPLATZ");
+
       const payload: any = {
         name: String(form.name ?? "").trim(),
-        type: form.type,
+        type: placeType,
         lat: Number(form.lat),
         lng: Number(form.lng),
         dogAllowed: !!form.dogAllowed,
@@ -262,6 +306,21 @@ export default function MapPage() {
           },
         },
       };
+
+      if (isTS2Type(placeType)) {
+        payload.ts2 = {
+          upsert: {
+            create: {
+              haltung: (form?.ts2?.haltung === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
+              note: String(form?.ts2?.note ?? ""),
+            },
+            update: {
+              haltung: (form?.ts2?.haltung === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
+              note: String(form?.ts2?.note ?? ""),
+            },
+          },
+        };
+      }
 
       const url = isNew ? "/api/places" : `/api/places/${form.id}`;
       const method = isNew ? "POST" : "PATCH";
@@ -328,7 +387,7 @@ export default function MapPage() {
       return;
     }
 
-    setGeoStatus("Bitte Browser-Erlaubnis geben…");
+    setGeoStatus("Bitte Browser-Erlaubnis geben...");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setMyPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -518,12 +577,10 @@ export default function MapPage() {
     return Number.isFinite(km) ? km : null;
   }, [myPos, selectedPlace]);
 
+  const showTS2Editor = isTS2Type(String(form.type ?? "CAMPINGPLATZ"));
+
   return (
     <div className="h-[100svh] w-full bg-black text-white">
-      {/* RESPONSIVE FIX:
-          - auf kleinen Screens: Spalten untereinander
-          - die Karte bekommt eine feste Höhe, damit sie nicht auf 0 schrumpft
-      */}
       <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row">
         <div className="w-full lg:w-[320px] lg:shrink-0">
           <PlacesList
@@ -620,7 +677,23 @@ export default function MapPage() {
                   <select
                     className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
                     value={(form.type ?? "CAMPINGPLATZ") as string}
-                    onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
+                    onChange={(e) => {
+                      const nextType = e.target.value as PlaceType;
+
+                      setForm((f: any) => {
+                        const next: any = { ...f, type: nextType };
+
+                        if (isTS2Type(nextType)) {
+                          if (!next.ts2) next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
+                          if (next.ts2?.haltung !== "EXPLORER") next.ts2.haltung = "DNA";
+                          if (typeof next.ts2?.note !== "string") next.ts2.note = "";
+                        } else {
+                          next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
+                        }
+
+                        return next;
+                      });
+                    }}
                   >
                     <option value="CAMPINGPLATZ">Campingplatz</option>
                     <option value="STELLPLATZ">Stellplatz</option>
@@ -690,6 +763,51 @@ export default function MapPage() {
                     />
                   </div>
 
+                  {showTS2Editor ? (
+                    <>
+                      <div className="my-2 h-px bg-white/10" />
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-xs font-semibold opacity-90">Törtchensystem 2.0</div>
+
+                        <div className="mt-2 grid grid-cols-1 gap-2">
+                          <label className="text-xs opacity-80">Haltung</label>
+                          <select
+                            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                            value={String(form?.ts2?.haltung ?? "DNA")}
+                            onChange={(e) =>
+                              setForm((f: any) => ({
+                                ...f,
+                                ts2: {
+                                  ...(f.ts2 ?? { note: "" }),
+                                  haltung: (e.target.value === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
+                                },
+                              }))
+                            }
+                            disabled={saving}
+                          >
+                            <option value="DNA">DNA</option>
+                            <option value="EXPLORER">Explorer</option>
+                          </select>
+
+                          <label className="mt-2 text-xs opacity-80">Notiz</label>
+                          <textarea
+                            className="min-h-[70px] w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                            placeholder="Optional - warum DNA oder Explorer - was ist uns wichtig"
+                            value={String(form?.ts2?.note ?? "")}
+                            onChange={(e) =>
+                              setForm((f: any) => ({
+                                ...f,
+                                ts2: { ...(f.ts2 ?? { haltung: "DNA" }), note: e.target.value },
+                              }))
+                            }
+                            disabled={saving}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
                   <div className="my-2 h-px bg-white/10" />
 
                   <TsEditor
@@ -734,7 +852,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
+      <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={() => setLbOpen(false)} onPrev={() => {}} onNext={() => {}} />
     </div>
   );
 }

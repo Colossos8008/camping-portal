@@ -1,4 +1,3 @@
-// src/app/api/places/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -6,6 +5,7 @@ export const runtime = "nodejs";
 
 type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
+type TSHaltung = "DNA" | "EXPLORER";
 
 type RatingDetail = {
   tsUmgebung: TSValue;
@@ -24,6 +24,11 @@ type RatingDetail = {
   cHilde: string;
   cPreisLeistung: string;
   cNachklang: string;
+};
+
+type TS2Detail = {
+  haltung: TSHaltung;
+  note: string;
 };
 
 const TS_DEFAULT: TSValue = "OKAY";
@@ -49,6 +54,13 @@ function blankRating(): RatingDetail {
   };
 }
 
+function blankTS2(): TS2Detail {
+  return {
+    haltung: "DNA",
+    note: "",
+  };
+}
+
 function asTSValue(v: any): TSValue {
   if (v === "STIMMIG" || v === "OKAY" || v === "PASST_NICHT") return v;
   return TS_DEFAULT;
@@ -66,6 +78,11 @@ function normalizePlaceType(v: any): PlaceType {
   if (v === "SEHENSWUERDIGKEIT") return "SEHENSWUERDIGKEIT";
   if (v === "HVO_TANKSTELLE") return "HVO_TANKSTELLE";
   return "CAMPINGPLATZ";
+}
+
+function normalizeTSHaltung(v: any): TSHaltung {
+  if (v === "EXPLORER") return "EXPLORER";
+  return "DNA";
 }
 
 function extractRatingDetail(input: any): any {
@@ -107,6 +124,15 @@ function normalizeRatingDetail(input: any): RatingDetail {
   };
 }
 
+function normalizeTS2Detail(input: any): TS2Detail {
+  const b = blankTS2();
+  const src = extractRatingDetail(input) ?? {};
+  return {
+    haltung: normalizeTSHaltung(src.haltung),
+    note: asString(src.note),
+  };
+}
+
 function getIdFromPath(req: NextRequest): number {
   const parts = req.nextUrl.pathname.split("/").filter(Boolean);
   const last = parts[parts.length - 1] ?? "";
@@ -135,10 +161,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Name fehlt" }, { status: 400 });
     }
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return NextResponse.json({ error: "Koordinaten ungültig", lat: body?.lat, lng: body?.lng }, { status: 400 });
+      return NextResponse.json(
+        { error: "Koordinaten ungültig", lat: body?.lat, lng: body?.lng },
+        { status: 400 }
+      );
     }
 
     const rd = normalizeRatingDetail(body?.ratingDetail);
+
+    // TS 2.0 - nur für Campingplatz und Stellplatz - additiv
+    const shouldHaveTS2 = type === "CAMPINGPLATZ" || type === "STELLPLATZ";
+    const ts2 = shouldHaveTS2 ? normalizeTS2Detail(body?.ts2) : null;
 
     const updated = await prisma.place.update({
       where: { id },
@@ -158,8 +191,18 @@ export async function PATCH(req: NextRequest) {
             update: { ...rd },
           },
         },
+        ...(shouldHaveTS2
+          ? {
+              ts2: {
+                upsert: {
+                  create: { ...ts2! },
+                  update: { ...ts2! },
+                },
+              },
+            }
+          : {}),
       },
-      include: { ratingDetail: true, images: true },
+      include: { ratingDetail: true, ts2: true, images: true },
     });
 
     return NextResponse.json(updated);

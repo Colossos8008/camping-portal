@@ -1,4 +1,3 @@
-// src/app/api/places/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -6,6 +5,7 @@ export const runtime = "nodejs";
 
 type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
+type TSHaltung = "DNA" | "EXPLORER";
 
 type RatingDetail = {
   tsUmgebung: TSValue;
@@ -24,6 +24,11 @@ type RatingDetail = {
   cHilde: string;
   cPreisLeistung: string;
   cNachklang: string;
+};
+
+type TS2Detail = {
+  haltung: TSHaltung;
+  note: string;
 };
 
 const TS_DEFAULT: TSValue = "OKAY";
@@ -46,6 +51,13 @@ function blankRating(): RatingDetail {
     cHilde: "",
     cPreisLeistung: "",
     cNachklang: "",
+  };
+}
+
+function blankTS2(): TS2Detail {
+  return {
+    haltung: "DNA",
+    note: "",
   };
 }
 
@@ -80,6 +92,11 @@ function asOptionalNumber(v: any): number | undefined {
 function normalizePlaceType(v: any): PlaceType {
   if (v === "STELLPLATZ" || v === "CAMPINGPLATZ" || v === "SEHENSWUERDIGKEIT" || v === "HVO_TANKSTELLE") return v;
   return "CAMPINGPLATZ";
+}
+
+function normalizeTSHaltung(v: any): TSHaltung {
+  if (v === "EXPLORER") return "EXPLORER";
+  return "DNA";
 }
 
 function extractRatingDetail(input: any): any {
@@ -118,11 +135,21 @@ function normalizeRatingDetail(input: any): RatingDetail {
   };
 }
 
+function normalizeTS2Detail(input: any): TS2Detail {
+  const b = blankTS2();
+  const src = extractRatingDetail(input) ?? {};
+  return {
+    haltung: normalizeTSHaltung(src.haltung),
+    note: asString(src.note),
+  };
+}
+
 export async function GET() {
   const places = await prisma.place.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
       ratingDetail: true,
+      ts2: true,
       images: true,
     },
   });
@@ -147,6 +174,9 @@ export async function POST(req: NextRequest) {
 
   const rd = normalizeRatingDetail(body?.ratingDetail);
 
+  const shouldHaveTS2 = type === "CAMPINGPLATZ" || type === "STELLPLATZ";
+  const ts2 = shouldHaveTS2 ? normalizeTS2Detail(body?.ts2) : null;
+
   const created = await prisma.place.create({
     data: {
       name,
@@ -160,19 +190,21 @@ export async function POST(req: NextRequest) {
       gastronomy: !!body?.gastronomy,
       thumbnailImageId: body?.thumbnailImageId ?? null,
       ratingDetail: { create: { ...rd } },
+      ...(shouldHaveTS2 ? { ts2: { create: { ...ts2! } } } : {}),
     },
-    include: { ratingDetail: true, images: true },
+    include: { ratingDetail: true, ts2: true, images: true },
   });
 
   return NextResponse.json(created);
 }
 
 /**
- * PUT – Updates an existing Place (and its ratingDetail via upsert).
+ * PUT - Updates an existing Place (and its ratingDetail via upsert).
  * Expected body:
  * - id (required)
  * - any subset of: name, type, lat, lng, dogAllowed, sanitary, yearRound, onlineBooking, gastronomy, thumbnailImageId
  * - optional ratingDetail (partial or full), will be normalized and upserted
+ * - optional ts2 (nur fuer CAMPINGPLATZ und STELLPLATZ)
  */
 export async function PUT(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -229,24 +261,43 @@ export async function PUT(req: NextRequest) {
     };
   }
 
+  if (body?.ts2 !== undefined) {
+    const typeFromBody = body?.type != null ? normalizePlaceType(body?.type) : null;
+
+    // Wenn type im Body fehlt, versuchen wir nicht zu raten - wir lesen den aktuellen Type aus der DB
+    let finalType: PlaceType | null = typeFromBody;
+    if (!finalType) {
+      const existing = await prisma.place.findUnique({ where: { id: idNum }, select: { type: true } });
+      finalType = existing?.type ?? null;
+    }
+
+    const shouldHaveTS2 = finalType === "CAMPINGPLATZ" || finalType === "STELLPLATZ";
+    if (shouldHaveTS2) {
+      const ts2 = normalizeTS2Detail(body?.ts2);
+      data.ts2 = {
+        upsert: {
+          create: { ...ts2 },
+          update: { ...ts2 },
+        },
+      };
+    }
+  }
+
   try {
     const updated = await prisma.place.update({
       where: { id: idNum },
       data,
-      include: { ratingDetail: true, images: true },
+      include: { ratingDetail: true, ts2: true, images: true },
     });
 
     return NextResponse.json(updated);
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "Update fehlgeschlagen", details: e?.message ?? String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Update fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }
 }
 
 /**
- * DELETE – Deletes a Place by id.
+ * DELETE - Deletes a Place by id.
  * Expected body: { id: number }
  */
 export async function DELETE(req: NextRequest) {
@@ -260,9 +311,6 @@ export async function DELETE(req: NextRequest) {
     await prisma.place.delete({ where: { id: idNum } });
     return NextResponse.json({ ok: true, id: idNum });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "Delete fehlgeschlagen", details: e?.message ?? String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Delete fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }
 }

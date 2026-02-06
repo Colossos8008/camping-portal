@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -21,6 +19,11 @@ enum TSValue {
   PASST_NICHT
 }
 
+enum TSHaltung {
+  DNA
+  EXPLORER
+}
+
 model Place {
   id               Int       @id @default(autoincrement())
   name             String
@@ -38,6 +41,7 @@ model Place {
   thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)
 
   ratingDetail     PlaceRating?
+  ts2              PlaceTS2?
   images           Image[]
 
   createdAt        DateTime  @default(now())
@@ -71,6 +75,21 @@ model PlaceRating {
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
+}
+
+model PlaceTS2 {
+  id        Int      @id @default(autoincrement())
+
+  placeId   Int      @unique
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  haltung   TSHaltung @default(DNA)
+
+  // Optional - Freitext für TS 2.0 Kontext - komplett additiv
+  note      String   @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model Image {

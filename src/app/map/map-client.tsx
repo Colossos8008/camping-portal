@@ -1,4 +1,3 @@
-// src/app/map/map-client.tsx
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
@@ -6,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
+type TSHaltung = "DNA" | "EXPLORER";
 
 type PlaceImage = { id: number; filename: string };
 
@@ -15,6 +15,14 @@ type Place = {
   type: PlaceType;
   lat: number;
   lng: number;
+
+  dogAllowed?: boolean;
+  sanitary?: boolean;
+  yearRound?: boolean;
+  onlineBooking?: boolean;
+  gastronomy?: boolean;
+
+  ts2?: { haltung?: TSHaltung | null } | null;
 
   images?: PlaceImage[];
   thumbnailImageId?: number | null;
@@ -55,6 +63,11 @@ function typeEmoji(t: PlaceType) {
   return "📍";
 }
 
+function haltungEmoji(h: TSHaltung | null | undefined) {
+  if (h === "EXPLORER") return "🧭";
+  return "🧬";
+}
+
 function clampText(s: string, max = 46) {
   const t = String(s ?? "");
   if (t.length <= max) return t;
@@ -79,7 +92,9 @@ function publicUrlForObjectKey(filename: string | null | undefined) {
   if (key.startsWith("http://") || key.startsWith("https://")) return key;
 
   const supabaseUrl =
-    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) || (process.env.SUPABASE_URL as string | undefined) || "";
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+    (process.env.SUPABASE_URL as string | undefined) ||
+    "";
 
   const bucket =
     (process.env.NEXT_PUBLIC_SUPABASE_BUCKET as string | undefined) ||
@@ -169,6 +184,9 @@ function hoverTooltipHtml(p: Place) {
         : `${p.distanceKm.toFixed(0)} km`
       : null;
 
+  const hasTS2 = p.type === "CAMPINGPLATZ" || p.type === "STELLPLATZ";
+  const hEmoji = hasTS2 ? haltungEmoji((p.ts2?.haltung ?? "DNA") as any) : null;
+
   const imgHtml = heroUrl
     ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" />`
     : `<div style="width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);"></div>`;
@@ -212,6 +230,21 @@ function hoverTooltipHtml(p: Place) {
           <span style="font-size:14px;">🍰</span>
           <span>${score}/14</span>
         </div>
+
+        ${
+          hEmoji
+            ? `<div style="
+                padding:6px 10px;
+                border-radius:999px;
+                border:1px solid rgba(255,255,255,0.12);
+                background:rgba(255,255,255,0.06);
+                font-size:11px;
+                opacity:0.9;
+              ">
+                ${hEmoji} TS 2.0
+              </div>`
+            : ``
+        }
 
         ${
           dist

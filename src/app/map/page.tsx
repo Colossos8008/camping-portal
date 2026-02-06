@@ -1,3 +1,4 @@
+// src/app/map/page.tsx
 "use client";
 
 import dynamic from "next/dynamic";
@@ -15,6 +16,7 @@ import TogglePill from "./_components/TogglePill";
 import EditorHeader from "./_components/EditorHeader";
 import ImagesPanel from "./_components/ImagesPanel";
 import Lightbox from "./_components/Lightbox";
+import CollapsiblePanel from "./_components/CollapsiblePanel";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -23,7 +25,6 @@ const MapClient = dynamic(() => import("./map-client"), { ssr: false });
 const SUPABASE_BUCKET_DEFAULT = "place-images";
 
 type TSHaltung = "DNA" | "EXPLORER";
-type TS2Detail = { haltung: TSHaltung; note: string };
 
 function sanitizeFilename(name: string) {
   return String(name || "image")
@@ -41,11 +42,17 @@ function isTS2Type(t: any): boolean {
   return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
 }
 
-function normalizeTs2(raw: any): TS2Detail | null {
+function normalizeTs2(raw: any): { haltung: TSHaltung; note: string } | null {
   if (!raw) return null;
   const h = raw?.haltung === "EXPLORER" ? ("EXPLORER" as TSHaltung) : ("DNA" as TSHaltung);
   const note = typeof raw?.note === "string" ? raw.note : String(raw?.note ?? "");
   return { haltung: h, note };
+}
+
+function clampText(s: string, max = 34) {
+  const t = String(s ?? "");
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(0, max - 1)) + "…";
 }
 
 export default function MapPage() {
@@ -109,7 +116,6 @@ export default function MapPage() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    // kein Crash - Upload zeigt Fehlermeldung
     if (!url || !anon) return null;
 
     return createClient(url, anon);
@@ -122,12 +128,11 @@ export default function MapPage() {
   async function refreshPlaces(keepSelection = true) {
     const data = await fetch("/api/places", { cache: "no-store" }).then((r) => r.json());
 
-    // defensive parsing (bestehendes Verhalten beibehalten)
     const parsed = safePlacesFromApi(data);
 
     // additiv: ts2 aus raw API wieder rein-merge'n (falls safePlacesFromApi es droppt)
     const rawPlaces: any[] = Array.isArray(data?.places) ? data.places : [];
-    const ts2ById = new Map<number, TS2Detail | null>();
+    const ts2ById = new Map<number, { haltung: TSHaltung; note: string } | null>();
     for (const rp of rawPlaces) {
       const id = Number(rp?.id);
       if (!Number.isFinite(id)) continue;
@@ -228,7 +233,9 @@ export default function MapPage() {
     setPickedFiles([]);
 
     const rawTs2 = (selectedPlace as any)?.ts2;
-    const initialTS2 = isTS2Type(selectedPlace.type) ? normalizeTs2(rawTs2) ?? { haltung: "DNA" as TSHaltung, note: "" } : { haltung: "DNA" as TSHaltung, note: "" };
+    const initialTS2 = isTS2Type(selectedPlace.type)
+      ? normalizeTs2(rawTs2) ?? { haltung: "DNA" as TSHaltung, note: "" }
+      : { haltung: "DNA" as TSHaltung, note: "" };
 
     setForm({
       id: selectedPlace.id,
@@ -579,280 +586,370 @@ export default function MapPage() {
 
   const showTS2Editor = isTS2Type(String(form.type ?? "CAMPINGPLATZ"));
 
+  // ---- Panel hints (small status lines)
+  const filtersActiveCount = useMemo(() => {
+    const ko = Number(!!fDog) + Number(!!fSan) + Number(!!fYear) + Number(!!fOnline) + Number(!!fGastro);
+    const typeHidden =
+      Number(!showCampingplatz) + Number(!showStellplatz) + Number(!showSehens) + Number(!showHvoTankstelle);
+    return ko + typeHidden;
+  }, [fDog, fSan, fYear, fOnline, fGastro, showCampingplatz, showStellplatz, showSehens, showHvoTankstelle]);
+
+  const filterHint = filtersActiveCount > 0 ? `${filtersActiveCount} aktiv` : "keine aktiv";
+
+  const mapHint = useMemo(() => {
+    if (pickMode) return "Pick-Mode aktiv";
+    if (myPos && showMyRings) return "Eigenpos - Ringe an";
+    if (myPos) return "Eigenpos gesetzt";
+    return "kein Pick - keine Eigenpos";
+  }, [pickMode, myPos, showMyRings]);
+
+  const editorHint = useMemo(() => {
+    if (editingNew) return "Neu";
+    if (selectedPlace) return `Auswahl - ${clampText(selectedPlace.name ?? "", 36)}`;
+    return "keine Auswahl";
+  }, [editingNew, selectedPlace]);
+
+  const orteHint = useMemo(() => {
+    const cnt = sortedPlaces.length;
+    const base = `${cnt} Treffer`;
+    if (selectedPlace?.id) return `${base} - #${selectedPlace.id}`;
+    return base;
+  }, [sortedPlaces.length, selectedPlace?.id]);
+
+  // --- MOBILE ORDER REQUIREMENT:
+  // 1 Filter
+  // 2 Map
+  // 3 Editor
+  // 4 Orte
+  // --- DESKTOP (lg) bleibt klassisch: Orte | Map | Filter+Editor
   return (
-    <div className="h-[100svh] w-full bg-black text-white">
-      <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row">
-        <div className="w-full lg:w-[320px] lg:shrink-0">
-          <PlacesList
-            places={sortedPlaces}
-            selectedId={selectedId}
-            onSelect={selectPlace}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
-            geoStatus={geoStatus}
-            onRequestMyLocation={requestMyLocation}
-            hasMyPos={!!myPos}
-            onZoomToMyPos={zoomToMyPos}
-            showMyRings={showMyRings}
-            setShowMyRings={setShowMyRings}
-          />
-        </div>
-
-        <div className="relative h-[40svh] min-h-[280px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 lg:h-auto lg:flex-1">
-          <MapClient
-            places={sortedPlaces}
-            selectedId={selectedId}
-            onSelect={(id: number) => selectPlace(id)}
-            pickMode={pickMode}
-            onPick={(lat: number, lng: number) => {
-              setForm((f: any) => ({ ...f, lat, lng }));
-              setPickMode(false);
-              setSelectTick((t) => t + 1);
-            }}
-            focusToken={focusToken}
-            myPos={myPos}
-            myPosFocusToken={myPosFocusToken}
-            showMyRings={showMyRings}
-          />
-        </div>
-
-        <div className="w-full lg:w-[420px] lg:shrink-0">
-          <div className="flex h-full flex-col gap-4">
-            <FiltersPanel
-              filtersOpen={filtersOpen}
-              setFiltersOpen={setFiltersOpen}
-              showStellplatz={showStellplatz}
-              setShowStellplatz={setShowStellplatz}
-              showCampingplatz={showCampingplatz}
-              setShowCampingplatz={setShowCampingplatz}
-              showSehens={showSehens}
-              setShowSehens={setShowSehens}
-              showHvoTankstelle={showHvoTankstelle}
-              setShowHvoTankstelle={setShowHvoTankstelle}
-              fDog={fDog}
-              setFDog={setFDog}
-              fSan={fSan}
-              setFSan={setFSan}
-              fYear={fYear}
-              setFYear={setFYear}
-              fOnline={fOnline}
-              setFOnline={setFOnline}
-              fGastro={fGastro}
-              setFGastro={setFGastro}
-              onRefresh={() => refreshPlaces(true)}
-            />
-
-            <div className="min-h-0 flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <EditorHeader
-                editingNew={editingNew}
-                saving={saving}
-                formName={String(form.name ?? "")}
-                formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                totalPoints={totalPoints}
-                heroImage={heroImage ? { filename: heroImage.filename } : null}
-                headerImages={headerImages}
-                imagesCount={Array.isArray(form.images) ? form.images.length : 0}
-                selectedPlace={selectedPlace}
-                distanceKm={selectedDistanceKm}
-                onOpenLightbox={openLightbox}
-                onSave={save}
-                onDelete={del}
-                onNew={newPlace}
-                canDelete={!editingNew && !!form.id}
+    <div className="w-full bg-black text-white">
+      <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 lg:h-[100svh] lg:flex-row">
+        {/* MOBILE: 1 Filter (top) */}
+        <div className="order-1 lg:order-3 lg:hidden">
+          <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
+            <div className="p-3">
+              <FiltersPanel
+                filtersOpen={filtersOpen}
+                setFiltersOpen={setFiltersOpen}
+                showStellplatz={showStellplatz}
+                setShowStellplatz={setShowStellplatz}
+                showCampingplatz={showCampingplatz}
+                setShowCampingplatz={setShowCampingplatz}
+                showSehens={showSehens}
+                setShowSehens={setShowSehens}
+                showHvoTankstelle={showHvoTankstelle}
+                setShowHvoTankstelle={setShowHvoTankstelle}
+                fDog={fDog}
+                setFDog={setFDog}
+                fSan={fSan}
+                setFSan={setFSan}
+                fYear={fYear}
+                setFYear={setFYear}
+                fOnline={fOnline}
+                setFOnline={setFOnline}
+                fGastro={fGastro}
+                setFGastro={setFGastro}
+                onRefresh={() => refreshPlaces(true)}
               />
+            </div>
+          </CollapsiblePanel>
+        </div>
 
-              <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-                <div className="space-y-2 pt-3">
-                  {errorMsg ? (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
-                  ) : null}
+        {/* 4 Orte (mobile bottom), DESKTOP left */}
+        <div className="order-4 lg:order-1 lg:h-full lg:w-[320px] lg:shrink-0">
+          <CollapsiblePanel title="📍 Orte" defaultOpen={true} rightHint={orteHint}>
+            <div className="p-0">
+              <PlacesList
+                places={sortedPlaces}
+                selectedId={selectedId}
+                onSelect={selectPlace}
+                sortMode={sortMode}
+                setSortMode={setSortMode}
+                geoStatus={geoStatus}
+                onRequestMyLocation={requestMyLocation}
+                hasMyPos={!!myPos}
+                onZoomToMyPos={zoomToMyPos}
+                showMyRings={showMyRings}
+                setShowMyRings={setShowMyRings}
+              />
+            </div>
+          </CollapsiblePanel>
+        </div>
 
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                    placeholder="Name"
-                    value={String(form.name ?? "")}
-                    onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
+        {/* 2 Map */}
+        <div className="order-2 lg:order-2 lg:h-full lg:flex-1">
+          <CollapsiblePanel title="🗺️ Map" defaultOpen={true} rightHint={mapHint}>
+            <div className="relative h-[42svh] min-h-[280px] w-full overflow-hidden bg-white/5 lg:h-[calc(100svh-32px)] lg:rounded-none">
+              <div className="absolute inset-0 rounded-2xl border border-white/10 lg:rounded-2xl" />
+              <div className="relative h-full w-full overflow-hidden rounded-2xl">
+                <MapClient
+                  places={sortedPlaces}
+                  selectedId={selectedId}
+                  onSelect={(id: number) => selectPlace(id)}
+                  pickMode={pickMode}
+                  onPick={(lat: number, lng: number) => {
+                    setForm((f: any) => ({ ...f, lat, lng }));
+                    setPickMode(false);
+                    setSelectTick((t) => t + 1);
+                  }}
+                  focusToken={focusToken}
+                  myPos={myPos}
+                  myPosFocusToken={myPosFocusToken}
+                  showMyRings={showMyRings}
+                />
+              </div>
+            </div>
+          </CollapsiblePanel>
+        </div>
+
+        {/* 3 Editor (desktop right column, includes Filter on lg) */}
+        <div className="order-3 lg:order-3 lg:h-full lg:w-[420px] lg:shrink-0">
+          <div className="flex flex-col gap-4 lg:h-full">
+            {/* DESKTOP: Filter oben in rechter Spalte */}
+            <div className="hidden lg:block">
+              <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
+                <div className="p-3">
+                  <FiltersPanel
+                    filtersOpen={filtersOpen}
+                    setFiltersOpen={setFiltersOpen}
+                    showStellplatz={showStellplatz}
+                    setShowStellplatz={setShowStellplatz}
+                    showCampingplatz={showCampingplatz}
+                    setShowCampingplatz={setShowCampingplatz}
+                    showSehens={showSehens}
+                    setShowSehens={setShowSehens}
+                    showHvoTankstelle={showHvoTankstelle}
+                    setShowHvoTankstelle={setShowHvoTankstelle}
+                    fDog={fDog}
+                    setFDog={setFDog}
+                    fSan={fSan}
+                    setFSan={setFSan}
+                    fYear={fYear}
+                    setFYear={setFYear}
+                    fOnline={fOnline}
+                    setFOnline={setFOnline}
+                    fGastro={fGastro}
+                    setFGastro={setFGastro}
+                    onRefresh={() => refreshPlaces(true)}
                   />
+                </div>
+              </CollapsiblePanel>
+            </div>
 
-                  <select
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                    value={(form.type ?? "CAMPINGPLATZ") as string}
-                    onChange={(e) => {
-                      const nextType = e.target.value as PlaceType;
+            <CollapsiblePanel title="✍️ Editor" defaultOpen={true} rightHint={saving ? "speichert..." : editorHint}>
+              <div className="min-h-0 rounded-2xl border border-white/10 bg-white/5">
+                <EditorHeader
+                  editingNew={editingNew}
+                  saving={saving}
+                  formName={String(form.name ?? "")}
+                  formType={String((form.type ?? "CAMPINGPLATZ") as string)}
+                  totalPoints={totalPoints}
+                  heroImage={heroImage ? { filename: heroImage.filename } : null}
+                  headerImages={headerImages}
+                  imagesCount={Array.isArray(form.images) ? form.images.length : 0}
+                  selectedPlace={selectedPlace}
+                  distanceKm={selectedDistanceKm}
+                  onOpenLightbox={openLightbox}
+                  onSave={save}
+                  onDelete={del}
+                  onNew={newPlace}
+                  canDelete={!editingNew && !!form.id}
+                />
 
-                      setForm((f: any) => {
-                        const next: any = { ...f, type: nextType };
+                <div key={editorKey} className="min-h-0 max-h-[65svh] overflow-auto px-4 pb-4 lg:max-h-[calc(100svh-240px)]">
+                  <div className="space-y-2 pt-3">
+                    {errorMsg ? (
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
+                    ) : null}
 
-                        if (isTS2Type(nextType)) {
-                          if (!next.ts2) next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
-                          if (next.ts2?.haltung !== "EXPLORER") next.ts2.haltung = "DNA";
-                          if (typeof next.ts2?.note !== "string") next.ts2.note = "";
-                        } else {
-                          next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
-                        }
-
-                        return next;
-                      });
-                    }}
-                  >
-                    <option value="CAMPINGPLATZ">Campingplatz</option>
-                    <option value="STELLPLATZ">Stellplatz</option>
-                    <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
-                    <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
-                  </select>
-
-                  <div className="flex items-center gap-2">
                     <input
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                      placeholder="Lat"
-                      value={String(form.lat ?? "")}
-                      onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      placeholder="Name"
+                      value={String(form.name ?? "")}
+                      onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
                     />
-                    <input
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                      placeholder="Lng"
-                      value={String(form.lng ?? "")}
-                      onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
+
+                    <select
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      value={(form.type ?? "CAMPINGPLATZ") as string}
+                      onChange={(e) => {
+                        const nextType = e.target.value as PlaceType;
+
+                        setForm((f: any) => {
+                          const next: any = { ...f, type: nextType };
+
+                          if (isTS2Type(nextType)) {
+                            if (!next.ts2) next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
+                            if (next.ts2?.haltung !== "EXPLORER") next.ts2.haltung = "DNA";
+                            if (typeof next.ts2?.note !== "string") next.ts2.note = "";
+                          } else {
+                            next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
+                          }
+
+                          return next;
+                        });
+                      }}
+                    >
+                      <option value="CAMPINGPLATZ">Campingplatz</option>
+                      <option value="STELLPLATZ">Stellplatz</option>
+                      <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
+                      <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
+                    </select>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                        placeholder="Lat"
+                        value={String(form.lat ?? "")}
+                        onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
+                      />
+                      <input
+                        className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                        placeholder="Lng"
+                        value={String(form.lng ?? "")}
+                        onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
+                      />
+
+                      <button
+                        onClick={() => {
+                          setPickMode((v) => !v);
+                          setSelectTick((t) => t + 1);
+                        }}
+                        className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
+                          pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
+                        }`}
+                        disabled={saving}
+                        title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
+                      >
+                        📍 Karte
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <TogglePill
+                        on={!!form.dogAllowed}
+                        icon="🐕"
+                        label="Hunde"
+                        onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
+                      />
+                      <TogglePill
+                        on={!!form.sanitary}
+                        icon="🚿"
+                        label="Sanitär"
+                        onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
+                      />
+                      <TogglePill
+                        on={!!form.yearRound}
+                        icon="📆"
+                        label="Ganzjährig"
+                        onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
+                      />
+                      <TogglePill
+                        on={!!form.onlineBooking}
+                        icon="🌐"
+                        label="Online"
+                        onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
+                      />
+                      <TogglePill
+                        on={!!form.gastronomy}
+                        icon="🍽️"
+                        label="Gastro"
+                        onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
+                      />
+                    </div>
+
+                    {showTS2Editor ? (
+                      <>
+                        <div className="my-2 h-px bg-white/10" />
+
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div className="text-xs font-semibold opacity-90">Törtchensystem 2.0</div>
+
+                          <div className="mt-2 grid grid-cols-1 gap-2">
+                            <label className="text-xs opacity-80">Haltung</label>
+                            <select
+                              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                              value={String(form?.ts2?.haltung ?? "DNA")}
+                              onChange={(e) =>
+                                setForm((f: any) => ({
+                                  ...f,
+                                  ts2: {
+                                    ...(f.ts2 ?? { note: "" }),
+                                    haltung: (e.target.value === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
+                                  },
+                                }))
+                              }
+                              disabled={saving}
+                            >
+                              <option value="DNA">DNA</option>
+                              <option value="EXPLORER">Explorer</option>
+                            </select>
+
+                            <label className="mt-2 text-xs opacity-80">Notiz</label>
+                            <textarea
+                              className="min-h-[70px] w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                              placeholder="Optional - warum DNA oder Explorer - was ist uns wichtig"
+                              value={String(form?.ts2?.note ?? "")}
+                              onChange={(e) =>
+                                setForm((f: any) => ({
+                                  ...f,
+                                  ts2: { ...(f.ts2 ?? { haltung: "DNA" }), note: e.target.value },
+                                }))
+                              }
+                              disabled={saving}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+
+                    <div className="my-2 h-px bg-white/10" />
+
+                    <TsEditor
+                      rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
+                      onChange={(next, computedTotal) => {
+                        setForm((f: any) => ({
+                          ...f,
+                          ratingDetail: { ...next, totalPoints: computedTotal },
+                        }));
+                      }}
+                      disabled={saving}
+                    />
+
+                    <ImagesPanel
+                      placeId={form.id ? Number(form.id) : null}
+                      images={Array.isArray(form.images) ? form.images : []}
+                      thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
+                      uploading={uploading}
+                      saving={saving}
+                      uploadMsg={uploadMsg}
+                      onPickFiles={(files) => setPickedFiles(files)}
+                      pickedFilesCount={pickedFiles.length}
+                      onUpload={uploadImages}
+                      onOpenLightboxById={openLightboxById}
+                      onSetThumbnail={setThumbnail}
+                      onDeleteImage={deleteImage}
                     />
 
                     <button
-                      onClick={() => {
-                        setPickMode((v) => !v);
-                        setSelectTick((t) => t + 1);
-                      }}
-                      className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
-                        pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
-                      }`}
+                      onClick={save}
+                      className="mt-3 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
                       disabled={saving}
-                      title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
                     >
-                      📍 Karte
+                      {saving ? "Speichert..." : "Speichern"}
                     </button>
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill
-                      on={!!form.dogAllowed}
-                      icon="🐕"
-                      label="Hunde"
-                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
-                    />
-                    <TogglePill
-                      on={!!form.sanitary}
-                      icon="🚿"
-                      label="Sanitär"
-                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
-                    />
-                    <TogglePill
-                      on={!!form.yearRound}
-                      icon="📆"
-                      label="Ganzjährig"
-                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
-                    />
-                    <TogglePill
-                      on={!!form.onlineBooking}
-                      icon="🌐"
-                      label="Online"
-                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
-                    />
-                    <TogglePill
-                      on={!!form.gastronomy}
-                      icon="🍽️"
-                      label="Gastro"
-                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
-                    />
-                  </div>
-
-                  {showTS2Editor ? (
-                    <>
-                      <div className="my-2 h-px bg-white/10" />
-
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs font-semibold opacity-90">Törtchensystem 2.0</div>
-
-                        <div className="mt-2 grid grid-cols-1 gap-2">
-                          <label className="text-xs opacity-80">Haltung</label>
-                          <select
-                            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            value={String(form?.ts2?.haltung ?? "DNA")}
-                            onChange={(e) =>
-                              setForm((f: any) => ({
-                                ...f,
-                                ts2: {
-                                  ...(f.ts2 ?? { note: "" }),
-                                  haltung: (e.target.value === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
-                                },
-                              }))
-                            }
-                            disabled={saving}
-                          >
-                            <option value="DNA">DNA</option>
-                            <option value="EXPLORER">Explorer</option>
-                          </select>
-
-                          <label className="mt-2 text-xs opacity-80">Notiz</label>
-                          <textarea
-                            className="min-h-[70px] w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            placeholder="Optional - warum DNA oder Explorer - was ist uns wichtig"
-                            value={String(form?.ts2?.note ?? "")}
-                            onChange={(e) =>
-                              setForm((f: any) => ({
-                                ...f,
-                                ts2: { ...(f.ts2 ?? { haltung: "DNA" }), note: e.target.value },
-                              }))
-                            }
-                            disabled={saving}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
-
-                  <div className="my-2 h-px bg-white/10" />
-
-                  <TsEditor
-                    rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
-                    onChange={(next, computedTotal) => {
-                      setForm((f: any) => ({
-                        ...f,
-                        ratingDetail: { ...next, totalPoints: computedTotal },
-                      }));
-                    }}
-                    disabled={saving}
-                  />
-
-                  <ImagesPanel
-                    placeId={form.id ? Number(form.id) : null}
-                    images={Array.isArray(form.images) ? form.images : []}
-                    thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
-                    uploading={uploading}
-                    saving={saving}
-                    uploadMsg={uploadMsg}
-                    onPickFiles={(files) => setPickedFiles(files)}
-                    pickedFilesCount={pickedFiles.length}
-                    onUpload={uploadImages}
-                    onOpenLightboxById={openLightboxById}
-                    onSetThumbnail={setThumbnail}
-                    onDeleteImage={deleteImage}
-                  />
-
-                  <button
-                    onClick={save}
-                    className="mt-3 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
-                    disabled={saving}
-                  >
-                    {saving ? "Speichert..." : "Speichern"}
-                  </button>
                 </div>
-              </div>
-            </div>
 
-            <div className="text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
+                <div className="px-4 pb-4 text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
+              </div>
+            </CollapsiblePanel>
           </div>
         </div>
       </div>
 
-      <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={() => setLbOpen(false)} onPrev={() => {}} onNext={() => {}} />
+      <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
     </div>
   );
 }

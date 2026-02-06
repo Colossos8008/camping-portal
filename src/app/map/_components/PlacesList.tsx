@@ -5,6 +5,34 @@ import type { SortMode, Place } from "../_lib/types";
 import { formatDistanceKm } from "../_lib/geo";
 import FeatureIcons from "./FeatureIcons";
 
+type TSHaltung = "DNA" | "EXPLORER";
+
+function isTs2RelevantType(t: any) {
+  return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
+}
+
+function ts2Badge(p: Place) {
+  const anyP = p as any;
+  const raw = anyP?.ts2;
+  if (!isTs2RelevantType(p.type)) return null;
+
+  const h = raw?.haltung as TSHaltung | undefined;
+  if (h !== "DNA" && h !== "EXPLORER") return null;
+
+  const emoji = h === "EXPLORER" ? "🧭" : "🧬";
+  const label = h === "EXPLORER" ? "Explorer" : "DNA";
+
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold leading-none text-white/90"
+      title="Törtchensystem 2.0 - Haltung"
+    >
+      <span className="text-[11px]">{emoji}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export default function PlacesList(props: {
   places: Place[];
   selectedId: number | null;
@@ -78,6 +106,7 @@ export default function PlacesList(props: {
       <div className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
         {props.places.map((p) => {
           const dist = formatDistanceKm(p.distanceKm);
+
           return (
             <button
               key={p.id}
@@ -94,10 +123,15 @@ export default function PlacesList(props: {
                 </div>
 
                 <div className="shrink-0 text-right text-[11px] opacity-90">
-                  <span title="Törtchen-Score" className="mr-1">
-                    🍰
-                  </span>
-                  {p.ratingDetail?.totalPoints ?? 0}/14
+                  <div>
+                    <span title="Törtchen-Score" className="mr-1">
+                      🍰
+                    </span>
+                    {p.ratingDetail?.totalPoints ?? 0}/14
+                  </div>
+
+                  {ts2Badge(p)}
+
                   {props.sortMode === "DIST" ? <div className="mt-1 text-[10px] opacity-70">{dist}</div> : null}
                 </div>
               </div>

@@ -208,6 +208,9 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!selectedPlace) return;
+
+    const selectedAny = selectedPlace as any;
+
     setEditingNew(false);
     setPickMode(false);
     setErrorMsg("");
@@ -226,7 +229,7 @@ export default function MapPage() {
       onlineBooking: !!selectedPlace.onlineBooking,
       gastronomy: !!selectedPlace.gastronomy,
       ratingDetail: (selectedPlace.ratingDetail ?? blankRating()) as RatingDetail,
-      ts2: selectedPlace.ts2 ?? null,
+      ts2: selectedAny?.ts2 ?? null,
       images: Array.isArray(selectedPlace.images) ? selectedPlace.images : [],
       thumbnailImageId: selectedPlace.thumbnailImageId ?? null,
     });
@@ -624,7 +627,7 @@ export default function MapPage() {
                 saving={saving}
                 formName={String(form.name ?? "")}
                 formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                totalPoints={totalPoints}
+                totalPoints={useMemo(() => ((form.ratingDetail ?? blankRating()) as RatingDetail).totalPoints ?? 0, [form.ratingDetail])}
                 heroImage={heroImage ? { filename: heroImage.filename } : null}
                 headerImages={headerImages}
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}
@@ -691,36 +694,11 @@ export default function MapPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill
-                      on={!!form.dogAllowed}
-                      icon="🐕"
-                      label="Hunde"
-                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
-                    />
-                    <TogglePill
-                      on={!!form.sanitary}
-                      icon="🚿"
-                      label="Sanitär"
-                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
-                    />
-                    <TogglePill
-                      on={!!form.yearRound}
-                      icon="📆"
-                      label="Ganzjährig"
-                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
-                    />
-                    <TogglePill
-                      on={!!form.onlineBooking}
-                      icon="🌐"
-                      label="Online"
-                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
-                    />
-                    <TogglePill
-                      on={!!form.gastronomy}
-                      icon="🍽️"
-                      label="Gastro"
-                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
-                    />
+                    <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
+                    <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
+                    <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
+                    <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
+                    <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
                   </div>
 
                   <div className="my-2 h-px bg-white/10" />
@@ -923,36 +901,11 @@ export default function MapPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <TogglePill
-                        on={!!form.dogAllowed}
-                        icon="🐕"
-                        label="Hunde"
-                        onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
-                      />
-                      <TogglePill
-                        on={!!form.sanitary}
-                        icon="🚿"
-                        label="Sanitär"
-                        onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
-                      />
-                      <TogglePill
-                        on={!!form.yearRound}
-                        icon="📆"
-                        label="Ganzjährig"
-                        onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
-                      />
-                      <TogglePill
-                        on={!!form.onlineBooking}
-                        icon="🌐"
-                        label="Online"
-                        onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
-                      />
-                      <TogglePill
-                        on={!!form.gastronomy}
-                        icon="🍽️"
-                        label="Gastro"
-                        onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
-                      />
+                      <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
+                      <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
+                      <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
+                      <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
+                      <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
                     </div>
 
                     <div className="my-2 h-px bg-white/10" />

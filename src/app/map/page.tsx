@@ -149,7 +149,7 @@ export default function MapPage() {
   const selectedPlace = useMemo(() => places.find((p) => p.id === selectedId) ?? null, [places, selectedId]);
 
   const placesWithDistance = useMemo(() => {
-    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null));
+    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null }));
     return places.map((p) => {
       const km = distanceKm(myPos.lat, myPos.lng, p.lat, p.lng);
       return { ...p, distanceKm: Number.isFinite(km) ? km : null };
@@ -692,11 +692,36 @@ export default function MapPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
-                    <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
-                    <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
-                    <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
-                    <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
+                    <TogglePill
+                      on={!!form.dogAllowed}
+                      icon="🐕"
+                      label="Hunde"
+                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
+                    />
+                    <TogglePill
+                      on={!!form.sanitary}
+                      icon="🚿"
+                      label="Sanitär"
+                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
+                    />
+                    <TogglePill
+                      on={!!form.yearRound}
+                      icon="📆"
+                      label="Ganzjährig"
+                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
+                    />
+                    <TogglePill
+                      on={!!form.onlineBooking}
+                      icon="🌐"
+                      label="Online"
+                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
+                    />
+                    <TogglePill
+                      on={!!form.gastronomy}
+                      icon="🍽️"
+                      label="Gastro"
+                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
+                    />
                   </div>
 
                   <div className="my-2 h-px bg-white/10" />
@@ -899,11 +924,36 @@ export default function MapPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
-                      <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
-                      <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
-                      <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
-                      <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
+                      <TogglePill
+                        on={!!form.dogAllowed}
+                        icon="🐕"
+                        label="Hunde"
+                        onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
+                      />
+                      <TogglePill
+                        on={!!form.sanitary}
+                        icon="🚿"
+                        label="Sanitär"
+                        onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
+                      />
+                      <TogglePill
+                        on={!!form.yearRound}
+                        icon="📆"
+                        label="Ganzjährig"
+                        onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
+                      />
+                      <TogglePill
+                        on={!!form.onlineBooking}
+                        icon="🌐"
+                        label="Online"
+                        onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
+                      />
+                      <TogglePill
+                        on={!!form.gastronomy}
+                        icon="🍽️"
+                        label="Gastro"
+                        onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
+                      />
                     </div>
 
                     <div className="my-2 h-px bg-white/10" />

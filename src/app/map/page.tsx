@@ -85,7 +85,6 @@ export default function MapPage() {
 
   const editorPanelRef = useRef<HTMLDivElement | null>(null);
 
-  const [panelFilterOpen, setPanelFilterOpen] = useState(true);
   const [panelMapOpen, setPanelMapOpen] = useState(true);
   const [panelEditorOpen, setPanelEditorOpen] = useState(true);
   const [panelPlacesOpen, setPanelPlacesOpen] = useState(true);
@@ -150,7 +149,7 @@ export default function MapPage() {
   const selectedPlace = useMemo(() => places.find((p) => p.id === selectedId) ?? null, [places, selectedId]);
 
   const placesWithDistance = useMemo(() => {
-    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null }));
+    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null));
     return places.map((p) => {
       const km = distanceKm(myPos.lat, myPos.lng, p.lat, p.lng);
       return { ...p, distanceKm: Number.isFinite(km) ? km : null };
@@ -208,7 +207,6 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!selectedPlace) return;
-
     const selectedAny = selectedPlace as any;
 
     setEditingNew(false);
@@ -570,7 +568,7 @@ export default function MapPage() {
       <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
         {/* MOBILE ORDER: Filter -> Map -> Editor -> Orte */}
         <div className="w-full lg:hidden">
-          <CollapsiblePanel title="Filter" icon="🔎" open={panelFilterOpen} onOpenChange={setPanelFilterOpen}>
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
             <FiltersPanel
               filtersOpen={filtersOpen}
               setFiltersOpen={setFiltersOpen}
@@ -594,7 +592,7 @@ export default function MapPage() {
               setFGastro={setFGastro}
               onRefresh={() => refreshPlaces(true)}
             />
-          </CollapsiblePanel>
+          </div>
         </div>
 
         <div className="w-full lg:hidden">
@@ -627,7 +625,7 @@ export default function MapPage() {
                 saving={saving}
                 formName={String(form.name ?? "")}
                 formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                totalPoints={useMemo(() => ((form.ratingDetail ?? blankRating()) as RatingDetail).totalPoints ?? 0, [form.ratingDetail])}
+                totalPoints={totalPoints}
                 heroImage={heroImage ? { filename: heroImage.filename } : null}
                 headerImages={headerImages}
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}

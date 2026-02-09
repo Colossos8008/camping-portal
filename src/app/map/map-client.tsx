@@ -1,7 +1,7 @@
 // src/app/map/map-client.tsx
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -41,6 +41,11 @@ type Props = {
 
   showMyRings: boolean;
 };
+
+function isMobileNow() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 1023px)").matches;
+}
 
 function makeDivIcon(html: string, size: number) {
   return L.divIcon({
@@ -347,6 +352,12 @@ export default function MapClient(props: Props) {
   const myPosMarkerRef = useRef<L.Marker | null>(null);
   const myPosRingsRef = useRef<L.LayerGroup | null>(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+  const isMobileRef = useRef(false);
+  const lastPointerSelectAtRef = useRef<number>(0);
+  const lastPointerSelectedIdRef = useRef<number | null>(null);
+  const prevMobileRef = useRef<boolean | null>(null);
+
   useEffect(() => {
     selectedIdRef.current = props.selectedId;
   }, [props.selectedId]);
@@ -354,6 +365,30 @@ export default function MapClient(props: Props) {
   useEffect(() => {
     pickModeRef.current = props.pickMode;
   }, [props.pickMode]);
+
+  useEffect(() => {
+    const v = isMobileNow();
+    setIsMobile(v);
+    isMobileRef.current = v;
+
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 1023px)");
+
+    function onChange() {
+      const next = mq.matches;
+      setIsMobile(next);
+      isMobileRef.current = next;
+    }
+
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+
+    return () => {
+      if (typeof mq.removeEventListener === "function") mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
 
   const selected = useMemo(() => {
     if (props.selectedId == null) return null;
@@ -395,14 +430,36 @@ export default function MapClient(props: Props) {
     if (!m) return;
 
     const isSelected = selectedIdRef.current === id;
-    const isHover = hoveredIdRef.current === id;
-    const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
 
+    // Mobile has no hover visuals
+    const isHover = !isMobileRef.current && hoveredIdRef.current === id;
+
+    const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
     m.setIcon(makeDivIcon(markerHtml(p, v), markerSize(v)));
+  }
+
+  function shouldIgnoreClickAfterPointer(id: number) {
+    const now = Date.now();
+    const lastAt = lastPointerSelectAtRef.current;
+    const lastId = lastPointerSelectedIdRef.current;
+    return now - lastAt < 800 && lastId === id;
+  }
+
+  function markPointerSelect(id: number) {
+    lastPointerSelectAtRef.current = Date.now();
+    lastPointerSelectedIdRef.current = id;
   }
 
   function selectFromMarker(p: Place, e?: any, marker?: L.Marker) {
     if (pickModeRef.current) return;
+
+    if (e?.type === "click" && shouldIgnoreClickAfterPointer(p.id)) {
+      return;
+    }
+
+    if (e?.type === "touchstart" || e?.type === "pointerup") {
+      markPointerSelect(p.id);
+    }
 
     if (e?.originalEvent) {
       try {
@@ -427,6 +484,15 @@ export default function MapClient(props: Props) {
     const map = mapRef.current;
     if (!map) return;
 
+    // If breakpoint changed, rebuild markers cleanly (so tooltips and hover handlers are guaranteed correct)
+    if (prevMobileRef.current === null) prevMobileRef.current = isMobile;
+    if (prevMobileRef.current !== isMobile) {
+      hoveredIdRef.current = null;
+      for (const m of markersRef.current.values()) m.remove();
+      markersRef.current.clear();
+      prevMobileRef.current = isMobile;
+    }
+
     const aliveIds = new Set<number>();
 
     for (const p of props.places) {
@@ -434,7 +500,8 @@ export default function MapClient(props: Props) {
 
       const marker = markersRef.current.get(p.id);
       const isSelected = props.selectedId === p.id;
-      const isHover = hoveredIdRef.current === p.id;
+
+      const isHover = !isMobile && hoveredIdRef.current === p.id;
       const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
 
       if (!marker) {
@@ -445,38 +512,47 @@ export default function MapClient(props: Props) {
 
         m.addTo(map);
 
-        m.bindTooltip(hoverTooltipHtml(p), {
-          direction: "top",
-          offset: L.point(0, -14),
-          opacity: 1,
-          sticky: true,
-          className: "cp-hover-tooltip",
-        });
+        // Desktop only: tooltip + hover behavior
+        if (!isMobile) {
+          m.bindTooltip(hoverTooltipHtml(p), {
+            direction: "top",
+            offset: L.point(0, -14),
+            opacity: 1,
+            sticky: true,
+            className: "cp-hover-tooltip",
+          });
 
-        m.on("mouseover", () => {
-          if (pickModeRef.current) return;
-          hoveredIdRef.current = p.id;
-          setMarkerVisual(p.id, p);
-          m.openTooltip();
-        });
+          m.on("mouseover", () => {
+            if (pickModeRef.current) return;
+            hoveredIdRef.current = p.id;
+            setMarkerVisual(p.id, p);
+            m.openTooltip();
+          });
 
-        m.on("mouseout", () => {
-          if (hoveredIdRef.current === p.id) hoveredIdRef.current = null;
-          setMarkerVisual(p.id, p);
-          m.closeTooltip();
-        });
+          m.on("mouseout", () => {
+            if (hoveredIdRef.current === p.id) hoveredIdRef.current = null;
+            setMarkerVisual(p.id, p);
+            m.closeTooltip();
+          });
+        }
 
-        // Desktop + Mobile fallback
+        // Selection behavior
+        // Desktop: click
+        // Mobile: touchstart + pointerup (no tooltip, no hover, no open on tap)
         m.on("click", (e: any) => selectFromMarker(p, e, m));
-
-        // Mobile: robust tap
         m.on("touchstart", (e: any) => selectFromMarker(p, e, m));
         m.on("pointerup", (e: any) => selectFromMarker(p, e, m));
 
         markersRef.current.set(p.id, m);
       } else {
         marker.setLatLng([p.lat, p.lng]);
-        marker.setTooltipContent(hoverTooltipHtml(p));
+
+        if (!isMobile) {
+          try {
+            marker.setTooltipContent(hoverTooltipHtml(p));
+          } catch {}
+        }
+
         setMarkerVisual(p.id, p);
       }
     }
@@ -487,7 +563,7 @@ export default function MapClient(props: Props) {
         markersRef.current.delete(id);
       }
     }
-  }, [props.places, props.selectedId, props.pickMode, props.onSelect]);
+  }, [props.places, props.selectedId, props.pickMode, props.onSelect, isMobile]);
 
   useEffect(() => {
     const map = mapRef.current;

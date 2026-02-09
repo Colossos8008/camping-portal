@@ -17,7 +17,6 @@ type Place = {
   lat: number;
   lng: number;
 
-  // TS2 - nur relevant für CAMPINGPLATZ / STELLPLATZ
   ts2?: { haltung?: TSHaltung | null } | null;
 
   images?: PlaceImage[];
@@ -79,8 +78,6 @@ function escapeHtml(s: string) {
     .replaceAll("'", "&#39;");
 }
 
-// Supabase Public URL (Bucket: place-images)
-// - Fallback: /uploads/<filename> (falls Env nicht verfügbar)
 function publicUrlForObjectKey(filename: string | null | undefined) {
   const key = String(filename ?? "").trim();
   if (!key) return null;
@@ -404,8 +401,25 @@ export default function MapClient(props: Props) {
     m.setIcon(makeDivIcon(markerHtml(p, v), markerSize(v)));
   }
 
-  function selectFromMarker(p: Place) {
+  function selectFromMarker(p: Place, e?: any, marker?: L.Marker) {
     if (pickModeRef.current) return;
+
+    if (e?.originalEvent) {
+      try {
+        L.DomEvent.preventDefault(e.originalEvent);
+        L.DomEvent.stopPropagation(e.originalEvent);
+      } catch {}
+    } else if (e) {
+      try {
+        L.DomEvent.preventDefault(e);
+        L.DomEvent.stopPropagation(e);
+      } catch {}
+    }
+
+    try {
+      marker?.closeTooltip();
+    } catch {}
+
     props.onSelect(p.id);
   }
 
@@ -452,12 +466,12 @@ export default function MapClient(props: Props) {
           m.closeTooltip();
         });
 
-        // Desktop
-        m.on("click", () => selectFromMarker(p));
+        // Desktop + Mobile fallback
+        m.on("click", (e: any) => selectFromMarker(p, e, m));
 
-        // Mobile reliability (tap)
-        m.on("touchend", () => selectFromMarker(p));
-        m.on("pointerup", () => selectFromMarker(p));
+        // Mobile: robust tap
+        m.on("touchstart", (e: any) => selectFromMarker(p, e, m));
+        m.on("pointerup", (e: any) => selectFromMarker(p, e, m));
 
         markersRef.current.set(p.id, m);
       } else {
@@ -484,7 +498,6 @@ export default function MapClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.focusToken]);
 
-  // Eigenposition: Marker + orange Ringe (ohne Glow) + 50% transparente Labels
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -569,7 +582,6 @@ export default function MapClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.myPosFocusToken]);
 
-  // PICK MODE
   useEffect(() => {
     const map0 = mapRef.current;
     if (!map0) return;

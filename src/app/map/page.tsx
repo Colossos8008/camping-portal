@@ -24,8 +24,6 @@ const MapClient = dynamic(() => import("./map-client"), { ssr: false });
 
 const SUPABASE_BUCKET_DEFAULT = "place-images";
 
-type TSHaltung = "DNA" | "EXPLORER";
-
 function sanitizeFilename(name: string) {
   return String(name || "image")
     .replace(/[^a-zA-Z0-9.\-_]/g, "_")
@@ -38,21 +36,9 @@ function makeObjectKey(placeId: number, originalName: string) {
   return `places/${placeId}/${Date.now()}-${rand}-${safe}`;
 }
 
-function isTS2Type(t: any): boolean {
-  return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
-}
-
-function normalizeTs2(raw: any): { haltung: TSHaltung; note: string } | null {
-  if (!raw) return null;
-  const h = raw?.haltung === "EXPLORER" ? ("EXPLORER" as TSHaltung) : ("DNA" as TSHaltung);
-  const note = typeof raw?.note === "string" ? raw.note : String(raw?.note ?? "");
-  return { haltung: h, note };
-}
-
-function clampText(s: string, max = 34) {
-  const t = String(s ?? "");
-  if (t.length <= max) return t;
-  return t.slice(0, Math.max(0, max - 1)) + "…";
+function isMobileNow() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 1023px)").matches;
 }
 
 export default function MapPage() {
@@ -68,7 +54,6 @@ export default function MapPage() {
   const [geoStatus, setGeoStatus] = useState<string>("");
 
   const [myPosFocusToken, setMyPosFocusToken] = useState(0);
-
   const [showMyRings, setShowMyRings] = useState(true);
 
   const [showStellplatz, setShowStellplatz] = useState(true);
@@ -93,6 +78,18 @@ export default function MapPage() {
   const [uploadMsg, setUploadMsg] = useState("");
   const [pickedFiles, setPickedFiles] = useState<File[]>([]);
 
+  const [lbOpen, setLbOpen] = useState(false);
+  const [lbIndex, setLbIndex] = useState(0);
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  const editorPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const [panelFilterOpen, setPanelFilterOpen] = useState(true);
+  const [panelMapOpen, setPanelMapOpen] = useState(true);
+  const [panelEditorOpen, setPanelEditorOpen] = useState(true);
+  const [panelPlacesOpen, setPanelPlacesOpen] = useState(true);
+
   const [form, setForm] = useState<any>({
     name: "",
     type: "CAMPINGPLATZ",
@@ -104,36 +101,20 @@ export default function MapPage() {
     onlineBooking: false,
     gastronomy: false,
     ratingDetail: blankRating(),
-    ts2: { haltung: "DNA" as TSHaltung, note: "" },
     images: [],
     thumbnailImageId: null,
   });
 
-  const [lbOpen, setLbOpen] = useState(false);
-  const [lbIndex, setLbIndex] = useState(0);
-
-  // mobile detection (lg breakpoint)
-  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    setIsMobile(isMobileNow());
 
-    const mql = window.matchMedia("(max-width: 1023px)");
-    const apply = () => setIsMobile(!!mql.matches);
-    apply();
+    function onResize() {
+      setIsMobile(isMobileNow());
+    }
 
-    const handler = () => apply();
-    if ("addEventListener" in mql) mql.addEventListener("change", handler);
-    else (mql as any).addListener(handler);
-
-    return () => {
-      if ("removeEventListener" in mql) mql.removeEventListener("change", handler);
-      else (mql as any).removeListener(handler);
-    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  // control editor open on mobile (so we can open it on map tap)
-  const [mobileEditorOpen, setMobileEditorOpen] = useState(true);
-  const editorPanelRef = useRef<HTMLDivElement | null>(null);
 
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -150,36 +131,14 @@ export default function MapPage() {
 
   async function refreshPlaces(keepSelection = true) {
     const data = await fetch("/api/places", { cache: "no-store" }).then((r) => r.json());
-
-    const parsed = safePlacesFromApi(data);
-
-    // additiv: ts2 aus raw API wieder rein-merge'n (falls safePlacesFromApi es droppt)
-    const rawPlaces: any[] = Array.isArray(data?.places) ? data.places : [];
-    const ts2ById = new Map<number, { haltung: TSHaltung; note: string } | null>();
-    for (const rp of rawPlaces) {
-      const id = Number(rp?.id);
-      if (!Number.isFinite(id)) continue;
-      ts2ById.set(id, normalizeTs2(rp?.ts2));
-    }
-
-    const merged = parsed.map((p: any) => {
-      const id = Number(p?.id);
-      if (!Number.isFinite(id)) return p;
-
-      if (ts2ById.has(id)) {
-        const ts2 = ts2ById.get(id) ?? null;
-        return { ...p, ts2 };
-      }
-      return p;
-    });
-
-    setPlaces(merged);
+    const arr = safePlacesFromApi(data);
+    setPlaces(arr);
 
     if (!keepSelection) {
-      const first = merged[0]?.id ?? null;
+      const first = arr[0]?.id ?? null;
       setSelectedId(first);
     } else {
-      if (selectedId == null && merged.length) setSelectedId(merged[0].id);
+      if (selectedId == null && arr.length) setSelectedId(arr[0].id);
     }
   }
 
@@ -255,11 +214,6 @@ export default function MapPage() {
     setUploadMsg("");
     setPickedFiles([]);
 
-    const rawTs2 = (selectedPlace as any)?.ts2;
-    const initialTS2 = isTS2Type(selectedPlace.type)
-      ? normalizeTs2(rawTs2) ?? { haltung: "DNA" as TSHaltung, note: "" }
-      : { haltung: "DNA" as TSHaltung, note: "" };
-
     setForm({
       id: selectedPlace.id,
       name: selectedPlace.name ?? "",
@@ -272,29 +226,28 @@ export default function MapPage() {
       onlineBooking: !!selectedPlace.onlineBooking,
       gastronomy: !!selectedPlace.gastronomy,
       ratingDetail: (selectedPlace.ratingDetail ?? blankRating()) as RatingDetail,
-      ts2: initialTS2,
-      images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
-      thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
+      ts2: selectedPlace.ts2 ?? null,
+      images: Array.isArray(selectedPlace.images) ? selectedPlace.images : [],
+      thumbnailImageId: selectedPlace.thumbnailImageId ?? null,
     });
   }, [selectedPlace]);
 
-  function scrollEditorIntoView() {
+  function scrollToEditorIfMobile() {
     if (!isMobile) return;
-
-    setMobileEditorOpen(true);
-
-    // scroll after state update
     requestAnimationFrame(() => {
       editorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
-  function selectPlace(id: number, source: "map" | "list" = "list") {
+  function selectPlace(id: number, source: "list" | "map" = "list") {
     setSelectedId(id);
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
 
-    if (source === "map") scrollEditorIntoView();
+    if (isMobile) {
+      setPanelEditorOpen(true);
+      scrollToEditorIfMobile();
+    }
   }
 
   function newPlace() {
@@ -305,6 +258,11 @@ export default function MapPage() {
     setUploadMsg("");
     setPickedFiles([]);
     setSelectTick((t) => t + 1);
+
+    if (isMobile) {
+      setPanelEditorOpen(true);
+      scrollToEditorIfMobile();
+    }
 
     setForm({
       name: "",
@@ -317,17 +275,10 @@ export default function MapPage() {
       onlineBooking: false,
       gastronomy: false,
       ratingDetail: blankRating(),
-      ts2: { haltung: "DNA" as TSHaltung, note: "" },
+      ts2: null,
       images: [],
       thumbnailImageId: null,
     });
-
-    if (isMobile) {
-      setMobileEditorOpen(true);
-      requestAnimationFrame(() => {
-        editorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
   }
 
   async function save() {
@@ -337,11 +288,9 @@ export default function MapPage() {
     try {
       const isNew = editingNew || !form.id;
 
-      const placeType = String(form.type ?? "CAMPINGPLATZ");
-
       const payload: any = {
         name: String(form.name ?? "").trim(),
-        type: placeType,
+        type: form.type,
         lat: Number(form.lat),
         lng: Number(form.lng),
         dogAllowed: !!form.dogAllowed,
@@ -355,22 +304,8 @@ export default function MapPage() {
             update: { ...(form.ratingDetail ?? blankRating()) },
           },
         },
+        ts2: form.ts2 ?? null,
       };
-
-      if (isTS2Type(placeType)) {
-        payload.ts2 = {
-          upsert: {
-            create: {
-              haltung: (form?.ts2?.haltung === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
-              note: String(form?.ts2?.note ?? ""),
-            },
-            update: {
-              haltung: (form?.ts2?.haltung === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
-              note: String(form?.ts2?.note ?? ""),
-            },
-          },
-        };
-      }
 
       const url = isNew ? "/api/places" : `/api/places/${form.id}`;
       const method = isNew ? "POST" : "PATCH";
@@ -437,7 +372,7 @@ export default function MapPage() {
       return;
     }
 
-    setGeoStatus("Bitte Browser-Erlaubnis geben...");
+    setGeoStatus("Bitte Browser-Erlaubnis geben…");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setMyPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -627,44 +562,268 @@ export default function MapPage() {
     return Number.isFinite(km) ? km : null;
   }, [myPos, selectedPlace]);
 
-  const showTS2Editor = isTS2Type(String(form.type ?? "CAMPINGPLATZ"));
-
-  const filtersActiveCount = useMemo(() => {
-    const ko = Number(!!fDog) + Number(!!fSan) + Number(!!fYear) + Number(!!fOnline) + Number(!!fGastro);
-    const typeHidden =
-      Number(!showCampingplatz) + Number(!showStellplatz) + Number(!showSehens) + Number(!showHvoTankstelle);
-    return ko + typeHidden;
-  }, [fDog, fSan, fYear, fOnline, fGastro, showCampingplatz, showStellplatz, showSehens, showHvoTankstelle]);
-
-  const filterHint = filtersActiveCount > 0 ? `${filtersActiveCount} aktiv` : "keine aktiv";
-
-  const mapHint = useMemo(() => {
-    if (pickMode) return "Pick-Mode aktiv";
-    if (myPos && showMyRings) return "Eigenpos - Ringe an";
-    if (myPos) return "Eigenpos gesetzt";
-    return "kein Pick - keine Eigenpos";
-  }, [pickMode, myPos, showMyRings]);
-
-  const editorHint = useMemo(() => {
-    if (editingNew) return "Neu";
-    if (selectedPlace) return `Auswahl - ${clampText(selectedPlace.name ?? "", 36)}`;
-    return "keine Auswahl";
-  }, [editingNew, selectedPlace]);
-
-  const orteHint = useMemo(() => {
-    const cnt = sortedPlaces.length;
-    const base = `${cnt} Treffer`;
-    if (selectedPlace?.id) return `${base} - #${selectedPlace.id}`;
-    return base;
-  }, [sortedPlaces.length, selectedPlace?.id]);
-
   return (
-    <div className="w-full bg-black text-white">
-      <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 lg:h-[100svh] lg:flex-row">
-        {/* MOBILE: 1 Filter */}
-        <div className="order-1 lg:hidden">
-          <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
-            <div className="p-3">
+    <div className="h-[100svh] w-full bg-black text-white">
+      <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
+        {/* MOBILE ORDER: Filter -> Map -> Editor -> Orte */}
+        <div className="w-full lg:hidden">
+          <CollapsiblePanel title="Filter" icon="🔎" open={panelFilterOpen} onOpenChange={setPanelFilterOpen}>
+            <FiltersPanel
+              filtersOpen={filtersOpen}
+              setFiltersOpen={setFiltersOpen}
+              showStellplatz={showStellplatz}
+              setShowStellplatz={setShowStellplatz}
+              showCampingplatz={showCampingplatz}
+              setShowCampingplatz={setShowCampingplatz}
+              showSehens={showSehens}
+              setShowSehens={setShowSehens}
+              showHvoTankstelle={showHvoTankstelle}
+              setShowHvoTankstelle={setShowHvoTankstelle}
+              fDog={fDog}
+              setFDog={setFDog}
+              fSan={fSan}
+              setFSan={setFSan}
+              fYear={fYear}
+              setFYear={setFYear}
+              fOnline={fOnline}
+              setFOnline={setFOnline}
+              fGastro={fGastro}
+              setFGastro={setFGastro}
+              onRefresh={() => refreshPlaces(true)}
+            />
+          </CollapsiblePanel>
+        </div>
+
+        <div className="w-full lg:hidden">
+          <CollapsiblePanel title="Map" icon="🗺️" open={panelMapOpen} onOpenChange={setPanelMapOpen}>
+            <div className="relative h-[60svh] min-h-[360px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+              <MapClient
+                places={sortedPlaces}
+                selectedId={selectedId}
+                onSelect={(id: number) => selectPlace(id, "map")}
+                pickMode={pickMode}
+                onPick={(lat: number, lng: number) => {
+                  setForm((f: any) => ({ ...f, lat, lng }));
+                  setPickMode(false);
+                  setSelectTick((t) => t + 1);
+                }}
+                focusToken={focusToken}
+                myPos={myPos}
+                myPosFocusToken={myPosFocusToken}
+                showMyRings={showMyRings}
+              />
+            </div>
+          </CollapsiblePanel>
+        </div>
+
+        <div className="w-full lg:hidden" ref={editorPanelRef}>
+          <CollapsiblePanel title="Editor" icon="📝" open={panelEditorOpen} onOpenChange={setPanelEditorOpen}>
+            <div className="min-h-0 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+              <EditorHeader
+                editingNew={editingNew}
+                saving={saving}
+                formName={String(form.name ?? "")}
+                formType={String((form.type ?? "CAMPINGPLATZ") as string)}
+                totalPoints={totalPoints}
+                heroImage={heroImage ? { filename: heroImage.filename } : null}
+                headerImages={headerImages}
+                imagesCount={Array.isArray(form.images) ? form.images.length : 0}
+                selectedPlace={selectedPlace}
+                distanceKm={selectedDistanceKm}
+                onOpenLightbox={openLightbox}
+                onSave={save}
+                onDelete={del}
+                onNew={newPlace}
+                canDelete={!editingNew && !!form.id}
+              />
+
+              <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+                <div className="space-y-2 pt-3">
+                  {errorMsg ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
+                  ) : null}
+
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                    placeholder="Name"
+                    value={String(form.name ?? "")}
+                    onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
+                  />
+
+                  <select
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                    value={(form.type ?? "CAMPINGPLATZ") as string}
+                    onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
+                  >
+                    <option value="CAMPINGPLATZ">Campingplatz</option>
+                    <option value="STELLPLATZ">Stellplatz</option>
+                    <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
+                    <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
+                  </select>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                      placeholder="Lat"
+                      value={String(form.lat ?? "")}
+                      onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
+                    />
+                    <input
+                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                      placeholder="Lng"
+                      value={String(form.lng ?? "")}
+                      onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
+                    />
+
+                    <button
+                      onClick={() => {
+                        setPickMode((v) => !v);
+                        setSelectTick((t) => t + 1);
+                      }}
+                      className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
+                        pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
+                      }`}
+                      disabled={saving}
+                      title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
+                    >
+                      📍 Karte
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TogglePill
+                      on={!!form.dogAllowed}
+                      icon="🐕"
+                      label="Hunde"
+                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
+                    />
+                    <TogglePill
+                      on={!!form.sanitary}
+                      icon="🚿"
+                      label="Sanitär"
+                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
+                    />
+                    <TogglePill
+                      on={!!form.yearRound}
+                      icon="📆"
+                      label="Ganzjährig"
+                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
+                    />
+                    <TogglePill
+                      on={!!form.onlineBooking}
+                      icon="🌐"
+                      label="Online"
+                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
+                    />
+                    <TogglePill
+                      on={!!form.gastronomy}
+                      icon="🍽️"
+                      label="Gastro"
+                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
+                    />
+                  </div>
+
+                  <div className="my-2 h-px bg-white/10" />
+
+                  <TsEditor
+                    rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
+                    onChange={(next, computedTotal) => {
+                      setForm((f: any) => ({
+                        ...f,
+                        ratingDetail: { ...next, totalPoints: computedTotal },
+                      }));
+                    }}
+                    disabled={saving}
+                  />
+
+                  <ImagesPanel
+                    placeId={form.id ? Number(form.id) : null}
+                    images={Array.isArray(form.images) ? form.images : []}
+                    thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
+                    uploading={uploading}
+                    saving={saving}
+                    uploadMsg={uploadMsg}
+                    onPickFiles={(files) => setPickedFiles(files)}
+                    pickedFilesCount={pickedFiles.length}
+                    onUpload={uploadImages}
+                    onOpenLightboxById={openLightboxById}
+                    onSetThumbnail={setThumbnail}
+                    onDeleteImage={deleteImage}
+                  />
+
+                  <button
+                    onClick={save}
+                    className="mt-3 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
+                    disabled={saving}
+                  >
+                    {saving ? "Speichert..." : "Speichern"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </CollapsiblePanel>
+        </div>
+
+        <div className="w-full lg:hidden">
+          <CollapsiblePanel title="Orte" icon="📍" open={panelPlacesOpen} onOpenChange={setPanelPlacesOpen}>
+            <div className="h-[70svh] min-h-[420px]">
+              <PlacesList
+                places={sortedPlaces}
+                selectedId={selectedId}
+                onSelect={(id) => selectPlace(id, "list")}
+                sortMode={sortMode}
+                setSortMode={setSortMode}
+                geoStatus={geoStatus}
+                onRequestMyLocation={requestMyLocation}
+                hasMyPos={!!myPos}
+                onZoomToMyPos={zoomToMyPos}
+                showMyRings={showMyRings}
+                setShowMyRings={setShowMyRings}
+              />
+            </div>
+          </CollapsiblePanel>
+        </div>
+
+        {/* DESKTOP LAYOUT: Orte links, Map Mitte, rechts Filter + Editor */}
+        <div className="hidden w-full lg:flex lg:flex-row lg:gap-4 lg:min-h-0">
+          <div className="w-[320px] shrink-0 lg:min-h-0">
+            <PlacesList
+              places={sortedPlaces}
+              selectedId={selectedId}
+              onSelect={(id) => selectPlace(id, "list")}
+              sortMode={sortMode}
+              setSortMode={setSortMode}
+              geoStatus={geoStatus}
+              onRequestMyLocation={requestMyLocation}
+              hasMyPos={!!myPos}
+              onZoomToMyPos={zoomToMyPos}
+              showMyRings={showMyRings}
+              setShowMyRings={setShowMyRings}
+            />
+          </div>
+
+          <div className="min-h-0 flex-1">
+            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 lg:h-auto lg:min-h-0">
+              <MapClient
+                places={sortedPlaces}
+                selectedId={selectedId}
+                onSelect={(id: number) => selectPlace(id, "map")}
+                pickMode={pickMode}
+                onPick={(lat: number, lng: number) => {
+                  setForm((f: any) => ({ ...f, lat, lng }));
+                  setPickMode(false);
+                  setSelectTick((t) => t + 1);
+                }}
+                focusToken={focusToken}
+                myPos={myPos}
+                myPosFocusToken={myPosFocusToken}
+                showMyRings={showMyRings}
+              />
+            </div>
+          </div>
+
+          <div className="w-[420px] shrink-0 lg:min-h-0">
+            <div className="flex h-full min-h-0 flex-col gap-4">
               <FiltersPanel
                 filtersOpen={filtersOpen}
                 setFiltersOpen={setFiltersOpen}
@@ -688,117 +847,29 @@ export default function MapPage() {
                 setFGastro={setFGastro}
                 onRefresh={() => refreshPlaces(true)}
               />
-            </div>
-          </CollapsiblePanel>
-        </div>
 
-        {/* 4 Orte (mobile bottom), DESKTOP left */}
-        <div className="order-4 lg:order-1 lg:h-full lg:w-[320px] lg:shrink-0">
-          <CollapsiblePanel title="📍 Orte" defaultOpen={true} rightHint={orteHint}>
-            <div className="p-0">
-              <PlacesList
-                places={sortedPlaces}
-                selectedId={selectedId}
-                onSelect={(id) => selectPlace(id, "list")}
-                sortMode={sortMode}
-                setSortMode={setSortMode}
-                geoStatus={geoStatus}
-                onRequestMyLocation={requestMyLocation}
-                hasMyPos={!!myPos}
-                onZoomToMyPos={zoomToMyPos}
-                showMyRings={showMyRings}
-                setShowMyRings={setShowMyRings}
-              />
-            </div>
-          </CollapsiblePanel>
-        </div>
-
-        {/* 2 Map - mobile 50% höher */}
-        <div className="order-2 lg:order-2 lg:h-full lg:flex-1">
-          <CollapsiblePanel title="🗺️ Map" defaultOpen={true} rightHint={mapHint}>
-            <div className="relative h-[63svh] min-h-[360px] w-full overflow-hidden bg-white/5 lg:h-[calc(100svh-32px)]">
-              <div className="relative h-full w-full overflow-hidden rounded-2xl border border-white/10">
-                <MapClient
-                  places={sortedPlaces}
-                  selectedId={selectedId}
-                  onSelect={(id: number) => selectPlace(id, "map")}
-                  pickMode={pickMode}
-                  onPick={(lat: number, lng: number) => {
-                    setForm((f: any) => ({ ...f, lat, lng }));
-                    setPickMode(false);
-                    setSelectTick((t) => t + 1);
-                  }}
-                  focusToken={focusToken}
-                  myPos={myPos}
-                  myPosFocusToken={myPosFocusToken}
-                  showMyRings={showMyRings}
-                />
-              </div>
-            </div>
-          </CollapsiblePanel>
-        </div>
-
-        {/* 3 Editor - controlled open on mobile */}
-        <div className="order-3 lg:order-3 lg:h-full lg:w-[420px] lg:shrink-0" ref={editorPanelRef}>
-          <div className="flex flex-col gap-4 lg:h-full">
-            {/* DESKTOP: Filter */}
-            <div className="hidden lg:block">
-              <CollapsiblePanel title="🔎 Filter" defaultOpen={true} rightHint={filterHint}>
-                <div className="p-3">
-                  <FiltersPanel
-                    filtersOpen={filtersOpen}
-                    setFiltersOpen={setFiltersOpen}
-                    showStellplatz={showStellplatz}
-                    setShowStellplatz={setShowStellplatz}
-                    showCampingplatz={showCampingplatz}
-                    setShowCampingplatz={setShowCampingplatz}
-                    showSehens={showSehens}
-                    setShowSehens={setShowSehens}
-                    showHvoTankstelle={showHvoTankstelle}
-                    setShowHvoTankstelle={setShowHvoTankstelle}
-                    fDog={fDog}
-                    setFDog={setFDog}
-                    fSan={fSan}
-                    setFSan={setFSan}
-                    fYear={fYear}
-                    setFYear={setFYear}
-                    fOnline={fOnline}
-                    setFOnline={setFOnline}
-                    fGastro={fGastro}
-                    setFGastro={setFGastro}
-                    onRefresh={() => refreshPlaces(true)}
+              <div className="min-h-0 flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                <div ref={editorPanelRef}>
+                  <EditorHeader
+                    editingNew={editingNew}
+                    saving={saving}
+                    formName={String(form.name ?? "")}
+                    formType={String((form.type ?? "CAMPINGPLATZ") as string)}
+                    totalPoints={totalPoints}
+                    heroImage={heroImage ? { filename: heroImage.filename } : null}
+                    headerImages={headerImages}
+                    imagesCount={Array.isArray(form.images) ? form.images.length : 0}
+                    selectedPlace={selectedPlace}
+                    distanceKm={selectedDistanceKm}
+                    onOpenLightbox={openLightbox}
+                    onSave={save}
+                    onDelete={del}
+                    onNew={newPlace}
+                    canDelete={!editingNew && !!form.id}
                   />
                 </div>
-              </CollapsiblePanel>
-            </div>
 
-            <CollapsiblePanel
-              title="✍️ Editor"
-              defaultOpen={true}
-              open={isMobile ? mobileEditorOpen : undefined}
-              onOpenChange={isMobile ? setMobileEditorOpen : undefined}
-              rightHint={saving ? "speichert..." : editorHint}
-            >
-              <div className="min-h-0 rounded-2xl border border-white/10 bg-white/5">
-                <EditorHeader
-                  editingNew={editingNew}
-                  saving={saving}
-                  formName={String(form.name ?? "")}
-                  formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                  totalPoints={totalPoints}
-                  heroImage={heroImage ? { filename: heroImage.filename } : null}
-                  headerImages={headerImages}
-                  imagesCount={Array.isArray(form.images) ? form.images.length : 0}
-                  selectedPlace={selectedPlace}
-                  distanceKm={selectedDistanceKm}
-                  onOpenLightbox={openLightbox}
-                  onSave={save}
-                  onDelete={del}
-                  onNew={newPlace}
-                  canDelete={!editingNew && !!form.id}
-                />
-
-                <div key={editorKey} className="min-h-0 max-h-[65svh] overflow-auto px-4 pb-4 lg:max-h-[calc(100svh-240px)]">
+                <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
                   <div className="space-y-2 pt-3">
                     {errorMsg ? (
                       <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
@@ -814,23 +885,7 @@ export default function MapPage() {
                     <select
                       className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
                       value={(form.type ?? "CAMPINGPLATZ") as string}
-                      onChange={(e) => {
-                        const nextType = e.target.value as PlaceType;
-
-                        setForm((f: any) => {
-                          const next: any = { ...f, type: nextType };
-
-                          if (isTS2Type(nextType)) {
-                            if (!next.ts2) next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
-                            if (next.ts2?.haltung !== "EXPLORER") next.ts2.haltung = "DNA";
-                            if (typeof next.ts2?.note !== "string") next.ts2.note = "";
-                          } else {
-                            next.ts2 = { haltung: "DNA" as TSHaltung, note: "" };
-                          }
-
-                          return next;
-                        });
-                      }}
+                      onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
                     >
                       <option value="CAMPINGPLATZ">Campingplatz</option>
                       <option value="STELLPLATZ">Stellplatz</option>
@@ -900,51 +955,6 @@ export default function MapPage() {
                       />
                     </div>
 
-                    {showTS2Editor ? (
-                      <>
-                        <div className="my-2 h-px bg-white/10" />
-
-                        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-xs font-semibold opacity-90">Törtchensystem 2.0</div>
-
-                          <div className="mt-2 grid grid-cols-1 gap-2">
-                            <label className="text-xs opacity-80">Haltung</label>
-                            <select
-                              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                              value={String(form?.ts2?.haltung ?? "DNA")}
-                              onChange={(e) =>
-                                setForm((f: any) => ({
-                                  ...f,
-                                  ts2: {
-                                    ...(f.ts2 ?? { note: "" }),
-                                    haltung: (e.target.value === "EXPLORER" ? "EXPLORER" : "DNA") as TSHaltung,
-                                  },
-                                }))
-                              }
-                              disabled={saving}
-                            >
-                              <option value="DNA">DNA</option>
-                              <option value="EXPLORER">Explorer</option>
-                            </select>
-
-                            <label className="mt-2 text-xs opacity-80">Notiz</label>
-                            <textarea
-                              className="min-h-[70px] w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                              placeholder="Optional - warum DNA oder Explorer - was ist uns wichtig"
-                              value={String(form?.ts2?.note ?? "")}
-                              onChange={(e) =>
-                                setForm((f: any) => ({
-                                  ...f,
-                                  ts2: { ...(f.ts2 ?? { haltung: "DNA" }), note: e.target.value },
-                                }))
-                              }
-                              disabled={saving}
-                            />
-                          </div>
-                        </div>
-                      </>
-                    ) : null}
-
                     <div className="my-2 h-px bg-white/10" />
 
                     <TsEditor
@@ -982,10 +992,10 @@ export default function MapPage() {
                     </button>
                   </div>
                 </div>
-
-                <div className="px-4 pb-4 text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
               </div>
-            </CollapsiblePanel>
+
+              <div className="text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
+            </div>
           </div>
         </div>
       </div>

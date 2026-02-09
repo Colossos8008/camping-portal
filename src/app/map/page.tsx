@@ -517,11 +517,7 @@ export default function MapPage() {
   const heroImage = headerImages.length ? headerImages[0] : null;
 
   function lbList() {
-    return Array.isArray(headerImages) && headerImages.length
-      ? headerImages
-      : Array.isArray(form.images)
-      ? form.images
-      : [];
+    return Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
   }
 
   function openLightbox(index: number) {
@@ -640,9 +636,7 @@ export default function MapPage() {
 
               <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
                 <div className="space-y-2 pt-3">
-                  {errorMsg ? (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
-                  ) : null}
+                  {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
 
                   <input
                     className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
@@ -681,9 +675,7 @@ export default function MapPage() {
                         setPickMode((v) => !v);
                         setSelectTick((t) => t + 1);
                       }}
-                      className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
-                        pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
-                      }`}
+                      className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"}`}
                       disabled={saving}
                       title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
                     >
@@ -692,36 +684,11 @@ export default function MapPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill
-                      on={!!form.dogAllowed}
-                      icon="🐕"
-                      label="Hunde"
-                      onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
-                    />
-                    <TogglePill
-                      on={!!form.sanitary}
-                      icon="🚿"
-                      label="Sanitär"
-                      onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
-                    />
-                    <TogglePill
-                      on={!!form.yearRound}
-                      icon="📆"
-                      label="Ganzjährig"
-                      onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
-                    />
-                    <TogglePill
-                      on={!!form.onlineBooking}
-                      icon="🌐"
-                      label="Online"
-                      onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
-                    />
-                    <TogglePill
-                      on={!!form.gastronomy}
-                      icon="🍽️"
-                      label="Gastro"
-                      onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
-                    />
+                    <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
+                    <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
+                    <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
+                    <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
+                    <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
                   </div>
 
                   <div className="my-2 h-px bg-white/10" />
@@ -729,10 +696,7 @@ export default function MapPage() {
                   <TsEditor
                     rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
                     onChange={(next, computedTotal) => {
-                      setForm((f: any) => ({
-                        ...f,
-                        ratingDetail: { ...next, totalPoints: computedTotal },
-                      }));
+                      setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
                     }}
                     disabled={saving}
                   />
@@ -804,7 +768,8 @@ export default function MapPage() {
           </div>
 
           <div className="min-h-0 flex-1">
-            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 lg:h-auto lg:min-h-0">
+            {/* FIX: keep height on desktop - do NOT use lg:h-auto */}
+            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <MapClient
                 places={sortedPlaces}
                 selectedId={selectedId}
@@ -872,9 +837,7 @@ export default function MapPage() {
 
                 <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
                   <div className="space-y-2 pt-3">
-                    {errorMsg ? (
-                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div>
-                    ) : null}
+                    {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
 
                     <input
                       className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
@@ -913,9 +876,7 @@ export default function MapPage() {
                           setPickMode((v) => !v);
                           setSelectTick((t) => t + 1);
                         }}
-                        className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
-                          pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
-                        }`}
+                        className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"}`}
                         disabled={saving}
                         title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
                       >
@@ -924,36 +885,11 @@ export default function MapPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <TogglePill
-                        on={!!form.dogAllowed}
-                        icon="🐕"
-                        label="Hunde"
-                        onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))}
-                      />
-                      <TogglePill
-                        on={!!form.sanitary}
-                        icon="🚿"
-                        label="Sanitär"
-                        onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))}
-                      />
-                      <TogglePill
-                        on={!!form.yearRound}
-                        icon="📆"
-                        label="Ganzjährig"
-                        onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))}
-                      />
-                      <TogglePill
-                        on={!!form.onlineBooking}
-                        icon="🌐"
-                        label="Online"
-                        onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))}
-                      />
-                      <TogglePill
-                        on={!!form.gastronomy}
-                        icon="🍽️"
-                        label="Gastro"
-                        onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))}
-                      />
+                      <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
+                      <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
+                      <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
+                      <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
+                      <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
                     </div>
 
                     <div className="my-2 h-px bg-white/10" />
@@ -961,10 +897,7 @@ export default function MapPage() {
                     <TsEditor
                       rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
                       onChange={(next, computedTotal) => {
-                        setForm((f: any) => ({
-                          ...f,
-                          ratingDetail: { ...next, totalPoints: computedTotal },
-                        }));
+                        setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
                       }}
                       disabled={saving}
                     />

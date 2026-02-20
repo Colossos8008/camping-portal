@@ -1,7 +1,7 @@
 // src/app/map/map-client.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -17,6 +17,7 @@ type Place = {
   lat: number;
   lng: number;
 
+  // TS2 - nur relevant für CAMPINGPLATZ / STELLPLATZ
   ts2?: { haltung?: TSHaltung | null } | null;
 
   images?: PlaceImage[];
@@ -78,6 +79,8 @@ function escapeHtml(s: string) {
     .replaceAll("'", "&#39;");
 }
 
+// Supabase Public URL (Bucket: place-images)
+// - Fallback: /uploads/<filename> (falls Env nicht verfügbar)
 function publicUrlForObjectKey(filename: string | null | undefined) {
   const key = String(filename ?? "").trim();
   if (!key) return null;
@@ -326,13 +329,6 @@ function destinationPoint(lat: number, lng: number, distanceKm: number, bearingD
   return { lat: toDeg(lat2), lng: ((toDeg(lon2) + 540) % 360) - 180 };
 }
 
-function isMobileInteractionMode() {
-  if (typeof window === "undefined") return false;
-  const m1 = window.matchMedia?.("(hover: none) and (pointer: coarse)").matches ?? false;
-  const m2 = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-  return m1 || m2;
-}
-
 export default function MapClient(props: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -354,18 +350,8 @@ export default function MapClient(props: Props) {
   const myPosMarkerRef = useRef<L.Marker | null>(null);
   const myPosRingsRef = useRef<L.LayerGroup | null>(null);
 
-  const [mobileMode, setMobileMode] = useState(false);
-
-  useEffect(() => {
-    setMobileMode(isMobileInteractionMode());
-
-    function onResize() {
-      setMobileMode(isMobileInteractionMode());
-    }
-
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const isMobileRef = useRef<boolean>(false);
+  const lastSelectMsRef = useRef<number>(0);
 
   useEffect(() => {
     selectedIdRef.current = props.selectedId;
@@ -374,6 +360,26 @@ export default function MapClient(props: Props) {
   useEffect(() => {
     pickModeRef.current = props.pickMode;
   }, [props.pickMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mql = window.matchMedia("(max-width: 1023px)");
+    const apply = () => {
+      isMobileRef.current = !!mql.matches;
+    };
+
+    apply();
+
+    const handler = () => apply();
+    if ("addEventListener" in mql) mql.addEventListener("change", handler);
+    else (mql as any).addListener(handler);
+
+    return () => {
+      if ("removeEventListener" in mql) mql.removeEventListener("change", handler);
+      else (mql as any).removeListener(handler);
+    };
+  }, []);
 
   const selected = useMemo(() => {
     if (props.selectedId == null) return null;
@@ -421,8 +427,12 @@ export default function MapClient(props: Props) {
     m.setIcon(makeDivIcon(markerHtml(p, v), markerSize(v)));
   }
 
-  function selectFromMarker(p: Place, e?: any, marker?: L.Marker) {
+  function safeSelect(p: Place, e?: any, marker?: L.Marker) {
     if (pickModeRef.current) return;
+
+    const now = Date.now();
+    if (now - lastSelectMsRef.current < 350) return;
+    lastSelectMsRef.current = now;
 
     if (e?.originalEvent) {
       try {
@@ -441,6 +451,53 @@ export default function MapClient(props: Props) {
     } catch {}
 
     props.onSelect(p.id);
+  }
+
+  function applyTooltipMode(m: L.Marker, p: Place) {
+    const isMobile = isMobileRef.current;
+
+    // harte Regel - Mobile komplett ohne Tooltip
+    if (isMobile) {
+      try {
+        m.closeTooltip();
+      } catch {}
+      try {
+        m.unbindTooltip();
+      } catch {}
+      m.off("mouseover");
+      m.off("mouseout");
+      return;
+    }
+
+    // Desktop - Tooltip vorhanden, per Hover
+    const hasTooltip = (m as any).getTooltip?.() != null;
+    if (!hasTooltip) {
+      m.bindTooltip(hoverTooltipHtml(p), {
+        direction: "top",
+        offset: L.point(0, -14),
+        opacity: 1,
+        sticky: true,
+        className: "cp-hover-tooltip",
+      });
+    } else {
+      m.setTooltipContent(hoverTooltipHtml(p));
+    }
+
+    m.off("mouseover");
+    m.off("mouseout");
+
+    m.on("mouseover", () => {
+      if (pickModeRef.current) return;
+      hoveredIdRef.current = p.id;
+      setMarkerVisual(p.id, p);
+      m.openTooltip();
+    });
+
+    m.on("mouseout", () => {
+      if (hoveredIdRef.current === p.id) hoveredIdRef.current = null;
+      setMarkerVisual(p.id, p);
+      m.closeTooltip();
+    });
   }
 
   useEffect(() => {
@@ -465,40 +522,36 @@ export default function MapClient(props: Props) {
 
         m.addTo(map);
 
-        // Tooltips: only on desktop (hover capable). Mobile: no tooltip at all.
-        if (!mobileMode) {
-          m.bindTooltip(hoverTooltipHtml(p), {
-            direction: "top",
-            offset: L.point(0, -14),
-            opacity: 1,
-            sticky: true,
-            className: "cp-hover-tooltip",
-          });
+        // Tooltips: Desktop ja - Mobile nein
+        applyTooltipMode(m, p);
 
-          m.on("mouseover", () => {
-            if (pickModeRef.current) return;
-            hoveredIdRef.current = p.id;
-            setMarkerVisual(p.id, p);
-            m.openTooltip();
-          });
+        // Selection: Desktop click - Mobile pointerup/touchend
+        m.off("click");
+        m.off("touchend");
+        m.off("pointerup");
 
-          m.on("mouseout", () => {
-            if (hoveredIdRef.current === p.id) hoveredIdRef.current = null;
-            setMarkerVisual(p.id, p);
-            m.closeTooltip();
-          });
-        }
-
-        // Selection: click + touch should always select
-        m.on("click", (e: any) => selectFromMarker(p, e, m));
-        m.on("touchstart", (e: any) => selectFromMarker(p, e, m));
-        m.on("pointerup", (e: any) => selectFromMarker(p, e, m));
+        m.on("click", (e: any) => safeSelect(p, e, m));
+        m.on("touchend", (e: any) => safeSelect(p, e, m));
+        m.on("pointerup", (e: any) => safeSelect(p, e, m));
 
         markersRef.current.set(p.id, m);
       } else {
         marker.setLatLng([p.lat, p.lng]);
-        if (!mobileMode) marker.setTooltipContent(hoverTooltipHtml(p));
+
+        // Marker UI
         setMarkerVisual(p.id, p);
+
+        // Tooltip-Modus aktualisieren (wichtig bei Resize / Deploy-States)
+        applyTooltipMode(marker, p);
+
+        // Selection-Handler sicherstellen
+        marker.off("click");
+        marker.off("touchend");
+        marker.off("pointerup");
+
+        marker.on("click", (e: any) => safeSelect(p, e, marker));
+        marker.on("touchend", (e: any) => safeSelect(p, e, marker));
+        marker.on("pointerup", (e: any) => safeSelect(p, e, marker));
       }
     }
 
@@ -508,7 +561,7 @@ export default function MapClient(props: Props) {
         markersRef.current.delete(id);
       }
     }
-  }, [props.places, props.selectedId, props.pickMode, props.onSelect, mobileMode]);
+  }, [props.places, props.selectedId, props.pickMode, props.onSelect]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -519,6 +572,7 @@ export default function MapClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.focusToken]);
 
+  // Eigenposition: Marker + Ringe
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -603,6 +657,7 @@ export default function MapClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.myPosFocusToken]);
 
+  // PICK MODE
   useEffect(() => {
     const map0 = mapRef.current;
     if (!map0) return;
@@ -720,20 +775,6 @@ export default function MapClient(props: Props) {
       map.off("click", onClick);
     };
   }, [props.pickMode, props.onPick]);
-
-  // Important: when container sizes change, Leaflet needs invalidateSize
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const t = window.setTimeout(() => {
-      try {
-        map.invalidateSize();
-      } catch {}
-    }, 50);
-
-    return () => window.clearTimeout(t);
-  }, [mobileMode]);
 
   return (
     <div className="relative h-full w-full">

@@ -68,44 +68,42 @@ export default function PlacesList(props: {
           <option value="DIST">Sortierung: Entfernung</option>
         </select>
 
-        {props.sortMode === "DIST" ? (
-          <>
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                onClick={props.onRequestMyLocation}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15"
-              >
-                Eigenposition holen
-              </button>
+        {/* Eigenposition UI bleibt - aber nicht mehr nur im DIST Modus */}
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={props.onRequestMyLocation}
+            className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15"
+          >
+            Eigenposition holen
+          </button>
 
-              <button
-                onClick={props.onZoomToMyPos}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-60"
-                disabled={!props.hasMyPos}
-                title={props.hasMyPos ? "Zu mir zoomen" : "Erst Eigenposition holen"}
-              >
-                Zu mir
-              </button>
+          <button
+            onClick={props.onZoomToMyPos}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-60"
+            disabled={!props.hasMyPos}
+            title={props.hasMyPos ? "Zu mir zoomen" : "Erst Eigenposition holen"}
+          >
+            Zu mir
+          </button>
 
-              <div className="text-xs opacity-70">{props.geoStatus}</div>
-            </div>
+          <div className="text-xs opacity-70">{props.geoStatus}</div>
+        </div>
 
-            <label className="mt-2 flex items-center gap-2 text-xs opacity-85">
-              <input
-                type="checkbox"
-                checked={props.showMyRings}
-                onChange={(e) => props.setShowMyRings(e.target.checked)}
-                disabled={!props.hasMyPos}
-              />
-              Entfernungsringe anzeigen
-            </label>
-          </>
-        ) : null}
+        <label className="mt-2 flex items-center gap-2 text-xs opacity-85">
+          <input
+            type="checkbox"
+            checked={props.showMyRings}
+            onChange={(e) => props.setShowMyRings(e.target.checked)}
+            disabled={!props.hasMyPos}
+          />
+          Entfernungsringe anzeigen
+        </label>
       </div>
 
       <div className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
         {props.places.map((p) => {
           const dist = formatDistanceKm(p.distanceKm);
+          const hasDist = typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm);
 
           return (
             <button
@@ -132,7 +130,10 @@ export default function PlacesList(props: {
 
                   {ts2Badge(p)}
 
-                  {props.sortMode === "DIST" ? <div className="mt-1 text-[10px] opacity-70">{dist}</div> : null}
+                  {/* DISTANZ: immer sichtbar, rechts unten, schlank */}
+                  <div className="mt-1 text-[10px] opacity-70" title="Entfernung von deiner Eigenposition">
+                    📏 {hasDist ? dist : "—"}
+                  </div>
                 </div>
               </div>
             </button>

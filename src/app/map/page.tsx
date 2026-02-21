@@ -76,15 +76,17 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
 
 type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES";
 
+function collapsedSections(): Record<EditorSectionId, boolean> {
+  return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+}
+
 function loadSectionState(): Record<EditorSectionId, boolean> {
   // Default: alles eingeklappt
-  if (typeof window === "undefined") {
-    return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
-  }
+  if (typeof window === "undefined") return collapsedSections();
 
   try {
     const raw = window.localStorage.getItem("cp.editor.sections.v1");
-    if (!raw) return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+    if (!raw) return collapsedSections();
     const obj = JSON.parse(raw);
 
     return {
@@ -94,7 +96,7 @@ function loadSectionState(): Record<EditorSectionId, boolean> {
       IMAGES: typeof obj?.IMAGES === "boolean" ? obj.IMAGES : false,
     };
   } catch {
-    return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+    return collapsedSections();
   }
 }
 
@@ -151,6 +153,7 @@ export default function MapPage() {
   const [selectTick, setSelectTick] = useState(0);
   const [focusToken, setFocusToken] = useState(0);
 
+  // Standard: Entfernung
   const [sortMode, setSortMode] = useState<SortMode>("DIST");
 
   const [myPos, setMyPos] = useState<{ lat: number; lng: number } | null>(null);
@@ -187,6 +190,7 @@ export default function MapPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   const editorPanelRef = useRef<HTMLDivElement | null>(null);
+  const mapPanelRef = useRef<HTMLDivElement | null>(null);
 
   const [panelMapOpen, setPanelMapOpen] = useState(true);
   const [panelEditorOpen, setPanelEditorOpen] = useState(true);
@@ -209,13 +213,8 @@ export default function MapPage() {
 
   const [navOpen, setNavOpen] = useState(false);
 
-  // Default: alles eingeklappt (wird nach mount aus localStorage geladen)
-  const [sectionOpen, setSectionOpen] = useState<Record<EditorSectionId, boolean>>({
-    BASICS: false,
-    TOGGLES: false,
-    TS: false,
-    IMAGES: false,
-  });
+  // Default: Sektionen eingeklappt, Editor selbst bleibt sichtbar
+  const [sectionOpen, setSectionOpen] = useState<Record<EditorSectionId, boolean>>(collapsedSections());
 
   const geoWatchIdRef = useRef<number | null>(null);
 
@@ -367,12 +366,31 @@ export default function MapPage() {
     });
   }
 
+  function scrollToMapIfMobile() {
+    if (!isMobile) return;
+    requestAnimationFrame(() => {
+      mapPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function selectPlace(id: number, source: "list" | "map" = "list") {
     setSelectedId(id);
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
 
     if (isMobile) {
+      // NEW: Auswahl aus Orte-Liste - hoch zur Karte springen
+      // - Editor bleibt sichtbar
+      // - nur die vier Sektionen sind eingeklappt
+      if (source === "list") {
+        setPanelMapOpen(true);
+        setPanelEditorOpen(true);
+        setSectionOpen(collapsedSections());
+        scrollToMapIfMobile();
+        return;
+      }
+
+      // Map-Tap - Editor auf und hinscrollen
       setPanelEditorOpen(true);
       scrollToEditorIfMobile();
     }
@@ -510,7 +528,6 @@ export default function MapPage() {
       return;
     }
 
-    // clean restart
     stopGeoWatch();
 
     setGeoStatus("Eigenposition - wartet auf GPS…");
@@ -529,7 +546,6 @@ export default function MapPage() {
     geoWatchIdRef.current = id as any;
   }
 
-  // HARD REQUIREMENT: Eigenposition immer holen + aktuell halten
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -542,7 +558,6 @@ export default function MapPage() {
   }, []);
 
   function requestMyLocation() {
-    // Button bleibt - startet die Watch neu (kein Feature Verlust)
     startGeoWatch();
   }
 
@@ -761,7 +776,7 @@ export default function MapPage() {
   }
 
   function closeAllSections() {
-    setSectionOpen({ BASICS: false, TOGGLES: false, TS: false, IMAGES: false });
+    setSectionOpen(collapsedSections());
   }
 
   const editorSectionsToolbar = (
@@ -855,13 +870,7 @@ export default function MapPage() {
           </div>
         </Section>
 
-        <Section
-          id="TOGGLES"
-          title="Kriterien"
-          icon="✅"
-          open={sectionOpen.TOGGLES}
-          onOpenChange={(v) => setSection("TOGGLES", v)}
-        >
+        <Section id="TOGGLES" title="Kriterien" icon="✅" open={sectionOpen.TOGGLES} onOpenChange={(v) => setSection("TOGGLES", v)}>
           <div className="flex flex-wrap items-center gap-2">
             <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
             <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
@@ -955,7 +964,7 @@ export default function MapPage() {
           </div>
         </div>
 
-        <div className="w-full lg:hidden">
+        <div className="w-full lg:hidden" ref={mapPanelRef}>
           <CollapsiblePanel title="Map" icon="🗺️" open={panelMapOpen} onOpenChange={setPanelMapOpen}>
             <div className="relative h-[60svh] min-h-[360px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <MapClient

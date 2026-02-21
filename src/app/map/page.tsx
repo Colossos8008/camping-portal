@@ -2,7 +2,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import TsEditor, { RatingDetail } from "./ts-editor";
 
 import type { Place, PlaceType, SortMode } from "./_lib/types";
@@ -60,8 +60,6 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
   const name = String(label ?? "").trim();
 
   if (provider === "APPLE") {
-    // Apple Maps - daddr
-    // Beispiel: http://maps.apple.com/?daddr=48.1,11.6&q=Name
     const base = "http://maps.apple.com/";
     const params = new URLSearchParams();
     params.set("daddr", `${lat},${lng}`);
@@ -69,14 +67,81 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
     return `${base}?${params.toString()}`;
   }
 
-  // Google Maps - directions endpoint
-  // Beispiel: https://www.google.com/maps/dir/?api=1&destination=48.1,11.6&destination_place_id=&travelmode=driving
   const base = "https://www.google.com/maps/dir/?api=1";
   const params = new URLSearchParams();
   params.set("destination", `${lat},${lng}`);
-  if (name) params.set("destination_place_id", ""); // bewusst leer - nur Koordinaten
   params.set("travelmode", "driving");
   return `${base}&${params.toString()}`;
+}
+
+type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES";
+
+function loadSectionState(): Record<EditorSectionId, boolean> {
+  // Default: alles eingeklappt
+  if (typeof window === "undefined") {
+    return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+  }
+
+  try {
+    const raw = window.localStorage.getItem("cp.editor.sections.v1");
+    if (!raw) return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+    const obj = JSON.parse(raw);
+
+    return {
+      BASICS: typeof obj?.BASICS === "boolean" ? obj.BASICS : false,
+      TOGGLES: typeof obj?.TOGGLES === "boolean" ? obj.TOGGLES : false,
+      TS: typeof obj?.TS === "boolean" ? obj.TS : false,
+      IMAGES: typeof obj?.IMAGES === "boolean" ? obj.IMAGES : false,
+    };
+  } catch {
+    return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+  }
+}
+
+function saveSectionState(next: Record<EditorSectionId, boolean>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem("cp.editor.sections.v1", JSON.stringify(next));
+  } catch {}
+}
+
+function Section(props: {
+  id: EditorSectionId;
+  title: string;
+  icon: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  rightHint?: ReactNode;
+  children: ReactNode;
+}) {
+  const open = !!props.open;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+      <button
+        type="button"
+        onClick={() => props.onOpenChange(!open)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+        aria-expanded={open}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="shrink-0 text-base leading-none">{props.icon}</div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{props.title}</div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          {props.rightHint ? <div className="text-xs opacity-70">{props.rightHint}</div> : null}
+          <div className={`text-xs opacity-70 transition-transform ${open ? "rotate-180" : "rotate-0"}`} aria-hidden="true">
+            ▼
+          </div>
+        </div>
+      </button>
+
+      {open ? <div className="px-3 pb-3">{props.children}</div> : null}
+    </div>
+  );
 }
 
 export default function MapPage() {
@@ -142,8 +207,15 @@ export default function MapPage() {
     thumbnailImageId: null,
   });
 
-  // NAV overlay
   const [navOpen, setNavOpen] = useState(false);
+
+  // Default: alles eingeklappt (wird nach mount aus localStorage geladen)
+  const [sectionOpen, setSectionOpen] = useState<Record<EditorSectionId, boolean>>({
+    BASICS: false,
+    TOGGLES: false,
+    TS: false,
+    IMAGES: false,
+  });
 
   useEffect(() => {
     setIsMobile(isMobileNow());
@@ -155,6 +227,18 @@ export default function MapPage() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    setSectionOpen(loadSectionState());
+  }, []);
+
+  useEffect(() => {
+    saveSectionState(sectionOpen);
+  }, [sectionOpen]);
+
+  function setSection(id: EditorSectionId, v: boolean) {
+    setSectionOpen((s) => ({ ...s, [id]: v }));
+  }
 
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -630,6 +714,178 @@ export default function MapPage() {
     }
   }
 
+  const sectionsHint = useMemo(() => {
+    const openCount = Object.values(sectionOpen).filter(Boolean).length;
+    return `${openCount}/4`;
+  }, [sectionOpen]);
+
+  function openAllSections() {
+    setSectionOpen({ BASICS: true, TOGGLES: true, TS: true, IMAGES: true });
+  }
+
+  function closeAllSections() {
+    setSectionOpen({ BASICS: false, TOGGLES: false, TS: false, IMAGES: false });
+  }
+
+  const editorSectionsToolbar = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={openAllSections}
+        className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs hover:bg-white/10"
+        title="Alles aufklappen"
+      >
+        + Alles
+      </button>
+      <button
+        type="button"
+        onClick={closeAllSections}
+        className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs hover:bg-white/10"
+        title="Alles einklappen"
+      >
+        - Alles
+      </button>
+    </div>
+  );
+
+  function EditorBody() {
+    return (
+      <div className="space-y-3 pt-3">
+        {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs opacity-70">Sektionen {sectionsHint}</div>
+          {editorSectionsToolbar}
+        </div>
+
+        <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(v) => setSection("BASICS", v)}>
+          <div className="space-y-2">
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              placeholder="Name"
+              value={String(form.name ?? "")}
+              onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
+            />
+
+            <select
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              value={(form.type ?? "CAMPINGPLATZ") as string}
+              onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
+            >
+              <option value="CAMPINGPLATZ">Campingplatz</option>
+              <option value="STELLPLATZ">Stellplatz</option>
+              <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
+              <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
+            </select>
+
+            <div className="flex items-center gap-2">
+              <input
+                className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                placeholder="Lat"
+                value={String(form.lat ?? "")}
+                onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
+              />
+              <input
+                className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
+                placeholder="Lng"
+                value={String(form.lng ?? "")}
+                onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
+              />
+
+              <button
+                onClick={() => {
+                  setPickMode((v) => !v);
+                  setSelectTick((t) => t + 1);
+                }}
+                className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
+                  pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"
+                }`}
+                disabled={saving}
+                title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
+              >
+                📍 Karte
+              </button>
+
+              <button
+                onClick={() => setNavOpen(true)}
+                className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
+                disabled={saving || !canNavigateNow()}
+                title="Navigation starten"
+              >
+                🧭 Navi
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          id="TOGGLES"
+          title="Kriterien"
+          icon="✅"
+          open={sectionOpen.TOGGLES}
+          onOpenChange={(v) => setSection("TOGGLES", v)}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
+            <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
+            <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
+            <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
+            <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
+          </div>
+        </Section>
+
+        <Section
+          id="TS"
+          title="Törtchensystem"
+          icon="🍰"
+          open={sectionOpen.TS}
+          onOpenChange={(v) => setSection("TS", v)}
+          rightHint={<span className="opacity-80">{totalPoints}/14</span>}
+        >
+          <TsEditor
+            rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
+            onChange={(next, computedTotal) => {
+              setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
+            }}
+            disabled={saving}
+          />
+        </Section>
+
+        <Section
+          id="IMAGES"
+          title="Bilder"
+          icon="🖼️"
+          open={sectionOpen.IMAGES}
+          onOpenChange={(v) => setSection("IMAGES", v)}
+          rightHint={<span className="opacity-80">{Array.isArray(form.images) ? form.images.length : 0}</span>}
+        >
+          <ImagesPanel
+            placeId={form.id ? Number(form.id) : null}
+            images={Array.isArray(form.images) ? form.images : []}
+            thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
+            uploading={uploading}
+            saving={saving}
+            uploadMsg={uploadMsg}
+            onPickFiles={(files) => setPickedFiles(files)}
+            pickedFilesCount={pickedFiles.length}
+            onUpload={uploadImages}
+            onOpenLightboxById={openLightboxById}
+            onSetThumbnail={setThumbnail}
+            onDeleteImage={deleteImage}
+          />
+        </Section>
+
+        <button
+          onClick={save}
+          className="mt-1 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
+          disabled={saving}
+        >
+          {saving ? "Speichert..." : "Speichern"}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[100svh] w-full bg-black text-white">
       <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
@@ -706,104 +962,7 @@ export default function MapPage() {
               />
 
               <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-                <div className="space-y-2 pt-3">
-                  {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
-
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                    placeholder="Name"
-                    value={String(form.name ?? "")}
-                    onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
-                  />
-
-                  <select
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                    value={(form.type ?? "CAMPINGPLATZ") as string}
-                    onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
-                  >
-                    <option value="CAMPINGPLATZ">Campingplatz</option>
-                    <option value="STELLPLATZ">Stellplatz</option>
-                    <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
-                    <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
-                  </select>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                      placeholder="Lat"
-                      value={String(form.lat ?? "")}
-                      onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
-                    />
-                    <input
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                      placeholder="Lng"
-                      value={String(form.lng ?? "")}
-                      onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
-                    />
-
-                    <button
-                      onClick={() => {
-                        setPickMode((v) => !v);
-                        setSelectTick((t) => t + 1);
-                      }}
-                      className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"}`}
-                      disabled={saving}
-                      title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
-                    >
-                      📍 Karte
-                    </button>
-
-                    <button
-                      onClick={() => setNavOpen(true)}
-                      className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
-                      disabled={saving || !canNavigateNow()}
-                      title="Navigation starten"
-                    >
-                      🧭 Navi
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
-                    <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
-                    <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
-                    <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
-                    <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
-                  </div>
-
-                  <div className="my-2 h-px bg-white/10" />
-
-                  <TsEditor
-                    rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
-                    onChange={(next, computedTotal) => {
-                      setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
-                    }}
-                    disabled={saving}
-                  />
-
-                  <ImagesPanel
-                    placeId={form.id ? Number(form.id) : null}
-                    images={Array.isArray(form.images) ? form.images : []}
-                    thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
-                    uploading={uploading}
-                    saving={saving}
-                    uploadMsg={uploadMsg}
-                    onPickFiles={(files) => setPickedFiles(files)}
-                    pickedFilesCount={pickedFiles.length}
-                    onUpload={uploadImages}
-                    onOpenLightboxById={openLightboxById}
-                    onSetThumbnail={setThumbnail}
-                    onDeleteImage={deleteImage}
-                  />
-
-                  <button
-                    onClick={save}
-                    className="mt-3 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
-                    disabled={saving}
-                  >
-                    {saving ? "Speichert..." : "Speichern"}
-                  </button>
-                </div>
+                <EditorBody />
               </div>
             </div>
           </CollapsiblePanel>
@@ -848,7 +1007,6 @@ export default function MapPage() {
           </div>
 
           <div className="min-h-0 flex-1">
-            {/* FIX: keep height on desktop - do NOT use lg:h-auto */}
             <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <MapClient
                 places={sortedPlaces}
@@ -916,104 +1074,7 @@ export default function MapPage() {
                 </div>
 
                 <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-                  <div className="space-y-2 pt-3">
-                    {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
-
-                    <input
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                      placeholder="Name"
-                      value={String(form.name ?? "")}
-                      onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))}
-                    />
-
-                    <select
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                      value={(form.type ?? "CAMPINGPLATZ") as string}
-                      onChange={(e) => setForm((f: any) => ({ ...f, type: e.target.value as PlaceType }))}
-                    >
-                      <option value="CAMPINGPLATZ">Campingplatz</option>
-                      <option value="STELLPLATZ">Stellplatz</option>
-                      <option value="SEHENSWUERDIGKEIT">Sehenswürdigkeit</option>
-                      <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
-                    </select>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                        placeholder="Lat"
-                        value={String(form.lat ?? "")}
-                        onChange={(e) => setForm((f: any) => ({ ...f, lat: Number(e.target.value) }))}
-                      />
-                      <input
-                        className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
-                        placeholder="Lng"
-                        value={String(form.lng ?? "")}
-                        onChange={(e) => setForm((f: any) => ({ ...f, lng: Number(e.target.value) }))}
-                      />
-
-                      <button
-                        onClick={() => {
-                          setPickMode((v) => !v);
-                          setSelectTick((t) => t + 1);
-                        }}
-                        className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${pickMode ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5"}`}
-                        disabled={saving}
-                        title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
-                      >
-                        📍 Karte
-                      </button>
-
-                      <button
-                        onClick={() => setNavOpen(true)}
-                        className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
-                        disabled={saving || !canNavigateNow()}
-                        title="Navigation starten"
-                      >
-                        🧭 Navi
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
-                      <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
-                      <TogglePill on={!!form.yearRound} icon="📆" label="Ganzjährig" onClick={() => setForm((f: any) => ({ ...f, yearRound: !f.yearRound }))} />
-                      <TogglePill on={!!form.onlineBooking} icon="🌐" label="Online" onClick={() => setForm((f: any) => ({ ...f, onlineBooking: !f.onlineBooking }))} />
-                      <TogglePill on={!!form.gastronomy} icon="🍽️" label="Gastro" onClick={() => setForm((f: any) => ({ ...f, gastronomy: !f.gastronomy }))} />
-                    </div>
-
-                    <div className="my-2 h-px bg-white/10" />
-
-                    <TsEditor
-                      rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
-                      onChange={(next, computedTotal) => {
-                        setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
-                      }}
-                      disabled={saving}
-                    />
-
-                    <ImagesPanel
-                      placeId={form.id ? Number(form.id) : null}
-                      images={Array.isArray(form.images) ? form.images : []}
-                      thumbnailImageId={Number.isFinite(Number(form.thumbnailImageId)) ? Number(form.thumbnailImageId) : null}
-                      uploading={uploading}
-                      saving={saving}
-                      uploadMsg={uploadMsg}
-                      onPickFiles={(files) => setPickedFiles(files)}
-                      pickedFilesCount={pickedFiles.length}
-                      onUpload={uploadImages}
-                      onOpenLightboxById={openLightboxById}
-                      onSetThumbnail={setThumbnail}
-                      onDeleteImage={deleteImage}
-                    />
-
-                    <button
-                      onClick={save}
-                      className="mt-3 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
-                      disabled={saving}
-                    >
-                      {saving ? "Speichert..." : "Speichern"}
-                    </button>
-                  </div>
+                  <EditorBody />
                 </div>
               </div>
 
@@ -1023,7 +1084,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* NAV MODAL - ganz bewusst simpel - mobile friendly */}
+      {/* NAV MODAL */}
       {navOpen ? (
         <div className="fixed inset-0 z-[9999]">
           <div className="absolute inset-0 bg-black/70" onClick={() => setNavOpen(false)} />
@@ -1076,9 +1137,7 @@ export default function MapPage() {
               </button>
             </div>
 
-            <div className="mt-3 text-xs opacity-60">
-              Hinweis - auf Desktop öffnet sich ein neuer Tab - auf Mobile springt die Maps App meist direkt an.
-            </div>
+            <div className="mt-3 text-xs opacity-60">Hinweis - auf Desktop öffnet sich ein neuer Tab - auf Mobile springt die Maps App meist direkt an.</div>
           </div>
         </div>
       ) : null}

@@ -41,6 +41,44 @@ function isMobileNow() {
   return window.matchMedia("(max-width: 1023px)").matches;
 }
 
+function isIOSNow() {
+  if (typeof window === "undefined") return false;
+  const ua = window.navigator.userAgent || "";
+  const isiPhone = /iPhone|iPad|iPod/i.test(ua);
+  const isMacTouch = /Macintosh/i.test(ua) && (navigator as any).maxTouchPoints > 1;
+  return isiPhone || isMacTouch;
+}
+
+function safeNum(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+type NavProvider = "AUTO" | "GOOGLE" | "APPLE";
+
+function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: number, label?: string) {
+  const name = String(label ?? "").trim();
+
+  if (provider === "APPLE") {
+    // Apple Maps - daddr
+    // Beispiel: http://maps.apple.com/?daddr=48.1,11.6&q=Name
+    const base = "http://maps.apple.com/";
+    const params = new URLSearchParams();
+    params.set("daddr", `${lat},${lng}`);
+    if (name) params.set("q", name);
+    return `${base}?${params.toString()}`;
+  }
+
+  // Google Maps - directions endpoint
+  // Beispiel: https://www.google.com/maps/dir/?api=1&destination=48.1,11.6&destination_place_id=&travelmode=driving
+  const base = "https://www.google.com/maps/dir/?api=1";
+  const params = new URLSearchParams();
+  params.set("destination", `${lat},${lng}`);
+  if (name) params.set("destination_place_id", ""); // bewusst leer - nur Koordinaten
+  params.set("travelmode", "driving");
+  return `${base}&${params.toString()}`;
+}
+
 export default function MapPage() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -103,6 +141,9 @@ export default function MapPage() {
     images: [],
     thumbnailImageId: null,
   });
+
+  // NAV overlay
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     setIsMobile(isMobileNow());
@@ -559,6 +600,36 @@ export default function MapPage() {
     return Number.isFinite(km) ? km : null;
   }, [myPos, selectedPlace]);
 
+  function canNavigateNow() {
+    const lat = safeNum(form.lat);
+    const lng = safeNum(form.lng);
+    return lat != null && lng != null;
+  }
+
+  function openNav(provider: NavProvider) {
+    const lat = safeNum(form.lat);
+    const lng = safeNum(form.lng);
+    if (lat == null || lng == null) return;
+
+    const label = String(form.name ?? "").trim();
+
+    let effective: Exclude<NavProvider, "AUTO"> = "GOOGLE";
+    if (provider === "AUTO") {
+      effective = isIOSNow() ? "APPLE" : "GOOGLE";
+    } else {
+      effective = provider;
+    }
+
+    const url = buildNavUrl(effective, lat, lng, label);
+    setNavOpen(false);
+
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      window.location.href = url;
+    }
+  }
+
   return (
     <div className="h-[100svh] w-full bg-black text-white">
       <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
@@ -680,6 +751,15 @@ export default function MapPage() {
                       title={pickMode ? "Karten-Pick beenden" : "Koordinaten aus Karte wählen"}
                     >
                       📍 Karte
+                    </button>
+
+                    <button
+                      onClick={() => setNavOpen(true)}
+                      className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
+                      disabled={saving || !canNavigateNow()}
+                      title="Navigation starten"
+                    >
+                      🧭 Navi
                     </button>
                   </div>
 
@@ -882,6 +962,15 @@ export default function MapPage() {
                       >
                         📍 Karte
                       </button>
+
+                      <button
+                        onClick={() => setNavOpen(true)}
+                        className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
+                        disabled={saving || !canNavigateNow()}
+                        title="Navigation starten"
+                      >
+                        🧭 Navi
+                      </button>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -933,6 +1022,66 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* NAV MODAL - ganz bewusst simpel - mobile friendly */}
+      {navOpen ? (
+        <div className="fixed inset-0 z-[9999]">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setNavOpen(false)} />
+          <div className="absolute left-1/2 top-1/2 w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-black/85 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.60)] backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">Navigation starten</div>
+                <div className="mt-1 text-xs opacity-70">
+                  Ziel - {String(form.name ?? "Ort").trim() || "Ort"} - {String(form.lat ?? "")} - {String(form.lng ?? "")}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setNavOpen(false)}
+                className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10"
+                title="Schließen"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              <button
+                type="button"
+                onClick={() => openNav("AUTO")}
+                className="w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
+                disabled={!canNavigateNow()}
+                title="Automatisch - iOS Apple Karten - sonst Google Maps"
+              >
+                🧭 Automatisch
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openNav("GOOGLE")}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10 disabled:opacity-60"
+                disabled={!canNavigateNow()}
+              >
+                🗺️ Google Maps
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openNav("APPLE")}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10 disabled:opacity-60"
+                disabled={!canNavigateNow()}
+              >
+                🍎 Apple Karten
+              </button>
+            </div>
+
+            <div className="mt-3 text-xs opacity-60">
+              Hinweis - auf Desktop öffnet sich ein neuer Tab - auf Mobile springt die Maps App meist direkt an.
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
     </div>

@@ -151,7 +151,7 @@ export default function MapPage() {
   const [selectTick, setSelectTick] = useState(0);
   const [focusToken, setFocusToken] = useState(0);
 
-  const [sortMode, setSortMode] = useState<SortMode>("SCORE");
+  const [sortMode, setSortMode] = useState<SortMode>("DIST");
 
   const [myPos, setMyPos] = useState<{ lat: number; lng: number } | null>(null);
   const [geoStatus, setGeoStatus] = useState<string>("");
@@ -216,6 +216,8 @@ export default function MapPage() {
     TS: false,
     IMAGES: false,
   });
+
+  const geoWatchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     setIsMobile(isMobileNow());
@@ -491,22 +493,57 @@ export default function MapPage() {
 
   const editorKey = `${editingNew ? "new" : selectedId ?? "none"}-${selectTick}`;
 
-  function requestMyLocation() {
+  function stopGeoWatch() {
+    if (geoWatchIdRef.current != null && navigator.geolocation) {
+      try {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      } catch {}
+    }
+    geoWatchIdRef.current = null;
+  }
+
+  function startGeoWatch() {
     setGeoStatus("");
+
     if (!navigator.geolocation) {
       setGeoStatus("Geolocation nicht verfügbar");
       return;
     }
 
-    setGeoStatus("Bitte Browser-Erlaubnis geben…");
-    navigator.geolocation.getCurrentPosition(
+    // clean restart
+    stopGeoWatch();
+
+    setGeoStatus("Eigenposition - wartet auf GPS…");
+
+    const id = navigator.geolocation.watchPosition(
       (pos) => {
         setMyPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGeoStatus("Eigenposition gesetzt");
+        setGeoStatus("Eigenposition aktiv");
       },
-      () => setGeoStatus("Nicht erlaubt / fehlgeschlagen"),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      () => {
+        setGeoStatus("Eigenposition nicht erlaubt / fehlgeschlagen");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 }
     );
+
+    geoWatchIdRef.current = id as any;
+  }
+
+  // HARD REQUIREMENT: Eigenposition immer holen + aktuell halten
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    startGeoWatch();
+
+    return () => {
+      stopGeoWatch();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function requestMyLocation() {
+    // Button bleibt - startet die Watch neu (kein Feature Verlust)
+    startGeoWatch();
   }
 
   function zoomToMyPos() {

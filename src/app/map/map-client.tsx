@@ -1,7 +1,7 @@
 // src/app/map/map-client.tsx
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -329,6 +329,25 @@ function destinationPoint(lat: number, lng: number, distanceKm: number, bearingD
   return { lat: toDeg(lat2), lng: ((toDeg(lon2) + 540) % 360) - 180 };
 }
 
+/** Nominatim */
+type NominatimResult = {
+  place_id?: number | string;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+};
+
+function searchMarkerHtml() {
+  return `<div style="
+    width:30px;height:30px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,0.92);
+    border:2px solid rgba(0,0,0,0.86);
+    box-shadow:0 18px 36px rgba(0,0,0,0.60);
+    font-size:16px;
+  ">🔎</div>`;
+}
+
 export default function MapClient(props: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -352,6 +371,15 @@ export default function MapClient(props: Props) {
 
   const isMobileRef = useRef<boolean>(false);
   const lastSelectMsRef = useRef<number>(0);
+
+  // SEARCH (Nominatim)
+  const [searchQ, setSearchQ] = useState("");
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchErr, setSearchErr] = useState<string>("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchMarkerRef = useRef<L.Marker | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = props.selectedId;
@@ -776,9 +804,215 @@ export default function MapClient(props: Props) {
     };
   }, [props.pickMode, props.onPick]);
 
+  // SEARCH: Debounced Nominatim query
+  useEffect(() => {
+    const q = String(searchQ ?? "").trim();
+
+    setSearchErr("");
+
+    if (q.length < 3) {
+      if (searchAbortRef.current) {
+        try {
+          searchAbortRef.current.abort();
+        } catch {}
+      }
+      setSearchBusy(false);
+      setSearchResults([]);
+      return;
+    }
+
+    const t = window.setTimeout(async () => {
+      if (searchAbortRef.current) {
+        try {
+          searchAbortRef.current.abort();
+        } catch {}
+      }
+
+      const ac = new AbortController();
+      searchAbortRef.current = ac;
+
+      setSearchBusy(true);
+      setSearchErr("");
+
+      try {
+        const url =
+          "https://nominatim.openstreetmap.org/search" +
+          `?format=jsonv2` +
+          `&q=${encodeURIComponent(q)}` +
+          `&addressdetails=1` +
+          `&limit=6` +
+          `&accept-language=de`;
+
+        const res = await fetch(url, {
+          method: "GET",
+          signal: ac.signal,
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          setSearchResults([]);
+          setSearchErr("Suche fehlgeschlagen");
+          return;
+        }
+
+        const data = (await res.json().catch(() => [])) as unknown;
+        const arr = Array.isArray(data) ? (data as NominatimResult[]) : [];
+
+        const cleaned = arr
+          .map((x) => ({
+            place_id: x.place_id,
+            display_name: x.display_name,
+            lat: x.lat,
+            lon: x.lon,
+          }))
+          .filter((x) => !!x.display_name && !!x.lat && !!x.lon);
+
+        setSearchResults(cleaned);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setSearchResults([]);
+        setSearchErr("Suche fehlgeschlagen");
+      } finally {
+        setSearchBusy(false);
+      }
+    }, 320);
+
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [searchQ]);
+
+  function clearSearch() {
+    setSearchQ("");
+    setSearchResults([]);
+    setSearchErr("");
+    setSearchOpen(false);
+
+    if (searchMarkerRef.current) {
+      try {
+        searchMarkerRef.current.remove();
+      } catch {}
+      searchMarkerRef.current = null;
+    }
+  }
+
+  function applySearchHit(hit: NominatimResult) {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const lat = Number(hit.lat);
+    const lng = Number(hit.lon);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const marker = searchMarkerRef.current;
+    if (!marker) {
+      searchMarkerRef.current = L.marker([lat, lng], {
+        icon: makeDivIcon(searchMarkerHtml(), 34),
+        interactive: false,
+        zIndexOffset: 1300,
+      });
+      searchMarkerRef.current.addTo(map);
+    } else {
+      marker.setLatLng([lat, lng]);
+      marker.setIcon(makeDivIcon(searchMarkerHtml(), 34));
+    }
+
+    map.setView([lat, lng], Math.max(map.getZoom(), 14), { animate: true });
+
+    setSearchOpen(false);
+  }
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      setSearchOpen(false);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      if (searchResults.length) {
+        e.preventDefault();
+        applySearchHit(searchResults[0]);
+      }
+    }
+  }
+
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-map-client="DEBUG-SEARCH-OVERLAY">
       <div ref={rootRef} className="h-full w-full" />
+
+      {/* SEARCH OVERLAY (Nominatim - OSM) */}
+      <div className="pointer-events-none absolute left-3 right-3 top-3" style={{ zIndex: 5000 }}>
+        <div className="pointer-events-auto mx-auto max-w-[640px]">
+          <div className="rounded-2xl border border-white/10 bg-black/55 backdrop-blur px-3 py-2 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
+            <div className="flex items-center gap-2">
+              <div className="shrink-0 text-sm opacity-90">🔎</div>
+
+              <input
+                value={searchQ}
+                onChange={(e) => {
+                  setSearchQ(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={onSearchKeyDown}
+                placeholder="Ort oder Adresse suchen…"
+                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none placeholder:text-white/45"
+                inputMode="search"
+              />
+
+              {searchBusy ? (
+                <div className="shrink-0 text-xs opacity-70">sucht…</div>
+              ) : searchQ.trim() ? (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 text-xs hover:bg-white/10"
+                  title="Suche leeren"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+
+            {searchOpen ? (
+              <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-black/35">
+                {searchErr ? <div className="px-3 py-2 text-xs text-red-200/90">{searchErr}</div> : null}
+
+                {!searchErr && searchQ.trim().length < 3 ? (
+                  <div className="px-3 py-2 text-xs opacity-70">Mindestens 3 Zeichen…</div>
+                ) : null}
+
+                {!searchErr && searchQ.trim().length >= 3 && !searchBusy && !searchResults.length ? (
+                  <div className="px-3 py-2 text-xs opacity-70">Keine Treffer</div>
+                ) : null}
+
+                {searchResults.length ? (
+                  <div className="max-h-[280px] overflow-auto">
+                    {searchResults.map((hit) => {
+                      const key = String(hit.place_id ?? hit.display_name ?? Math.random());
+                      const label = String(hit.display_name ?? "").trim();
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => applySearchHit(hit)}
+                          className="block w-full border-b border-white/10 px-3 py-2 text-left text-xs hover:bg-white/5"
+                          title={label}
+                        >
+                          <div className="line-clamp-2">{label}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
 
       {props.pickMode ? (
         <div className="pointer-events-none absolute inset-0">

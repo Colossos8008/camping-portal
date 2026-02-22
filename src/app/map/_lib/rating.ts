@@ -1,55 +1,49 @@
-import type { RatingDetail, TSValue, TSHaltung } from "../ts-editor";
+// src/app/map/_lib/rating.ts
+import type { TSHaltung } from "./types";
+
+export type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
+
+export type RatingDetail = {
+  tsUmgebung: TSValue;
+  tsPlatzStruktur: TSValue;
+  tsSanitaer: TSValue;
+  tsBuchung: TSValue;
+  tsHilde: TSValue;
+  tsPreisLeistung: TSValue;
+  tsNachklang: TSValue;
+
+  totalPoints: number;
+
+  note: string;
+
+  cUmgebung: string;
+  cPlatzStruktur: string;
+  cSanitaer: string;
+  cBuchung: string;
+  cHilde: string;
+  cPreisLeistung: string;
+  cNachklang: string;
+};
 
 export const TS_DEFAULT: TSValue = "OKAY";
 
-export function tsToPoints(v: TSValue | null | undefined): number {
-  if (v === "STIMMIG") return 2;
-  if (v === "OKAY") return 1;
-  return 0;
+export function asTSValue(v: unknown): TSValue {
+  if (v === "STIMMIG" || v === "OKAY" || v === "PASST_NICHT") return v;
+
+  const s = String(v ?? "").toUpperCase();
+  if (s === "STIMMIG") return "STIMMIG";
+  if (s === "OKAY") return "OKAY";
+  if (s === "PASST_NICHT" || s === "PASSTNICHT") return "PASST_NICHT";
+
+  return TS_DEFAULT;
 }
 
-export function computeTs21Total(input: {
-  hundAmPlatz: TSValue | null | undefined;
-  gassiUmfeld: TSValue | null | undefined;
-  buchung: TSValue | null | undefined;
-  ankommen: TSValue | null | undefined;
-  sanitaerPrivat: TSValue | null | undefined;
-  umgebung: TSValue | null | undefined;
-  stellplatz: TSValue | null | undefined;
-  ruhe: TSValue | null | undefined;
-  nachklang: TSValue | null | undefined;
-  wiederkommen: TSValue | null | undefined;
-}): number {
-  return (
-    tsToPoints(input.hundAmPlatz) +
-    tsToPoints(input.gassiUmfeld) +
-    tsToPoints(input.buchung) +
-    tsToPoints(input.ankommen) +
-    tsToPoints(input.sanitaerPrivat) +
-    tsToPoints(input.umgebung) +
-    tsToPoints(input.stellplatz) +
-    tsToPoints(input.ruhe) +
-    tsToPoints(input.nachklang) +
-    tsToPoints(input.wiederkommen)
-  );
+export function asTSHaltung(v: unknown): TSHaltung {
+  return v === "EXPLORER" ? "EXPLORER" : "DNA";
 }
 
-export function blankRating(): RatingDetail {
-  const aiTotal = computeTs21Total({
-    hundAmPlatz: TS_DEFAULT,
-    gassiUmfeld: TS_DEFAULT,
-    buchung: TS_DEFAULT,
-    ankommen: TS_DEFAULT,
-    sanitaerPrivat: TS_DEFAULT,
-    umgebung: TS_DEFAULT,
-    stellplatz: TS_DEFAULT,
-    ruhe: TS_DEFAULT,
-    nachklang: TS_DEFAULT,
-    wiederkommen: TS_DEFAULT,
-  });
-
+export function blankRatingDetail(): RatingDetail {
   return {
-    // TS 1 legacy – bleibt, damit nix crasht
     tsUmgebung: TS_DEFAULT,
     tsPlatzStruktur: TS_DEFAULT,
     tsSanitaer: TS_DEFAULT,
@@ -66,48 +60,72 @@ export function blankRating(): RatingDetail {
     cHilde: "",
     cPreisLeistung: "",
     cNachklang: "",
-
-    // TS 2.1 AI
-    aiHaltung: "DNA" as TSHaltung,
-    aiHundAmPlatz: TS_DEFAULT,
-    aiGassiUmfeld: TS_DEFAULT,
-    aiBuchung: TS_DEFAULT,
-    aiAnkommen: TS_DEFAULT,
-    aiSanitaerPrivat: TS_DEFAULT,
-    aiUmgebung: TS_DEFAULT,
-    aiStellplatz: TS_DEFAULT,
-    aiRuhe: TS_DEFAULT,
-    aiNachklang: TS_DEFAULT,
-    aiWiederkommen: TS_DEFAULT,
-    aiTotalPoints: aiTotal,
-    aiNote: "",
-
-    // TS 2.1 User – leer bis Besuch
-    userHaltung: null,
-    userHundAmPlatz: null,
-    userGassiUmfeld: null,
-    userBuchung: null,
-    userAnkommen: null,
-    userSanitaerPrivat: null,
-    userUmgebung: null,
-    userStellplatz: null,
-    userRuhe: null,
-    userNachklang: null,
-    userWiederkommen: null,
-    userTotalPoints: null,
-    userNote: "",
-
-    haltungVerified: false,
   };
 }
 
-export function effectiveTs21Total(rd: RatingDetail): number {
-  const userTotal = typeof rd.userTotalPoints === "number" ? rd.userTotalPoints : null;
-  if (userTotal != null && Number.isFinite(userTotal)) return userTotal;
+// Backwards compatible alias - map/page.tsx importiert das so
+export function blankRating(): RatingDetail {
+  return blankRatingDetail();
+}
 
-  const aiTotal = typeof rd.aiTotalPoints === "number" ? rd.aiTotalPoints : null;
-  if (aiTotal != null && Number.isFinite(aiTotal)) return aiTotal;
+export function tsValueToPoints(v: TSValue): number {
+  if (v === "STIMMIG") return 2;
+  if (v === "OKAY") return 1;
+  return 0;
+}
 
-  // Fallback – TS 1 legacy
-  return Number(rd.totalPoints ?? 0) || 0;
+export function calcTotalPoints(
+  detail: Pick<
+    RatingDetail,
+    | "tsUmgebung"
+    | "tsPlatzStruktur"
+    | "tsSanitaer"
+    | "tsBuchung"
+    | "tsHilde"
+    | "tsPreisLeistung"
+    | "tsNachklang"
+  >
+): number {
+  return (
+    tsValueToPoints(detail.tsUmgebung) +
+    tsValueToPoints(detail.tsPlatzStruktur) +
+    tsValueToPoints(detail.tsSanitaer) +
+    tsValueToPoints(detail.tsBuchung) +
+    tsValueToPoints(detail.tsHilde) +
+    tsValueToPoints(detail.tsPreisLeistung) +
+    tsValueToPoints(detail.tsNachklang)
+  );
+}
+
+export function normalizeRatingDetail(input: unknown): RatingDetail {
+  const b = blankRatingDetail();
+  const src = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+
+  const out: RatingDetail = {
+    tsUmgebung: asTSValue(src.tsUmgebung),
+    tsPlatzStruktur: asTSValue(src.tsPlatzStruktur),
+    tsSanitaer: asTSValue(src.tsSanitaer),
+    tsBuchung: asTSValue(src.tsBuchung),
+    tsHilde: asTSValue(src.tsHilde),
+    tsPreisLeistung: asTSValue(src.tsPreisLeistung),
+    tsNachklang: asTSValue(src.tsNachklang),
+
+    totalPoints:
+      typeof src.totalPoints === "number" && Number.isFinite(src.totalPoints) ? (src.totalPoints as number) : b.totalPoints,
+
+    note: typeof src.note === "string" ? (src.note as string) : "",
+    cUmgebung: typeof src.cUmgebung === "string" ? (src.cUmgebung as string) : "",
+    cPlatzStruktur: typeof src.cPlatzStruktur === "string" ? (src.cPlatzStruktur as string) : "",
+    cSanitaer: typeof src.cSanitaer === "string" ? (src.cSanitaer as string) : "",
+    cBuchung: typeof src.cBuchung === "string" ? (src.cBuchung as string) : "",
+    cHilde: typeof src.cHilde === "string" ? (src.cHilde as string) : "",
+    cPreisLeistung: typeof src.cPreisLeistung === "string" ? (src.cPreisLeistung as string) : "",
+    cNachklang: typeof src.cNachklang === "string" ? (src.cNachklang as string) : "",
+  };
+
+  if (!(typeof src.totalPoints === "number" && Number.isFinite(src.totalPoints as number))) {
+    out.totalPoints = calcTotalPoints(out);
+  }
+
+  return out;
 }

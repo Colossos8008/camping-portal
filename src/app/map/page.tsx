@@ -3,7 +3,7 @@
 
 import dynamic from "next/dynamic";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import TsEditor, { RatingDetail } from "./ts-editor";
+import Ts21Editor, { TS21Detail } from "./ts21-editor";
 
 import type { Place, PlaceType, SortMode } from "./_lib/types";
 import { distanceKm } from "./_lib/geo";
@@ -60,7 +60,7 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
   const name = String(label ?? "").trim();
 
   if (provider === "APPLE") {
-    const base = "http://maps.apple.com/";
+    const base = "https://maps.apple.com/";
     const params = new URLSearchParams();
     params.set("daddr", `${lat},${lng}`);
     if (name) params.set("q", name);
@@ -81,7 +81,6 @@ function collapsedSections(): Record<EditorSectionId, boolean> {
 }
 
 function loadSectionState(): Record<EditorSectionId, boolean> {
-  // Default: alles eingeklappt
   if (typeof window === "undefined") return collapsedSections();
 
   try {
@@ -146,6 +145,34 @@ function Section(props: {
   );
 }
 
+// TS2.1 Score
+type TS21Value = "S" | "O" | "X";
+function ts21ToPoints(v: TS21Value): number {
+  if (v === "S") return 2;
+  if (v === "O") return 1;
+  return 0;
+}
+function normTS21Value(v: any): TS21Value {
+  return v === "S" || v === "O" || v === "X" ? v : "O";
+}
+function isTsRelevantType(t: any) {
+  return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
+}
+function ts21TotalFromDetail(raw: any): number | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const src = raw.activeSource === "USER" ? "USER" : "AI";
+  const scores =
+    (src === "USER" ? raw.user : raw.ai) && typeof (src === "USER" ? raw.user : raw.ai) === "object"
+      ? (src === "USER" ? raw.user : raw.ai)
+      : {};
+
+  const keys = ["1a", "1b", "2a", "2b", "3", "4a", "4b", "5", "6", "7"];
+  let sum = 0;
+  for (const k of keys) sum += ts21ToPoints(normTS21Value((scores as any)[k]));
+  return sum;
+}
+
 export default function MapPage() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -153,7 +180,6 @@ export default function MapPage() {
   const [selectTick, setSelectTick] = useState(0);
   const [focusToken, setFocusToken] = useState(0);
 
-  // Standard: Entfernung
   const [sortMode, setSortMode] = useState<SortMode>("DIST");
 
   const [myPos, setMyPos] = useState<{ lat: number; lng: number } | null>(null);
@@ -187,10 +213,12 @@ export default function MapPage() {
   const [lbOpen, setLbOpen] = useState(false);
   const [lbIndex, setLbIndex] = useState(0);
 
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean>(() => (typeof window === "undefined" ? false : isMobileNow()));
 
   const editorPanelRef = useRef<HTMLDivElement | null>(null);
   const mapPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const editorScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [panelMapOpen, setPanelMapOpen] = useState(true);
   const [panelEditorOpen, setPanelEditorOpen] = useState(true);
@@ -207,23 +235,32 @@ export default function MapPage() {
     onlineBooking: false,
     gastronomy: false,
     ratingDetail: blankRating(),
+    ts2: null,
+    ts21: null,
     images: [],
     thumbnailImageId: null,
   });
 
   const [navOpen, setNavOpen] = useState(false);
 
-  // Default: Sektionen eingeklappt, Editor selbst bleibt sichtbar
   const [sectionOpen, setSectionOpen] = useState<Record<EditorSectionId, boolean>>(collapsedSections());
 
   const geoWatchIdRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    setIsMobile(isMobileNow());
+  function scrollEditorTop() {
+    requestAnimationFrame(() => {
+      try {
+        editorScrollRef.current?.scrollTo({ top: 0 });
+      } catch {}
+    });
+  }
 
+  useEffect(() => {
     function onResize() {
       setIsMobile(isMobileNow());
     }
+
+    setIsMobile(isMobileNow());
 
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -275,15 +312,15 @@ export default function MapPage() {
   const selectedPlace = useMemo(() => places.find((p) => p.id === selectedId) ?? null, [places, selectedId]);
 
   const placesWithDistance = useMemo(() => {
-    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null }));
+    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null } as any));
     return places.map((p) => {
       const km = distanceKm(myPos.lat, myPos.lng, p.lat, p.lng);
-      return { ...p, distanceKm: Number.isFinite(km) ? km : null };
+      return { ...p, distanceKm: Number.isFinite(km) ? km : null } as any;
     });
   }, [places, myPos]);
 
   const filteredPlaces = useMemo(() => {
-    return placesWithDistance.filter((p) => {
+    return placesWithDistance.filter((p: any) => {
       if (p.type === "STELLPLATZ" && !showStellplatz) return false;
       if (p.type === "CAMPINGPLATZ" && !showCampingplatz) return false;
       if (p.type === "SEHENSWUERDIGKEIT" && !showSehens) return false;
@@ -310,16 +347,26 @@ export default function MapPage() {
     fGastro,
   ]);
 
+  function scoreForListOrSort(p: any): number {
+    if (!isTsRelevantType(p?.type)) return 0;
+
+    const t21 = ts21TotalFromDetail(p?.ts21);
+    if (t21 != null) return t21;
+
+    const t1 = p?.ratingDetail?.totalPoints;
+    return typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
+  }
+
   const sortedPlaces = useMemo(() => {
     const list = [...filteredPlaces];
 
     if (sortMode === "ALPHA") {
-      list.sort((a, b) => a.name.localeCompare(b.name, "de"));
+      list.sort((a: any, b: any) => a.name.localeCompare(b.name, "de"));
       return list;
     }
 
     if (sortMode === "DIST") {
-      list.sort((a, b) => {
+      list.sort((a: any, b: any) => {
         const da = typeof a.distanceKm === "number" ? a.distanceKm : Number.POSITIVE_INFINITY;
         const db = typeof b.distanceKm === "number" ? b.distanceKm : Number.POSITIVE_INFINITY;
         return da - db;
@@ -327,7 +374,7 @@ export default function MapPage() {
       return list;
     }
 
-    list.sort((a, b) => (b.ratingDetail?.totalPoints ?? 0) - (a.ratingDetail?.totalPoints ?? 0));
+    list.sort((a: any, b: any) => scoreForListOrSort(b) - scoreForListOrSort(a));
     return list;
   }, [filteredPlaces, sortMode]);
 
@@ -347,15 +394,16 @@ export default function MapPage() {
       type: selectedPlace.type,
       lat: selectedPlace.lat,
       lng: selectedPlace.lng,
-      dogAllowed: !!selectedPlace.dogAllowed,
-      sanitary: !!selectedPlace.sanitary,
-      yearRound: !!selectedPlace.yearRound,
-      onlineBooking: !!selectedPlace.onlineBooking,
-      gastronomy: !!selectedPlace.gastronomy,
-      ratingDetail: (selectedPlace.ratingDetail ?? blankRating()) as RatingDetail,
+      dogAllowed: !!(selectedPlace as any).dogAllowed,
+      sanitary: !!(selectedPlace as any).sanitary,
+      yearRound: !!(selectedPlace as any).yearRound,
+      onlineBooking: !!(selectedPlace as any).onlineBooking,
+      gastronomy: !!(selectedPlace as any).gastronomy,
+      ratingDetail: (selectedPlace.ratingDetail ?? blankRating()) as any,
       ts2: selectedAny?.ts2 ?? null,
-      images: Array.isArray(selectedPlace.images) ? selectedPlace.images : [],
-      thumbnailImageId: selectedPlace.thumbnailImageId ?? null,
+      ts21: selectedAny?.ts21 ?? null,
+      images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
+      thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
     });
   }, [selectedPlace]);
 
@@ -378,10 +426,9 @@ export default function MapPage() {
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
 
+    scrollEditorTop();
+
     if (isMobile) {
-      // NEW: Auswahl aus Orte-Liste - hoch zur Karte springen
-      // - Editor bleibt sichtbar
-      // - nur die vier Sektionen sind eingeklappt
       if (source === "list") {
         setPanelMapOpen(true);
         setPanelEditorOpen(true);
@@ -390,7 +437,6 @@ export default function MapPage() {
         return;
       }
 
-      // Map-Tap - Editor auf und hinscrollen
       setPanelEditorOpen(true);
       scrollToEditorIfMobile();
     }
@@ -404,6 +450,8 @@ export default function MapPage() {
     setUploadMsg("");
     setPickedFiles([]);
     setSelectTick((t) => t + 1);
+
+    scrollEditorTop();
 
     if (isMobile) {
       setPanelEditorOpen(true);
@@ -422,6 +470,7 @@ export default function MapPage() {
       gastronomy: false,
       ratingDetail: blankRating(),
       ts2: null,
+      ts21: null,
       images: [],
       thumbnailImageId: null,
     });
@@ -435,6 +484,7 @@ export default function MapPage() {
       const isNew = editingNew || !form.id;
 
       const payload: any = {
+        ...(isNew ? {} : { id: Number(form.id) }),
         name: String(form.name ?? "").trim(),
         type: form.type,
         lat: Number(form.lat),
@@ -451,10 +501,12 @@ export default function MapPage() {
           },
         },
         ts2: form.ts2 ?? null,
+        ts21: form.ts21 ?? null,
+        thumbnailImageId: form.thumbnailImageId ?? null,
       };
 
-      const url = isNew ? "/api/places" : `/api/places/${form.id}`;
-      const method = isNew ? "POST" : "PATCH";
+      const url = "/api/places";
+      const method = isNew ? "POST" : "PUT";
 
       const res = await fetch(url, {
         method,
@@ -504,12 +556,16 @@ export default function MapPage() {
     }
   }
 
-  const totalPoints = useMemo(() => {
-    const rd = (form.ratingDetail ?? blankRating()) as RatingDetail;
-    return rd.totalPoints ?? 0;
-  }, [form.ratingDetail]);
+  const editorScore = useMemo(() => {
+    if (!isTsRelevantType(form?.type)) return null;
 
-  const editorKey = `${editingNew ? "new" : selectedId ?? "none"}-${selectTick}`;
+    const t21 = ts21TotalFromDetail(form?.ts21);
+    if (t21 != null) return { value: t21, max: 20, title: "Törtchensystem" };
+
+    const t1 = form?.ratingDetail?.totalPoints;
+    const n = typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
+    return { value: n, max: 14, title: "Törtchensystem" };
+  }, [form?.type, form?.ts21, form?.ratingDetail?.totalPoints]);
 
   function stopGeoWatch() {
     if (geoWatchIdRef.current != null && navigator.geolocation) {
@@ -800,7 +856,10 @@ export default function MapPage() {
     </div>
   );
 
-  function EditorBody() {
+  const shouldShowTS = form.type === "CAMPINGPLATZ" || form.type === "STELLPLATZ";
+
+  // WICHTIG: stabiler JSX-Block (kein inneres Component), damit kein Remount pro Keystroke
+  const editorBody = useMemo(() => {
     return (
       <div className="space-y-3 pt-3">
         {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
@@ -810,7 +869,7 @@ export default function MapPage() {
           {editorSectionsToolbar}
         </div>
 
-        <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(v) => setSection("BASICS", v)}>
+        <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(vv) => setSection("BASICS", vv)}>
           <div className="space-y-2">
             <input
               className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
@@ -845,6 +904,7 @@ export default function MapPage() {
               />
 
               <button
+                type="button"
                 onClick={() => {
                   setPickMode((v) => !v);
                   setSelectTick((t) => t + 1);
@@ -859,6 +919,7 @@ export default function MapPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setNavOpen(true)}
                 className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
                 disabled={saving || !canNavigateNow()}
@@ -870,7 +931,7 @@ export default function MapPage() {
           </div>
         </Section>
 
-        <Section id="TOGGLES" title="Kriterien" icon="✅" open={sectionOpen.TOGGLES} onOpenChange={(v) => setSection("TOGGLES", v)}>
+        <Section id="TOGGLES" title="Kriterien" icon="✅" open={sectionOpen.TOGGLES} onOpenChange={(vv) => setSection("TOGGLES", vv)}>
           <div className="flex flex-wrap items-center gap-2">
             <TogglePill on={!!form.dogAllowed} icon="🐕" label="Hunde" onClick={() => setForm((f: any) => ({ ...f, dogAllowed: !f.dogAllowed }))} />
             <TogglePill on={!!form.sanitary} icon="🚿" label="Sanitär" onClick={() => setForm((f: any) => ({ ...f, sanitary: !f.sanitary }))} />
@@ -880,21 +941,14 @@ export default function MapPage() {
           </div>
         </Section>
 
-        <Section
-          id="TS"
-          title="Törtchensystem"
-          icon="🍰"
-          open={sectionOpen.TS}
-          onOpenChange={(v) => setSection("TS", v)}
-          rightHint={<span className="opacity-80">{totalPoints}/14</span>}
-        >
-          <TsEditor
-            rating={(form.ratingDetail ?? blankRating()) as RatingDetail}
-            onChange={(next, computedTotal) => {
-              setForm((f: any) => ({ ...f, ratingDetail: { ...next, totalPoints: computedTotal } }));
-            }}
-            disabled={saving}
-          />
+        <Section id="TS" title="Törtchensystem" icon="🍰" open={sectionOpen.TS} onOpenChange={(vv) => setSection("TS", vv)}>
+          {shouldShowTS ? (
+            <Ts21Editor value={(form.ts21 ?? null) as TS21Detail | null} onChange={(next) => setForm((f: any) => ({ ...f, ts21: next }))} disabled={saving} />
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs opacity-80">
+              TS ist nur für Campingplatz und Stellplatz verfügbar.
+            </div>
+          )}
         </Section>
 
         <Section
@@ -902,7 +956,7 @@ export default function MapPage() {
           title="Bilder"
           icon="🖼️"
           open={sectionOpen.IMAGES}
-          onOpenChange={(v) => setSection("IMAGES", v)}
+          onOpenChange={(vv) => setSection("IMAGES", vv)}
           rightHint={<span className="opacity-80">{Array.isArray(form.images) ? form.images.length : 0}</span>}
         >
           <ImagesPanel
@@ -922,6 +976,7 @@ export default function MapPage() {
         </Section>
 
         <button
+          type="button"
           onClick={save}
           className="mt-1 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
           disabled={saving}
@@ -930,115 +985,105 @@ export default function MapPage() {
         </button>
       </div>
     );
-  }
+  }, [
+    errorMsg,
+    sectionsHint,
+    editorSectionsToolbar,
+    sectionOpen,
+    form,
+    pickMode,
+    saving,
+    shouldShowTS,
+    uploading,
+    uploadMsg,
+    pickedFiles.length,
+  ]);
 
-  return (
-    <div className="h-[100svh] w-full bg-black text-white">
-      <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
-        {/* MOBILE ORDER: Filter -> Map -> Editor -> Orte */}
-        <div className="w-full lg:hidden">
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-            <FiltersPanel
-              filtersOpen={filtersOpen}
-              setFiltersOpen={setFiltersOpen}
-              showStellplatz={showStellplatz}
-              setShowStellplatz={setShowStellplatz}
-              showCampingplatz={showCampingplatz}
-              setShowCampingplatz={setShowCampingplatz}
-              showSehens={showSehens}
-              setShowSehens={setShowSehens}
-              showHvoTankstelle={showHvoTankstelle}
-              setShowHvoTankstelle={setShowHvoTankstelle}
-              fDog={fDog}
-              setFDog={setFDog}
-              fSan={fSan}
-              setFSan={setFSan}
-              fYear={fYear}
-              setFYear={setFYear}
-              fOnline={fOnline}
-              setFOnline={setFOnline}
-              fGastro={fGastro}
-              setFGastro={setFGastro}
-              onRefresh={() => refreshPlaces(true)}
+  const layout = isMobile ? (
+    <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4">
+      <div className="w-full">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+          <FiltersPanel
+            filtersOpen={filtersOpen}
+            setFiltersOpen={setFiltersOpen}
+            showStellplatz={showStellplatz}
+            setShowStellplatz={setShowStellplatz}
+            showCampingplatz={showCampingplatz}
+            setShowCampingplatz={setShowCampingplatz}
+            showSehens={showSehens}
+            setShowSehens={setShowSehens}
+            showHvoTankstelle={showHvoTankstelle}
+            setShowHvoTankstelle={setShowHvoTankstelle}
+            fDog={fDog}
+            setFDog={setFDog}
+            fSan={fSan}
+            setFSan={setFSan}
+            fYear={fYear}
+            setFYear={setFYear}
+            fOnline={fOnline}
+            setFOnline={setFOnline}
+            fGastro={fGastro}
+            setFGastro={setFGastro}
+            onRefresh={() => refreshPlaces(true)}
+          />
+        </div>
+      </div>
+
+      <div className="w-full" ref={mapPanelRef}>
+        <CollapsiblePanel title="Map" icon="🗺️" open={panelMapOpen} onOpenChange={setPanelMapOpen}>
+          <div className="relative h-[60svh] min-h-[360px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            <MapClient
+              places={sortedPlaces as any}
+              selectedId={selectedId}
+              onSelect={(id: number) => selectPlace(id, "map")}
+              pickMode={pickMode}
+              onPick={(lat: number, lng: number) => {
+                setForm((f: any) => ({ ...f, lat, lng }));
+                setPickMode(false);
+                setSelectTick((t) => t + 1);
+              }}
+              focusToken={focusToken}
+              myPos={myPos}
+              myPosFocusToken={myPosFocusToken}
+              showMyRings={showMyRings}
             />
           </div>
-        </div>
+        </CollapsiblePanel>
+      </div>
 
-        <div className="w-full lg:hidden" ref={mapPanelRef}>
-          <CollapsiblePanel title="Map" icon="🗺️" open={panelMapOpen} onOpenChange={setPanelMapOpen}>
-            <div className="relative h-[60svh] min-h-[360px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <MapClient
-                places={sortedPlaces}
-                selectedId={selectedId}
-                onSelect={(id: number) => selectPlace(id, "map")}
-                pickMode={pickMode}
-                onPick={(lat: number, lng: number) => {
-                  setForm((f: any) => ({ ...f, lat, lng }));
-                  setPickMode(false);
-                  setSelectTick((t) => t + 1);
-                }}
-                focusToken={focusToken}
-                myPos={myPos}
-                myPosFocusToken={myPosFocusToken}
-                showMyRings={showMyRings}
-              />
+      <div className="w-full" ref={editorPanelRef}>
+        <CollapsiblePanel title="Editor" icon="📝" open={panelEditorOpen} onOpenChange={setPanelEditorOpen}>
+          <div className="min-h-0 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            <EditorHeader
+              editingNew={editingNew}
+              saving={saving}
+              formName={String(form.name ?? "")}
+              formType={String((form.type ?? "CAMPINGPLATZ") as string)}
+              score={editorScore}
+              heroImage={heroImage ? { filename: heroImage.filename } : null}
+              headerImages={headerImages}
+              imagesCount={Array.isArray(form.images) ? form.images.length : 0}
+              selectedPlace={selectedPlace}
+              distanceKm={selectedDistanceKm}
+              onOpenLightbox={openLightbox}
+              onSave={save}
+              onDelete={del}
+              onNew={newPlace}
+              canDelete={!editingNew && !!form.id}
+            />
+
+            <div ref={editorScrollRef} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+              {editorBody}
             </div>
-          </CollapsiblePanel>
-        </div>
+          </div>
+        </CollapsiblePanel>
+      </div>
 
-        <div className="w-full lg:hidden" ref={editorPanelRef}>
-          <CollapsiblePanel title="Editor" icon="📝" open={panelEditorOpen} onOpenChange={setPanelEditorOpen}>
-            <div className="min-h-0 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <EditorHeader
-                editingNew={editingNew}
-                saving={saving}
-                formName={String(form.name ?? "")}
-                formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                totalPoints={totalPoints}
-                heroImage={heroImage ? { filename: heroImage.filename } : null}
-                headerImages={headerImages}
-                imagesCount={Array.isArray(form.images) ? form.images.length : 0}
-                selectedPlace={selectedPlace}
-                distanceKm={selectedDistanceKm}
-                onOpenLightbox={openLightbox}
-                onSave={save}
-                onDelete={del}
-                onNew={newPlace}
-                canDelete={!editingNew && !!form.id}
-              />
-
-              <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-                <EditorBody />
-              </div>
-            </div>
-          </CollapsiblePanel>
-        </div>
-
-        <div className="w-full lg:hidden">
-          <CollapsiblePanel title="Orte" icon="📍" open={panelPlacesOpen} onOpenChange={setPanelPlacesOpen}>
-            <div className="h-[70svh] min-h-[420px]">
-              <PlacesList
-                places={sortedPlaces}
-                selectedId={selectedId}
-                onSelect={(id) => selectPlace(id, "list")}
-                sortMode={sortMode}
-                setSortMode={setSortMode}
-                geoStatus={geoStatus}
-                onRequestMyLocation={requestMyLocation}
-                hasMyPos={!!myPos}
-                onZoomToMyPos={zoomToMyPos}
-                showMyRings={showMyRings}
-                setShowMyRings={setShowMyRings}
-              />
-            </div>
-          </CollapsiblePanel>
-        </div>
-
-        {/* DESKTOP LAYOUT: Orte links, Map Mitte, rechts Filter + Editor */}
-        <div className="hidden w-full lg:flex lg:flex-row lg:gap-4 lg:min-h-0">
-          <div className="w-[320px] shrink-0 lg:min-h-0">
+      <div className="w-full">
+        <CollapsiblePanel title="Orte" icon="📍" open={panelPlacesOpen} onOpenChange={setPanelPlacesOpen}>
+          <div className="h-[70svh] min-h-[420px]">
             <PlacesList
-              places={sortedPlaces}
+              places={sortedPlaces as any}
               selectedId={selectedId}
               onSelect={(id) => selectPlace(id, "list")}
               sortMode={sortMode}
@@ -1051,86 +1096,109 @@ export default function MapPage() {
               setShowMyRings={setShowMyRings}
             />
           </div>
+        </CollapsiblePanel>
+      </div>
+    </div>
+  ) : (
+    <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
+      <div className="w-[320px] shrink-0 lg:min-h-0">
+        <PlacesList
+          places={sortedPlaces as any}
+          selectedId={selectedId}
+          onSelect={(id) => selectPlace(id, "list")}
+          sortMode={sortMode}
+          setSortMode={setSortMode}
+          geoStatus={geoStatus}
+          onRequestMyLocation={requestMyLocation}
+          hasMyPos={!!myPos}
+          onZoomToMyPos={zoomToMyPos}
+          showMyRings={showMyRings}
+          setShowMyRings={setShowMyRings}
+        />
+      </div>
 
-          <div className="min-h-0 flex-1">
-            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <MapClient
-                places={sortedPlaces}
-                selectedId={selectedId}
-                onSelect={(id: number) => selectPlace(id, "map")}
-                pickMode={pickMode}
-                onPick={(lat: number, lng: number) => {
-                  setForm((f: any) => ({ ...f, lat, lng }));
-                  setPickMode(false);
-                  setSelectTick((t) => t + 1);
-                }}
-                focusToken={focusToken}
-                myPos={myPos}
-                myPosFocusToken={myPosFocusToken}
-                showMyRings={showMyRings}
-              />
-            </div>
-          </div>
-
-          <div className="w-[420px] shrink-0 lg:min-h-0">
-            <div className="flex h-full min-h-0 flex-col gap-4">
-              <FiltersPanel
-                filtersOpen={filtersOpen}
-                setFiltersOpen={setFiltersOpen}
-                showStellplatz={showStellplatz}
-                setShowStellplatz={setShowStellplatz}
-                showCampingplatz={showCampingplatz}
-                setShowCampingplatz={setShowCampingplatz}
-                showSehens={showSehens}
-                setShowSehens={setShowSehens}
-                showHvoTankstelle={showHvoTankstelle}
-                setShowHvoTankstelle={setShowHvoTankstelle}
-                fDog={fDog}
-                setFDog={setFDog}
-                fSan={fSan}
-                setFSan={setFSan}
-                fYear={fYear}
-                setFYear={setFYear}
-                fOnline={fOnline}
-                setFOnline={setFOnline}
-                fGastro={fGastro}
-                setFGastro={setFGastro}
-                onRefresh={() => refreshPlaces(true)}
-              />
-
-              <div className="min-h-0 flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-                <div ref={editorPanelRef}>
-                  <EditorHeader
-                    editingNew={editingNew}
-                    saving={saving}
-                    formName={String(form.name ?? "")}
-                    formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                    totalPoints={totalPoints}
-                    heroImage={heroImage ? { filename: heroImage.filename } : null}
-                    headerImages={headerImages}
-                    imagesCount={Array.isArray(form.images) ? form.images.length : 0}
-                    selectedPlace={selectedPlace}
-                    distanceKm={selectedDistanceKm}
-                    onOpenLightbox={openLightbox}
-                    onSave={save}
-                    onDelete={del}
-                    onNew={newPlace}
-                    canDelete={!editingNew && !!form.id}
-                  />
-                </div>
-
-                <div key={editorKey} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-                  <EditorBody />
-                </div>
-              </div>
-
-              <div className="text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
-            </div>
-          </div>
+      <div className="min-h-0 flex-1">
+        <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+          <MapClient
+            places={sortedPlaces as any}
+            selectedId={selectedId}
+            onSelect={(id: number) => selectPlace(id, "map")}
+            pickMode={pickMode}
+            onPick={(lat: number, lng: number) => {
+              setForm((f: any) => ({ ...f, lat, lng }));
+              setPickMode(false);
+              setSelectTick((t) => t + 1);
+            }}
+            focusToken={focusToken}
+            myPos={myPos}
+            myPosFocusToken={myPosFocusToken}
+            showMyRings={showMyRings}
+          />
         </div>
       </div>
 
-      {/* NAV MODAL */}
+      <div className="w-[420px] shrink-0 lg:min-h-0">
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <FiltersPanel
+            filtersOpen={filtersOpen}
+            setFiltersOpen={setFiltersOpen}
+            showStellplatz={showStellplatz}
+            setShowStellplatz={setShowStellplatz}
+            showCampingplatz={showCampingplatz}
+            setShowCampingplatz={setShowCampingplatz}
+            showSehens={showSehens}
+            setShowSehens={setShowSehens}
+            showHvoTankstelle={showHvoTankstelle}
+            setShowHvoTankstelle={setShowHvoTankstelle}
+            fDog={fDog}
+            setFDog={setFDog}
+            fSan={fSan}
+            setFSan={setFSan}
+            fYear={fYear}
+            setFYear={setFYear}
+            fOnline={fOnline}
+            setFOnline={setFOnline}
+            fGastro={fGastro}
+            setFGastro={setFGastro}
+            onRefresh={() => refreshPlaces(true)}
+          />
+
+          <div className="min-h-0 flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            <div>
+              <EditorHeader
+                editingNew={editingNew}
+                saving={saving}
+                formName={String(form.name ?? "")}
+                formType={String((form.type ?? "CAMPINGPLATZ") as string)}
+                score={editorScore}
+                heroImage={heroImage ? { filename: heroImage.filename } : null}
+                headerImages={headerImages}
+                imagesCount={Array.isArray(form.images) ? form.images.length : 0}
+                selectedPlace={selectedPlace}
+                distanceKm={selectedDistanceKm}
+                onOpenLightbox={openLightbox}
+                onSave={save}
+                onDelete={del}
+                onNew={newPlace}
+                canDelete={!editingNew && !!form.id}
+              />
+            </div>
+
+            <div ref={editorScrollRef} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+              {editorBody}
+            </div>
+          </div>
+
+          <div className="text-xs opacity-70">Sortierung wirkt nur auf die Liste (kein Zoom).</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-[100svh] w-full bg-black text-white">
+      {layout}
+
       {navOpen ? (
         <div className="fixed inset-0 z-[9999]">
           <div className="absolute inset-0 bg-black/70" onClick={() => setNavOpen(false)} />
@@ -1188,7 +1256,7 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      <Lightbox open={lbOpen} index={lbIndex} images={lbImages} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
+      <Lightbox open={lbOpen} index={lbIndex} images={lbImages as any} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
     </div>
   );
 }

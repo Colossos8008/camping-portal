@@ -5,32 +5,78 @@ import type { SortMode, Place } from "../_lib/types";
 import { formatDistanceKm } from "../_lib/geo";
 import FeatureIcons from "./FeatureIcons";
 
-type TSHaltung = "DNA" | "EXPLORER";
+type TS21Value = "S" | "O" | "X";
+type TS21Source = "AI" | "USER";
 
-function isTs2RelevantType(t: any) {
+function isTsRelevantType(t: any) {
   return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
 }
 
-function ts2Badge(p: Place) {
-  const anyP = p as any;
-  const raw = anyP?.ts2;
-  if (!isTs2RelevantType(p.type)) return null;
+function ts21HaltungBadge(p: Place) {
+  if (!isTsRelevantType((p as any)?.type)) return null;
 
-  const h = raw?.haltung as TSHaltung | undefined;
-  if (h !== "DNA" && h !== "EXPLORER") return null;
+  const raw = (p as any)?.ts21;
+  if (!raw || typeof raw !== "object") return null;
 
-  const emoji = h === "EXPLORER" ? "🧭" : "🧬";
-  const label = h === "EXPLORER" ? "Explorer" : "DNA";
+  const dna = !!raw.dna;
+  const explorer = !!raw.explorer;
+
+  const effectiveDna = dna && explorer ? true : dna;
+  const effectiveExplorer = dna && explorer ? false : explorer;
+
+  if (!effectiveDna && !effectiveExplorer) return null;
+
+  const emoji = effectiveExplorer ? "🧭" : "🧬";
+  const label = effectiveExplorer ? "Explorer" : "DNA";
 
   return (
     <div
       className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold leading-none text-white/90"
-      title="Törtchensystem 2.0 - Haltung"
+      title="Törtchensystem - Haltung"
     >
       <span className="text-[11px]">{emoji}</span>
       <span>{label}</span>
     </div>
   );
+}
+
+function ts21ToPoints(v: TS21Value): number {
+  if (v === "S") return 2;
+  if (v === "O") return 1;
+  return 0;
+}
+
+function normTS21Value(v: any): TS21Value {
+  return v === "S" || v === "O" || v === "X" ? v : "O";
+}
+
+function ts21Total(p: Place): number | null {
+  if (!isTsRelevantType((p as any)?.type)) return null;
+
+  const raw = (p as any)?.ts21;
+  if (!raw || typeof raw !== "object") return null;
+
+  const src: TS21Source = raw.activeSource === "USER" ? "USER" : "AI";
+  const scores =
+    (src === "USER" ? raw.user : raw.ai) && typeof (src === "USER" ? raw.user : raw.ai) === "object"
+      ? (src === "USER" ? raw.user : raw.ai)
+      : {};
+
+  const keys = ["1a", "1b", "2a", "2b", "3", "4a", "4b", "5", "6", "7"];
+  let sum = 0;
+  for (const k of keys) sum += ts21ToPoints(normTS21Value((scores as any)[k]));
+  return sum;
+}
+
+function displayScore(p: Place) {
+  if (!isTsRelevantType((p as any)?.type)) return null;
+
+  const t21 = ts21Total(p);
+  if (t21 != null) return { value: t21, max: 20, title: "Törtchensystem" };
+
+  const t1 = (p as any)?.ratingDetail?.totalPoints;
+  const n = typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
+  return { value: n, max: 14, title: "Törtchensystem" };
 }
 
 export default function PlacesList(props: {
@@ -68,7 +114,6 @@ export default function PlacesList(props: {
           <option value="DIST">Sortierung: Entfernung</option>
         </select>
 
-        {/* Eigenposition UI bleibt - aber nicht mehr nur im DIST Modus */}
         <div className="mt-2 flex items-center gap-2">
           <button
             onClick={props.onRequestMyLocation}
@@ -102,8 +147,10 @@ export default function PlacesList(props: {
 
       <div className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
         {props.places.map((p) => {
-          const dist = formatDistanceKm(p.distanceKm);
-          const hasDist = typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm);
+          const dist = formatDistanceKm((p as any).distanceKm);
+          const hasDist = typeof (p as any).distanceKm === "number" && Number.isFinite((p as any).distanceKm);
+
+          const sc = displayScore(p);
 
           return (
             <button
@@ -121,16 +168,17 @@ export default function PlacesList(props: {
                 </div>
 
                 <div className="shrink-0 text-right text-[11px] opacity-90">
-                  <div>
-                    <span title="Törtchen-Score" className="mr-1">
-                      🍰
-                    </span>
-                    {p.ratingDetail?.totalPoints ?? 0}/14
-                  </div>
+                  {sc ? (
+                    <div title={sc.title}>
+                      <span title="Törtchen-Score" className="mr-1" aria-hidden="true">
+                        🍰
+                      </span>
+                      {sc.value}/{sc.max}
+                    </div>
+                  ) : null}
 
-                  {ts2Badge(p)}
+                  {ts21HaltungBadge(p)}
 
-                  {/* DISTANZ: immer sichtbar, rechts unten, schlank */}
                   <div className="mt-1 text-[10px] opacity-70" title="Entfernung von deiner Eigenposition">
                     📏 {hasDist ? dist : "—"}
                   </div>

@@ -1,3 +1,4 @@
+// src/app/api/places/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -6,6 +7,11 @@ export const runtime = "nodejs";
 type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 type TSHaltung = "DNA" | "EXPLORER";
+type TS21Source = "AI" | "USER";
+
+// TS 2.1 Einzelwertung
+type TS21Value = "S" | "O" | "X";
+type TS21Scores = Record<string, TS21Value>;
 
 type RatingDetail = {
   tsUmgebung: TSValue;
@@ -28,6 +34,18 @@ type RatingDetail = {
 
 type TS2Detail = {
   haltung: TSHaltung;
+  note: string;
+};
+
+type TS21Detail = {
+  activeSource: TS21Source;
+  ai: TS21Scores;
+  user: TS21Scores;
+
+  dna: boolean;
+  explorer: boolean;
+  dnaExplorerNote: string;
+
   note: string;
 };
 
@@ -55,10 +73,11 @@ function blankRating(): RatingDetail {
 }
 
 function blankTS2(): TS2Detail {
-  return {
-    haltung: "DNA",
-    note: "",
-  };
+  return { haltung: "DNA", note: "" };
+}
+
+function blankTS21(): TS21Detail {
+  return { activeSource: "AI", ai: {}, user: {}, dna: false, explorer: false, dnaExplorerNote: "", note: "" };
 }
 
 function asTSValue(v: any): TSValue {
@@ -74,8 +93,7 @@ function asString(v: any): string {
 
 function asOptionalString(v: any): string | undefined {
   if (v == null) return undefined;
-  const s = asString(v);
-  return s;
+  return asString(v);
 }
 
 function asOptionalBoolean(v: any): boolean | undefined {
@@ -99,7 +117,12 @@ function normalizeTSHaltung(v: any): TSHaltung {
   return "DNA";
 }
 
-function extractRatingDetail(input: any): any {
+function normalizeTS21Source(v: any): TS21Source {
+  if (v === "USER") return "USER";
+  return "AI";
+}
+
+function extractDetail(input: any): any {
   if (!input) return null;
   if (input?.upsert?.update) return input.upsert.update;
   if (input?.upsert?.create) return input.upsert.create;
@@ -110,7 +133,7 @@ function extractRatingDetail(input: any): any {
 
 function normalizeRatingDetail(input: any): RatingDetail {
   const b = blankRating();
-  const src = extractRatingDetail(input) ?? {};
+  const src = extractDetail(input) ?? {};
 
   const total = Number(src.totalPoints);
   const totalPoints = Number.isFinite(total) ? total : b.totalPoints;
@@ -136,15 +159,110 @@ function normalizeRatingDetail(input: any): RatingDetail {
 }
 
 function normalizeTS2Detail(input: any): TS2Detail {
-  const b = blankTS2();
-  const src = extractRatingDetail(input) ?? {};
+  const src = extractDetail(input) ?? {};
   return {
     haltung: normalizeTSHaltung(src.haltung),
     note: asString(src.note),
   };
 }
 
-export async function GET() {
+function normTS21Value(v: any): TS21Value {
+  if (v === "S" || v === "O" || v === "X") return v;
+  const s = String(v ?? "").toUpperCase();
+  if (s === "STIMMIG") return "S";
+  if (s === "OKAY") return "O";
+  if (s === "PASST_NICHT") return "X";
+  return "O";
+}
+
+function normalizeTS21Scores(raw: any): TS21Scores {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const out: TS21Scores = {};
+  for (const k of Object.keys(src)) out[String(k)] = normTS21Value((src as any)[k]);
+  return out;
+}
+
+function normalizeTS21Detail(input: any): TS21Detail {
+  const src = extractDetail(input) ?? {};
+
+  const dna = !!src.dna;
+  const explorer = !!src.explorer;
+
+  // mutual exclusive – falls beides true kommt
+  const fixedDna = dna && explorer ? true : dna;
+  const fixedExplorer = dna && explorer ? false : explorer;
+
+  return {
+    activeSource: normalizeTS21Source(src.activeSource),
+    ai: normalizeTS21Scores(src.ai),
+    user: normalizeTS21Scores(src.user),
+
+    dna: fixedDna,
+    explorer: fixedExplorer,
+    dnaExplorerNote: asString(src.dnaExplorerNote),
+
+    note: asString(src.note),
+  };
+}
+
+function isUnknownFieldError(e: any, field: string) {
+  const msg = String(e?.message ?? e ?? "");
+  return msg.includes(`Unknown field \`${field}\``) || msg.includes(`Unknown argument \`${field}\``);
+}
+
+// Cache – Schema-Check (ohne select+include Mix!)
+let _supportsTs21Promise: Promise<boolean> | null = null;
+
+async function supportsTs21(): Promise<boolean> {
+  if (_supportsTs21Promise) return _supportsTs21Promise;
+
+  _supportsTs21Promise = (async () => {
+    try {
+      await prisma.place.findFirst({
+        select: {
+          id: true,
+          ts21: { select: { id: true } },
+        },
+      } as any);
+      return true;
+    } catch (e: any) {
+      if (isUnknownFieldError(e, "ts21")) return false;
+      throw e;
+    }
+  })();
+
+  return _supportsTs21Promise;
+}
+
+function ts21IsRequested(body: any): boolean {
+  return body && Object.prototype.hasOwnProperty.call(body, "ts21");
+}
+
+function ts21NotSupportedResponse() {
+  return NextResponse.json(
+    {
+      error: "TS kann nicht gespeichert werden – Prisma Schema hat keine Relation Place.ts21",
+      hint: "Wenn du das hier siehst, ist Prisma Client - Migration Stand inkonsistent.",
+    },
+    { status: 409 }
+  );
+}
+
+async function findManyPlaces() {
+  const canTs21 = await supportsTs21();
+
+  if (canTs21) {
+    return prisma.place.findMany({
+      orderBy: { updatedAt: "desc" },
+      include: {
+        ratingDetail: true,
+        ts2: true,
+        ts21: true,
+        images: true,
+      },
+    });
+  }
+
   const places = await prisma.place.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
@@ -154,7 +272,16 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ places });
+  return places.map((p: any) => ({ ...p, ts21: null }));
+}
+
+export async function GET() {
+  try {
+    const places = await findManyPlaces();
+    return NextResponse.json({ places });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -174,44 +301,58 @@ export async function POST(req: NextRequest) {
 
   const rd = normalizeRatingDetail(body?.ratingDetail);
 
-  const shouldHaveTS2 = type === "CAMPINGPLATZ" || type === "STELLPLATZ";
-  const ts2 = shouldHaveTS2 ? normalizeTS2Detail(body?.ts2) : null;
+  const shouldHaveTS = type === "CAMPINGPLATZ" || type === "STELLPLATZ";
+  const ts2 = shouldHaveTS ? normalizeTS2Detail(body?.ts2) : null;
 
-  const created = await prisma.place.create({
-    data: {
-      name,
-      type,
-      lat,
-      lng,
-      dogAllowed: !!body?.dogAllowed,
-      sanitary: !!body?.sanitary,
-      yearRound: !!body?.yearRound,
-      onlineBooking: !!body?.onlineBooking,
-      gastronomy: !!body?.gastronomy,
-      thumbnailImageId: body?.thumbnailImageId ?? null,
-      ratingDetail: { create: { ...rd } },
-      ...(shouldHaveTS2 ? { ts2: { create: { ...ts2! } } } : {}),
-    },
-    include: { ratingDetail: true, ts2: true, images: true },
-  });
+  const wantTs21 = shouldHaveTS && ts21IsRequested(body);
+  const canTs21 = await supportsTs21();
+  if (wantTs21 && !canTs21) return ts21NotSupportedResponse();
 
-  return NextResponse.json(created);
+  const data: any = {
+    name,
+    type,
+    lat,
+    lng,
+    dogAllowed: !!body?.dogAllowed,
+    sanitary: !!body?.sanitary,
+    yearRound: !!body?.yearRound,
+    onlineBooking: !!body?.onlineBooking,
+    gastronomy: !!body?.gastronomy,
+    thumbnailImageId: body?.thumbnailImageId ?? null,
+
+    ratingDetail: { create: { ...rd } },
+    ...(shouldHaveTS ? { ts2: { create: { ...(ts2 ?? blankTS2()) } } } : {}),
+  };
+
+  if (shouldHaveTS && canTs21) {
+    const ts21 = normalizeTS21Detail(body?.ts21);
+    data.ts21 = { create: { ...(ts21 ?? blankTS21()) } };
+  }
+
+  try {
+    const created = await prisma.place.create({
+      data,
+      include: {
+        ratingDetail: true,
+        ts2: true,
+        ...(canTs21 ? { ts21: true } : {}),
+        images: true,
+      } as any,
+    });
+
+    if (!canTs21) return NextResponse.json({ ...created, ts21: null });
+    return NextResponse.json(created);
+  } catch (e: any) {
+    return NextResponse.json({ error: "Create fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
+  }
 }
 
-/**
- * PUT - Updates an existing Place (and its ratingDetail via upsert).
- * Expected body:
- * - id (required)
- * - any subset of: name, type, lat, lng, dogAllowed, sanitary, yearRound, onlineBooking, gastronomy, thumbnailImageId
- * - optional ratingDetail (partial or full), will be normalized and upserted
- * - optional ts2 (nur fuer CAMPINGPLATZ und STELLPLATZ)
- */
 export async function PUT(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
   const idNum = Number(body?.id);
-  if (!Number.isFinite(idNum)) return NextResponse.json({ error: "id fehlt/ungueltig" }, { status: 400 });
+  if (!Number.isFinite(idNum)) return NextResponse.json({ error: "id fehlt oder ungueltig" }, { status: 400 });
 
   const data: any = {};
 
@@ -261,51 +402,63 @@ export async function PUT(req: NextRequest) {
     };
   }
 
-  if (body?.ts2 !== undefined) {
-    const typeFromBody = body?.type != null ? normalizePlaceType(body?.type) : null;
+  const typeFromBody = body?.type != null ? normalizePlaceType(body?.type) : null;
+  let finalType: PlaceType | null = typeFromBody;
+  if (!finalType) {
+    const existing = await prisma.place.findUnique({ where: { id: idNum }, select: { type: true } });
+    finalType = existing?.type ?? null;
+  }
+  const shouldHaveTS = finalType === "CAMPINGPLATZ" || finalType === "STELLPLATZ";
 
-    // Wenn type im Body fehlt, versuchen wir nicht zu raten - wir lesen den aktuellen Type aus der DB
-    let finalType: PlaceType | null = typeFromBody;
-    if (!finalType) {
-      const existing = await prisma.place.findUnique({ where: { id: idNum }, select: { type: true } });
-      finalType = existing?.type ?? null;
-    }
+  if (body?.ts2 !== undefined && shouldHaveTS) {
+    const ts2 = normalizeTS2Detail(body?.ts2);
+    data.ts2 = {
+      upsert: {
+        create: { ...ts2 },
+        update: { ...ts2 },
+      },
+    };
+  }
 
-    const shouldHaveTS2 = finalType === "CAMPINGPLATZ" || finalType === "STELLPLATZ";
-    if (shouldHaveTS2) {
-      const ts2 = normalizeTS2Detail(body?.ts2);
-      data.ts2 = {
-        upsert: {
-          create: { ...ts2 },
-          update: { ...ts2 },
-        },
-      };
-    }
+  const wantTs21 = shouldHaveTS && ts21IsRequested(body);
+  const canTs21 = await supportsTs21();
+  if (wantTs21 && !canTs21) return ts21NotSupportedResponse();
+
+  if (body?.ts21 !== undefined && shouldHaveTS && canTs21) {
+    const ts21 = normalizeTS21Detail(body?.ts21);
+    data.ts21 = {
+      upsert: {
+        create: { ...ts21 },
+        update: { ...ts21 },
+      },
+    };
   }
 
   try {
     const updated = await prisma.place.update({
       where: { id: idNum },
       data,
-      include: { ratingDetail: true, ts2: true, images: true },
+      include: {
+        ratingDetail: true,
+        ts2: true,
+        ...(canTs21 ? { ts21: true } : {}),
+        images: true,
+      } as any,
     });
 
+    if (!canTs21) return NextResponse.json({ ...updated, ts21: null });
     return NextResponse.json(updated);
   } catch (e: any) {
     return NextResponse.json({ error: "Update fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }
 }
 
-/**
- * DELETE - Deletes a Place by id.
- * Expected body: { id: number }
- */
 export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
   const idNum = Number(body?.id);
-  if (!Number.isFinite(idNum)) return NextResponse.json({ error: "id fehlt/ungueltig" }, { status: 400 });
+  if (!Number.isFinite(idNum)) return NextResponse.json({ error: "id fehlt oder ungueltig" }, { status: 400 });
 
   try {
     await prisma.place.delete({ where: { id: idNum } });

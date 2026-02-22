@@ -12,7 +12,8 @@ export default function EditorHeader(props: {
 
   formName: string;
   formType: string;
-  totalPoints: number;
+
+  score: { value: number; max: number; title: string } | null;
 
   heroImage: { filename: string } | null;
   headerImages: { id: number; filename: string }[];
@@ -51,7 +52,6 @@ export default function EditorHeader(props: {
         <div className="min-w-0">
           <div className="text-2xl font-semibold leading-tight break-words">{title}</div>
 
-          {/* Typ bewusst 1 Zeile tiefer */}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
             <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">{props.formType}</span>
             {props.imagesCount ? (
@@ -60,10 +60,13 @@ export default function EditorHeader(props: {
             {dist ? <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">📏 {dist}</span> : null}
           </div>
 
-          {/* Törtchen Score bewusst nochmal eine Zeile tiefer */}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
-            <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">Bewertung: {props.totalPoints}/14</span>
-          </div>
+          {props.score ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
+              <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5" title={props.score.title}>
+                🍰 Bewertung: {props.score.value}/{props.score.max}
+              </span>
+            </div>
+          ) : null}
 
           <div className="mt-2 flex items-start justify-between gap-3">
             <div className="min-w-0">{props.selectedPlace ? <FeatureIcons {...props.selectedPlace} /> : null}</div>
@@ -71,6 +74,7 @@ export default function EditorHeader(props: {
             <div className="shrink-0">
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={props.onSave}
                   className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-1.5 text-[11px] hover:bg-white/15 disabled:opacity-60"
                   disabled={props.saving}
@@ -80,6 +84,7 @@ export default function EditorHeader(props: {
 
                 {props.canDelete ? (
                   <button
+                    type="button"
                     onClick={props.onDelete}
                     className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] hover:bg-red-500/20 disabled:opacity-60"
                     disabled={props.saving}
@@ -89,6 +94,7 @@ export default function EditorHeader(props: {
                 ) : null}
 
                 <button
+                  type="button"
                   onClick={props.onNew}
                   className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] hover:bg-white/10 disabled:opacity-60"
                   disabled={props.saving}
@@ -104,13 +110,7 @@ export default function EditorHeader(props: {
               props.headerImages.slice(0, 12).map((img: any, idx: number) => {
                 const src = getSupabasePublicUrl(String(img.filename ?? ""));
                 return (
-                  <button
-                    key={img.id}
-                    type="button"
-                    onClick={() => props.onOpenLightbox(idx)}
-                    className="shrink-0"
-                    title="Bild öffnen"
-                  >
+                  <button key={img.id} type="button" onClick={() => props.onOpenLightbox(idx)} className="shrink-0" title="Bild öffnen">
                     {src ? (
                       <img
                         src={src}

@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -24,6 +26,11 @@ enum TSHaltung {
   EXPLORER
 }
 
+enum TS21Source {
+  AI
+  USER
+}
+
 model Place {
   id               Int       @id @default(autoincrement())
   name             String
@@ -40,8 +47,15 @@ model Place {
   thumbnailImageId Int?
   thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)
 
+  // TS 1 (alt) - bleibt bestehen
   ratingDetail     PlaceRating?
+
+  // TS 2 (Haltung) - bleibt bestehen
   ts2              PlaceTS2?
+
+  // TS 2.1 (neu) - additiv
+  ts21             PlaceTS21?
+
   images           Image[]
 
   createdAt        DateTime  @default(now())
@@ -78,18 +92,45 @@ model PlaceRating {
 }
 
 model PlaceTS2 {
-  id        Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
 
-  placeId   Int      @unique
-  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  placeId    Int       @unique
+  place      Place     @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
-  haltung   TSHaltung @default(DNA)
+  haltung    TSHaltung @default(DNA)
 
   // Optional - Freitext für TS 2.0 Kontext - komplett additiv
-  note      String   @default("")
+  note       String    @default("")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+}
+
+model PlaceTS21 {
+  id              Int        @id @default(autoincrement())
+
+  placeId         Int        @unique
+  place           Place      @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  // UI Toggle Persistenz - damit "Wir" nicht zurückspringt
+  activeSource    TS21Source @default(AI)
+
+  // Jsonb - flexibel, ohne Schema Explosion
+  // Expected shape:
+  // { "1a": "O", "1b": "S", ... }  (values: "S" | "O" | "X")
+  ai              Json       @default(dbgenerated("'{}'::jsonb"))
+  user            Json       @default(dbgenerated("'{}'::jsonb"))
+
+  // NEU - TS DNA - Explorer (mutual exclusive in UI - DB erlaubt beides, UI hält es sauber)
+  dna             Boolean    @default(false)
+  explorer        Boolean    @default(false)
+  dnaExplorerNote String     @default("")
+
+  // Optional: Freitext / Kontext
+  note            String     @default("")
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @default(now()) @updatedAt
 }
 
 model Image {

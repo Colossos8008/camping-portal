@@ -21,6 +21,7 @@ type Place = {
   ts2?: { haltung?: TSHaltung | null } | null;
 
   images?: PlaceImage[];
+  heroImageUrl?: string | null;
   thumbnailImageId?: number | null;
   ratingDetail?: { totalPoints?: number | null } | null;
 
@@ -107,6 +108,9 @@ function publicUrlForObjectKey(filename: string | null | undefined) {
 }
 
 function heroFilename(p: Place): string | null {
+  const heroImageUrl = String(p.heroImageUrl ?? "").trim();
+  if (heroImageUrl) return heroImageUrl;
+
   const imgs = Array.isArray(p.images) ? p.images : [];
   if (!imgs.length) return null;
 

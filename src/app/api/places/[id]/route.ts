@@ -174,6 +174,23 @@ function normalizeTS21Scores(raw: any): TS21Scores {
   return out;
 }
 
+
+function normalizeHeroImageUrl(v: any): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+
+  const raw = asString(v).trim();
+  if (!raw) return null;
+
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "http:" || u.protocol === "https:") return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTS21Detail(input: any): TS21Detail {
   const src = extractDetail(input) ?? {};
 
@@ -322,6 +339,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (yearRound !== undefined) data.yearRound = yearRound;
   if (onlineBooking !== undefined) data.onlineBooking = onlineBooking;
   if (gastronomy !== undefined) data.gastronomy = gastronomy;
+
+  if (body?.heroImageUrl !== undefined) {
+    const heroImageUrl = normalizeHeroImageUrl(body?.heroImageUrl);
+    if (heroImageUrl === null && typeof body?.heroImageUrl === "string" && body.heroImageUrl.trim() !== "") {
+      return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
+    }
+    data.heroImageUrl = heroImageUrl;
+  }
 
   if (body?.thumbnailImageId !== undefined) {
     data.thumbnailImageId = body.thumbnailImageId === null ? null : Number(body.thumbnailImageId);

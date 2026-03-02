@@ -1,3 +1,5 @@
+// src/app/map/_lib/types.ts
+
 export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
 export type TSHaltung = "DNA" | "EXPLORER";
@@ -18,10 +20,18 @@ export type PlaceTS2 = {
 export type PlaceTS21 = {
   id: number;
   placeId: number;
+
   activeSource: TS21Source;
   ai: TS21Scores;
   user: TS21Scores;
+
+  // TS 2.1 Haltung
+  dna: boolean;
+  explorer: boolean;
+  dnaExplorerNote: string;
+
   note: string;
+
   createdAt?: string;
   updatedAt?: string;
 };

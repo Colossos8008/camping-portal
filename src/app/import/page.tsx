@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type ImportRowResult =
   | { status: "created" | "updated" | "skipped"; placeName: string; message?: string }
@@ -18,15 +18,109 @@ type ImportResponse = {
   };
 };
 
+type PlaceType = "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
+
+type CountsResponse = {
+  ok: boolean;
+  error?: string;
+  countsByType?: Record<PlaceType, number>;
+  total?: number;
+  debug?: {
+    httpStatus: number;
+    httpStatusText: string;
+    rawResponseSnippet?: string;
+  };
+};
+
+type DeleteResponse = {
+  ok: boolean;
+  error?: string;
+  deleted?: number;
+  type?: PlaceType;
+  debug?: {
+    httpStatus: number;
+    httpStatusText: string;
+    rawResponseSnippet?: string;
+  };
+};
+
+const PLACE_TYPES: Array<{ type: PlaceType; label: string }> = [
+  { type: "CAMPINGPLATZ", label: "Campingplatz" },
+  { type: "STELLPLATZ", label: "Stellplatz" },
+  { type: "HVO_TANKSTELLE", label: "HVO Tankstelle" },
+  { type: "SEHENSWUERDIGKEIT", label: "Sehenswürdigkeit" },
+];
+
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [resp, setResp] = useState<ImportResponse | null>(null);
 
+  const [countsBusy, setCountsBusy] = useState(false);
+  const [counts, setCounts] = useState<CountsResponse | null>(null);
+
+  const [confirmGlobal, setConfirmGlobal] = useState(false);
+  const [confirmByType, setConfirmByType] = useState<Record<PlaceType, boolean>>({
+    CAMPINGPLATZ: false,
+    STELLPLATZ: false,
+    HVO_TANKSTELLE: false,
+    SEHENSWUERDIGKEIT: false,
+  });
+  const [deleteBusyByType, setDeleteBusyByType] = useState<Record<PlaceType, boolean>>({
+    CAMPINGPLATZ: false,
+    STELLPLATZ: false,
+    HVO_TANKSTELLE: false,
+    SEHENSWUERDIGKEIT: false,
+  });
+  const [deleteResp, setDeleteResp] = useState<DeleteResponse | null>(null);
+
   const hasErrors = useMemo(
     () => (resp?.results ?? []).some((r) => r.status === "error"),
     [resp]
   );
+
+  async function loadCounts() {
+    setCountsBusy(true);
+    setCounts(null);
+
+    try {
+      const res = await fetch("/api/admin/place-counts", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      const raw = await res.text();
+
+      let json: CountsResponse | null = null;
+      try {
+        json = JSON.parse(raw) as CountsResponse;
+      } catch {
+        // not JSON
+      }
+
+      if (json) {
+        setCounts(json);
+      } else {
+        setCounts({
+          ok: false,
+          error: "API did not return JSON.",
+          debug: {
+            httpStatus: res.status,
+            httpStatusText: res.statusText,
+            rawResponseSnippet: raw.slice(0, 800),
+          },
+        });
+      }
+    } catch (e: any) {
+      setCounts({ ok: false, error: e?.message ?? "Request failed" });
+    } finally {
+      setCountsBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadCounts();
+  }, []);
 
   async function onImport() {
     if (!file) return;
@@ -56,6 +150,7 @@ export default function ImportPage() {
 
       if (json) {
         setResp(json);
+        void loadCounts();
       } else {
         setResp({
           ok: false,
@@ -74,6 +169,54 @@ export default function ImportPage() {
     }
   }
 
+  async function onDeleteAllByType(type: PlaceType) {
+    setDeleteResp(null);
+    if (!confirmGlobal || !confirmByType[type]) return;
+
+    setDeleteBusyByType((p) => ({ ...p, [type]: true }));
+    try {
+      const res = await fetch("/api/admin/delete-places-by-type", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+
+      const raw = await res.text();
+
+      let json: DeleteResponse | null = null;
+      try {
+        json = JSON.parse(raw) as DeleteResponse;
+      } catch {
+        // not JSON
+      }
+
+      if (json) {
+        setDeleteResp(json);
+      } else {
+        setDeleteResp({
+          ok: false,
+          error: "API did not return JSON.",
+          debug: {
+            httpStatus: res.status,
+            httpStatusText: res.statusText,
+            rawResponseSnippet: raw.slice(0, 800),
+          },
+        });
+      }
+
+      void loadCounts();
+    } catch (e: any) {
+      setDeleteResp({ ok: false, error: e?.message ?? "Request failed" });
+    } finally {
+      setDeleteBusyByType((p) => ({ ...p, [type]: false }));
+      setConfirmByType((p) => ({ ...p, [type]: false }));
+    }
+  }
+
+  const totalCount = counts?.countsByType
+    ? Object.values(counts.countsByType).reduce((a, b) => a + (b ?? 0), 0)
+    : 0;
+
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>
@@ -83,11 +226,194 @@ export default function ImportPage() {
       <p style={{ marginTop: 0, opacity: 0.85 }}>
         CSV Upload für den MVP-Import.<br />
         Kommentarzeilen mit <code>#</code> werden ignoriert.<br />
-        <strong>Geo-Priorität:</strong> lat+lng (falls vorhanden) → plusCode →
-        googleMapsUrl (Redirect wird aufgelöst).<br />
-        <strong>Typ:</strong> placeTypeHint (falls vorhanden) → sonst Heuristik
-        aus placeName.
+        <strong>Geo-Priorität:</strong> lat+lng (falls vorhanden) → plusCode → googleMapsUrl (Redirect wird aufgelöst).<br />
+        <strong>Typ:</strong> placeTypeHint (falls vorhanden) → sonst Heuristik aus placeName.
       </p>
+
+      <section
+        style={{
+          marginTop: 16,
+          padding: 16,
+          border: "1px solid rgba(0,0,0,0.15)",
+          borderRadius: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <h2 style={{ fontSize: 18, margin: 0 }}>DB – Übersicht pro Typ</h2>
+          <button
+            onClick={loadCounts}
+            disabled={countsBusy}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(0,0,0,0.2)",
+              cursor: countsBusy ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {countsBusy ? "Lade…" : "Refresh"}
+          </button>
+        </div>
+
+        {counts && !counts.ok && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ color: "crimson", fontWeight: 800 }}>
+              Fehler: {counts.error}
+            </div>
+
+            {counts.debug && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "rgba(0,0,0,0.04)",
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Debug</div>
+                <div>
+                  HTTP: {counts.debug.httpStatus} {counts.debug.httpStatusText}
+                </div>
+                {counts.debug.rawResponseSnippet && (
+                  <>
+                    <div style={{ marginTop: 8, fontWeight: 700 }}>Response Snippet</div>
+                    <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
+                      {counts.debug.rawResponseSnippet}
+                    </pre>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {counts?.ok && counts.countsByType && (
+          <>
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Badge label={`Total: ${totalCount}`} />
+              {PLACE_TYPES.map((t) => (
+                <Badge key={t.type} label={`${t.label}: ${counts.countsByType?.[t.type] ?? 0}`} />
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 12,
+                borderRadius: 10,
+                background: "rgba(220,20,60,0.05)",
+                border: "1px solid rgba(220,20,60,0.15)",
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Danger Zone</div>
+
+              <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 700 }}>
+                <input
+                  type="checkbox"
+                  checked={confirmGlobal}
+                  onChange={(e) => setConfirmGlobal(e.target.checked)}
+                />
+                Ich möchte Löschoperationen aktivieren
+              </label>
+
+              <div style={{ marginTop: 12, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Typ</th>
+                      <th style={th}>Count</th>
+                      <th style={th}>Checkbox</th>
+                      <th style={th}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PLACE_TYPES.map(({ type, label }) => {
+                      const count = counts.countsByType?.[type] ?? 0;
+                      const checked = confirmByType[type];
+                      const canDelete = confirmGlobal && checked && count > 0 && !deleteBusyByType[type];
+                      return (
+                        <tr key={type}>
+                          <td style={td}>
+                            <strong>{label}</strong>
+                            <div style={{ opacity: 0.75, fontSize: 12 }}>{type}</div>
+                          </td>
+                          <td style={td}>{count}</td>
+                          <td style={td}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={!confirmGlobal}
+                                onChange={(e) =>
+                                  setConfirmByType((p) => ({ ...p, [type]: e.target.checked }))
+                                }
+                              />
+                              Delete All für diesen Typ aktivieren
+                            </label>
+                          </td>
+                          <td style={td}>
+                            <button
+                              onClick={() => onDeleteAllByType(type)}
+                              disabled={!canDelete}
+                              style={{
+                                padding: "10px 14px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(0,0,0,0.2)",
+                                cursor: canDelete ? "pointer" : "not-allowed",
+                                fontWeight: 800,
+                              }}
+                            >
+                              {deleteBusyByType[type] ? "Lösche…" : "Delete All"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {deleteResp && (
+                <div style={{ marginTop: 12 }}>
+                  {deleteResp.ok ? (
+                    <div style={{ fontWeight: 800 }}>
+                      Gelöscht: {deleteResp.deleted ?? 0} Datensätze ({deleteResp.type})
+                    </div>
+                  ) : (
+                    <div style={{ color: "crimson", fontWeight: 800 }}>
+                      Delete Fehler: {deleteResp.error}
+                    </div>
+                  )}
+
+                  {deleteResp.debug && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 12,
+                        borderRadius: 10,
+                        background: "rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Debug</div>
+                      <div>
+                        HTTP: {deleteResp.debug.httpStatus} {deleteResp.debug.httpStatusText}
+                      </div>
+                      {deleteResp.debug.rawResponseSnippet && (
+                        <>
+                          <div style={{ marginTop: 8, fontWeight: 700 }}>Response Snippet</div>
+                          <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
+                            {deleteResp.debug.rawResponseSnippet}
+                          </pre>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </section>
 
       <div
         style={{
@@ -143,21 +469,14 @@ export default function ImportPage() {
             >
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Debug</div>
               <div>
-                HTTP: {resp.debug.httpStatus}{" "}
-                {resp.debug.httpStatusText}
+                HTTP: {resp.debug.httpStatus} {resp.debug.httpStatusText}
               </div>
               {resp.debug.rawResponseSnippet && (
                 <>
                   <div style={{ marginTop: 8, fontWeight: 700 }}>
                     Response Snippet
                   </div>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      margin: 0,
-                      fontSize: 12,
-                    }}
-                  >
+                  <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
                     {resp.debug.rawResponseSnippet}
                   </pre>
                 </>
@@ -166,14 +485,7 @@ export default function ImportPage() {
           )}
 
           {resp.ok && resp.summary && (
-            <div
-              style={{
-                display: "flex",
-                gap: 16,
-                flexWrap: "wrap",
-                marginTop: 12,
-              }}
-            >
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}>
               <Badge label={`Created: ${resp.summary.created}`} />
               <Badge label={`Updated: ${resp.summary.updated}`} />
               <Badge label={`Skipped: ${resp.summary.skipped}`} />
@@ -186,23 +498,12 @@ export default function ImportPage() {
 
           {resp.results && resp.results.length > 0 && (
             <>
-              <h2
-                style={{
-                  fontSize: 18,
-                  marginTop: 16,
-                  marginBottom: 8,
-                }}
-              >
+              <h2 style={{ fontSize: 18, marginTop: 16, marginBottom: 8 }}>
                 Details
               </h2>
 
               <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                  }}
-                >
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
                       <th style={th}>Status</th>
@@ -217,9 +518,7 @@ export default function ImportPage() {
                           <StatusPill status={r.status} />
                         </td>
                         <td style={td}>{r.placeName}</td>
-                        <td style={td}>
-                          {"message" in r ? r.message : ""}
-                        </td>
+                        <td style={td}>{"message" in r ? r.message : ""}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -248,21 +547,9 @@ export default function ImportPage() {
   );
 }
 
-function Badge({
-  label,
-  tone,
-}: {
-  label: string;
-  tone?: "ok" | "bad";
-}) {
-  const bg =
-    tone === "bad"
-      ? "rgba(220,20,60,0.12)"
-      : "rgba(0,0,0,0.06)";
-  const bd =
-    tone === "bad"
-      ? "rgba(220,20,60,0.35)"
-      : "rgba(0,0,0,0.18)";
+function Badge({ label, tone }: { label: string; tone?: "ok" | "bad" }) {
+  const bg = tone === "bad" ? "rgba(220,20,60,0.12)" : "rgba(0,0,0,0.06)";
+  const bd = tone === "bad" ? "rgba(220,20,60,0.35)" : "rgba(0,0,0,0.18)";
   return (
     <span
       style={{
@@ -278,28 +565,12 @@ function Badge({
   );
 }
 
-function StatusPill({
-  status,
-}: {
-  status: "created" | "updated" | "skipped" | "error";
-}) {
+function StatusPill({ status }: { status: "created" | "updated" | "skipped" | "error" }) {
   const map: Record<string, { bg: string; bd: string }> = {
-    created: {
-      bg: "rgba(34,197,94,0.12)",
-      bd: "rgba(34,197,94,0.35)",
-    },
-    updated: {
-      bg: "rgba(59,130,246,0.12)",
-      bd: "rgba(59,130,246,0.35)",
-    },
-    skipped: {
-      bg: "rgba(0,0,0,0.06)",
-      bd: "rgba(0,0,0,0.18)",
-    },
-    error: {
-      bg: "rgba(220,20,60,0.12)",
-      bd: "rgba(220,20,60,0.35)",
-    },
+    created: { bg: "rgba(34,197,94,0.12)", bd: "rgba(34,197,94,0.35)" },
+    updated: { bg: "rgba(59,130,246,0.12)", bd: "rgba(59,130,246,0.35)" },
+    skipped: { bg: "rgba(0,0,0,0.06)", bd: "rgba(0,0,0,0.18)" },
+    error: { bg: "rgba(220,20,60,0.12)", bd: "rgba(220,20,60,0.35)" },
   };
   const s = map[status];
   return (

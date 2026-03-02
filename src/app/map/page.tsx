@@ -238,6 +238,7 @@ export default function MapPage() {
     ts2: null,
     ts21: null,
     images: [],
+    heroImageUrl: null,
     thumbnailImageId: null,
   });
 
@@ -403,6 +404,7 @@ export default function MapPage() {
       ts2: selectedAny?.ts2 ?? null,
       ts21: selectedAny?.ts21 ?? null,
       images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
+      heroImageUrl: (selectedPlace as any).heroImageUrl ?? null,
       thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
     });
   }, [selectedPlace]);
@@ -472,6 +474,7 @@ export default function MapPage() {
       ts2: null,
       ts21: null,
       images: [],
+      heroImageUrl: null,
       thumbnailImageId: null,
     });
   }
@@ -502,6 +505,7 @@ export default function MapPage() {
         },
         ts2: form.ts2 ?? null,
         ts21: form.ts21 ?? null,
+        heroImageUrl: typeof form.heroImageUrl === "string" ? form.heroImageUrl.trim() : null,
         thumbnailImageId: form.thumbnailImageId ?? null,
       };
 
@@ -747,7 +751,11 @@ export default function MapPage() {
     return [hit, ...imgs];
   }, [form.images, form.thumbnailImageId]);
 
-  const heroImage = headerImages.length ? headerImages[0] : null;
+  const heroImage = String(form.heroImageUrl ?? "").trim()
+    ? { filename: String(form.heroImageUrl).trim() }
+    : headerImages.length
+      ? headerImages[0]
+      : null;
 
   function lbList() {
     return Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
@@ -928,6 +936,14 @@ export default function MapPage() {
                 🧭 Navi
               </button>
             </div>
+
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              placeholder="Hero Image URL"
+              type="url"
+              value={String(form.heroImageUrl ?? "")}
+              onChange={(e) => setForm((f: any) => ({ ...f, heroImageUrl: e.target.value }))}
+            />
           </div>
         </Section>
 

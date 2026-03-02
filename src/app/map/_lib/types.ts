@@ -53,6 +53,7 @@ export type Place = {
   ts21?: PlaceTS21 | null;
 
   images?: PlaceImage[];
+  heroImageUrl?: string | null;
   thumbnailImageId?: number | null;
 
   // optional - wird in page.tsx berechnet wenn myPos gesetzt

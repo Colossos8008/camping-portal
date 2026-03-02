@@ -43,6 +43,7 @@ model Place {
   yearRound        Boolean   @default(false)
   onlineBooking    Boolean   @default(false)
   gastronomy       Boolean   @default(false)
+  heroImageUrl     String?
 
   thumbnailImageId Int?
   thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)

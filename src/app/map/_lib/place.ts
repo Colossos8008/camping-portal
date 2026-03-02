@@ -126,6 +126,7 @@ export function safePlacesFromApi(input: any): Place[] {
         ts21: safeTs21(p.ts21, p.id, type),
 
         images: Array.isArray(p.images) ? p.images : [],
+        heroImageUrl: typeof p.heroImageUrl === "string" && p.heroImageUrl.trim() ? p.heroImageUrl.trim() : null,
         thumbnailImageId: typeof p.thumbnailImageId === "number" ? p.thumbnailImageId : null,
       } as Place;
     })

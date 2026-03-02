@@ -182,6 +182,23 @@ function normalizeTS21Scores(raw: any): TS21Scores {
   return out;
 }
 
+
+function normalizeHeroImageUrl(v: any): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+
+  const raw = asString(v).trim();
+  if (!raw) return null;
+
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "http:" || u.protocol === "https:") return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTS21Detail(input: any): TS21Detail {
   const src = extractDetail(input) ?? {};
 
@@ -308,6 +325,11 @@ export async function POST(req: NextRequest) {
   const canTs21 = await supportsTs21();
   if (wantTs21 && !canTs21) return ts21NotSupportedResponse();
 
+  const heroImageUrl = normalizeHeroImageUrl(body?.heroImageUrl);
+  if (heroImageUrl === null && typeof body?.heroImageUrl === "string" && body.heroImageUrl.trim() !== "") {
+    return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
+  }
+
   const data: any = {
     name,
     type,
@@ -318,6 +340,7 @@ export async function POST(req: NextRequest) {
     yearRound: !!body?.yearRound,
     onlineBooking: !!body?.onlineBooking,
     gastronomy: !!body?.gastronomy,
+    heroImageUrl: normalizeHeroImageUrl(body?.heroImageUrl),
     thumbnailImageId: body?.thumbnailImageId ?? null,
 
     ratingDetail: { create: { ...rd } },
@@ -384,6 +407,14 @@ export async function PUT(req: NextRequest) {
   if (yearRound !== undefined) data.yearRound = yearRound;
   if (onlineBooking !== undefined) data.onlineBooking = onlineBooking;
   if (gastronomy !== undefined) data.gastronomy = gastronomy;
+
+  if (body?.heroImageUrl !== undefined) {
+    const heroImageUrl = normalizeHeroImageUrl(body?.heroImageUrl);
+    if (heroImageUrl === null && typeof body?.heroImageUrl === "string" && body.heroImageUrl.trim() !== "") {
+      return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
+    }
+    data.heroImageUrl = heroImageUrl;
+  }
 
   if (body?.thumbnailImageId !== undefined) {
     data.thumbnailImageId = body.thumbnailImageId === null ? null : Number(body.thumbnailImageId);

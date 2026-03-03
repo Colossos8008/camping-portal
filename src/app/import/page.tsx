@@ -44,6 +44,27 @@ type DeleteResponse = {
   };
 };
 
+type HeroAutofillAction =
+  | "created"
+  | "updated"
+  | "skipped"
+  | "error"
+  | "would-create"
+  | "would-update";
+
+type HeroAutofillResponse = {
+  counts: { created: number; updated: number; skipped: number; errors: number };
+  results: Array<{
+    placeId: string;
+    placeName: string;
+    action: HeroAutofillAction;
+    chosenUrl?: string;
+    source?: "wikimedia";
+    reason?: string;
+  }>;
+  error?: string;
+};
+
 const PLACE_TYPES: Array<{ type: PlaceType; label: string }> = [
   { type: "CAMPINGPLATZ", label: "Campingplatz" },
   { type: "STELLPLATZ", label: "Stellplatz" },
@@ -73,6 +94,13 @@ export default function ImportPage() {
     SEHENSWUERDIGKEIT: false,
   });
   const [deleteResp, setDeleteResp] = useState<DeleteResponse | null>(null);
+
+  const [heroLimit, setHeroLimit] = useState(50);
+  const [heroForce, setHeroForce] = useState(false);
+  const [heroDryRun, setHeroDryRun] = useState(true);
+  const [heroBusy, setHeroBusy] = useState(false);
+  const [heroResp, setHeroResp] = useState<HeroAutofillResponse | null>(null);
+  const [heroError, setHeroError] = useState<string | null>(null);
 
   const hasErrors = useMemo(
     () => (resp?.results ?? []).some((r) => r.status === "error"),
@@ -210,6 +238,51 @@ export default function ImportPage() {
     } finally {
       setDeleteBusyByType((p) => ({ ...p, [type]: false }));
       setConfirmByType((p) => ({ ...p, [type]: false }));
+    }
+  }
+
+  async function onHeroAutofill() {
+    setHeroBusy(true);
+    setHeroError(null);
+    setHeroResp(null);
+
+    try {
+      const res = await fetch("/api/admin/hero-autofill", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          limit: heroLimit,
+          force: heroForce,
+          dryRun: heroDryRun,
+        }),
+      });
+
+      const raw = await res.text();
+
+      let json: HeroAutofillResponse | null = null;
+      try {
+        json = JSON.parse(raw) as HeroAutofillResponse;
+      } catch {
+        // not JSON
+      }
+
+      if (!json) {
+        setHeroError(`API did not return JSON (HTTP ${res.status} ${res.statusText})`);
+        return;
+      }
+
+      setHeroResp(json);
+      if (json.error) {
+        setHeroError(json.error);
+      }
+      void loadCounts();
+    } catch (e: any) {
+      setHeroError(e?.message ?? "Request failed");
+    } finally {
+      setHeroBusy(false);
     }
   }
 
@@ -444,6 +517,122 @@ export default function ImportPage() {
         </button>
       </div>
 
+      <section
+        style={{
+          marginTop: 16,
+          padding: 16,
+          border: "1px solid rgba(0,0,0,0.15)",
+          borderRadius: 12,
+        }}
+      >
+        <h2 style={{ fontSize: 18, marginTop: 0, marginBottom: 12 }}>Hero images</h2>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Limit
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={heroLimit}
+              onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))}
+              style={{
+                width: 100,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={heroForce}
+              onChange={(e) => setHeroForce(e.target.checked)}
+            />
+            Force update existing URLs
+          </label>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={heroDryRun}
+              onChange={(e) => setHeroDryRun(e.target.checked)}
+            />
+            Dry run (no DB write)
+          </label>
+
+          <button
+            onClick={onHeroAutofill}
+            disabled={heroBusy}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid rgba(0,0,0,0.2)",
+              cursor: heroBusy ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {heroBusy ? "Fetching…" : "Auto fetch hero images"}
+          </button>
+        </div>
+
+        {heroError && (
+          <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>Fehler: {heroError}</div>
+        )}
+
+        {heroResp && (
+          <>
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Badge label={`Created: ${heroResp.counts.created}`} />
+              <Badge label={`Updated: ${heroResp.counts.updated}`} />
+              <Badge label={`Skipped: ${heroResp.counts.skipped}`} />
+              <Badge
+                label={`Errors: ${heroResp.counts.errors}`}
+                tone={heroResp.counts.errors > 0 ? "bad" : "ok"}
+              />
+            </div>
+
+            <div style={{ marginTop: 12, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Place</th>
+                    <th style={th}>Action</th>
+                    <th style={th}>Chosen URL</th>
+                    <th style={th}>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {heroResp.results.map((r) => (
+                    <tr key={`${r.placeId}-${r.action}-${r.chosenUrl ?? "none"}`}>
+                      <td style={td}>
+                        <div style={{ fontWeight: 700 }}>{r.placeName}</div>
+                        <div style={{ opacity: 0.7, fontSize: 12 }}>ID: {r.placeId}</div>
+                      </td>
+                      <td style={td}>
+                        <HeroStatusPill status={r.action} />
+                      </td>
+                      <td style={td}>
+                        {r.chosenUrl ? (
+                          <a href={r.chosenUrl} target="_blank" rel="noreferrer">
+                            {r.chosenUrl}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td style={td}>{r.reason ?? "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       {resp && (
         <section
           style={{
@@ -573,6 +762,32 @@ function StatusPill({ status }: { status: "created" | "updated" | "skipped" | "e
     error: { bg: "rgba(220,20,60,0.12)", bd: "rgba(220,20,60,0.35)" },
   };
   const s = map[status];
+  return (
+    <span
+      style={{
+        padding: "4px 10px",
+        borderRadius: 999,
+        border: `1px solid ${s.bd}`,
+        background: s.bg,
+        fontWeight: 700,
+      }}
+    >
+      {status}
+    </span>
+  );
+}
+
+function HeroStatusPill({ status }: { status: HeroAutofillAction }) {
+  const map: Record<HeroAutofillAction, { bg: string; bd: string }> = {
+    created: { bg: "rgba(34,197,94,0.12)", bd: "rgba(34,197,94,0.35)" },
+    updated: { bg: "rgba(59,130,246,0.12)", bd: "rgba(59,130,246,0.35)" },
+    skipped: { bg: "rgba(0,0,0,0.06)", bd: "rgba(0,0,0,0.18)" },
+    error: { bg: "rgba(220,20,60,0.12)", bd: "rgba(220,20,60,0.35)" },
+    "would-create": { bg: "rgba(16,185,129,0.14)", bd: "rgba(16,185,129,0.4)" },
+    "would-update": { bg: "rgba(37,99,235,0.14)", bd: "rgba(37,99,235,0.4)" },
+  };
+  const s = map[status];
+
   return (
     <span
       style={{

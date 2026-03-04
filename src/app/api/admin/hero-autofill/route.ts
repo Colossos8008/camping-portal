@@ -62,8 +62,7 @@ type ScoredCandidate = {
   reason: string;
 };
 
-const MAX_LIMIT = 500;
-const DEFAULT_LIMIT = 250;
+const DEFAULT_LIMIT = 200;
 const DEFAULT_RADIUS_METERS = 200;
 const MAX_RADIUS_METERS = 5000;
 const FETCH_TIMEOUT_MS = 15000;
@@ -111,7 +110,7 @@ function parseBody(value: unknown): {
   provider: "google" | "wikimedia" | "auto";
   radiusMeters: number;
   offset: number;
-  cursor?: number;
+  cursor?: string;
   types?: PlaceType[];
   maxCandidatesPerPlace: number;
 } {
@@ -119,7 +118,7 @@ function parseBody(value: unknown): {
   const limitValue = typeof raw.limit === "number" ? Math.floor(raw.limit) : DEFAULT_LIMIT;
   const radiusValue = typeof raw.radiusMeters === "number" ? Math.floor(raw.radiusMeters) : DEFAULT_RADIUS_METERS;
   const offsetValue = typeof raw.offset === "number" ? Math.max(0, Math.floor(raw.offset)) : 0;
-  const cursorValue = typeof raw.cursor === "number" ? Math.floor(raw.cursor) : undefined;
+  const cursorValue = typeof raw.cursor === "string" ? raw.cursor.trim() : typeof raw.cursor === "number" ? String(Math.floor(raw.cursor)) : undefined;
   const provider = raw.provider === "google" || raw.provider === "wikimedia" ? raw.provider : "auto";
   const maxCandidatesPerPlaceRaw =
     typeof raw.maxCandidatesPerPlace === "number"
@@ -133,7 +132,7 @@ function parseBody(value: unknown): {
     : undefined;
 
   return {
-    limit: Math.min(MAX_LIMIT, Math.max(1, Number.isFinite(limitValue) ? limitValue : DEFAULT_LIMIT)),
+    limit: Math.max(1, Number.isFinite(limitValue) ? limitValue : DEFAULT_LIMIT),
     force: raw.force === true,
     dryRun: raw.dryRun === true,
     provider,
@@ -142,10 +141,17 @@ function parseBody(value: unknown): {
       Math.max(50, Number.isFinite(radiusValue) ? radiusValue : DEFAULT_RADIUS_METERS)
     ),
     offset: offsetValue,
-    cursor: cursorValue && cursorValue > 0 ? cursorValue : undefined,
+    cursor: cursorValue && cursorValue.length > 0 ? cursorValue : undefined,
     types: types && types.length > 0 ? Array.from(new Set(types)) : undefined,
     maxCandidatesPerPlace: Math.min(30, Math.max(1, maxCandidatesPerPlaceRaw)),
   };
+}
+
+function parsePositiveInt(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return parsed;
 }
 
 
@@ -662,16 +668,24 @@ function isValidPlace(place: PlaceRecord): boolean {
 export async function POST(req: Request) {
   try {
     const body = parseBody(await req.json().catch(() => ({})));
-    const { searchParams } = new URL(req.url);
+    const searchParams = new URL(req.url).searchParams;
     const force = parseBool(searchParams, ["force", "forceUpdateExisting", "forceUpdateExistingUrls", "forceUpdate"]);
     const dryRun = parseBool(searchParams, ["dryRun"]);
-    const queryLimit = Number.parseInt(searchParams.get("limit") ?? "", 10);
-    const limit = Number.isFinite(queryLimit) ? Math.min(MAX_LIMIT, Math.max(1, queryLimit)) : body.limit;
+    const queryLimit = parsePositiveInt(searchParams.get("limit"));
+    const queryOffset = parsePositiveInt(searchParams.get("offset"));
+    const queryCursor = searchParams.get("cursor")?.trim();
+    const hardCap = parsePositiveInt(process.env.HERO_AUTOFILL_HARD_CAP ?? null);
+    const requestedLimit = Math.max(1, queryLimit ?? body.limit ?? DEFAULT_LIMIT);
+    const limit = hardCap ? Math.min(requestedLimit, hardCap) : requestedLimit;
+    const capApplied = hardCap && limit < requestedLimit ? { requestedLimit, appliedLimit: limit, hardCap } : null;
+
     const options = {
       ...body,
       limit,
       force: body.force || force,
       dryRun: body.dryRun || dryRun,
+      cursor: queryCursor && queryCursor.length > 0 ? queryCursor : body.cursor,
+      offset: queryOffset ?? body.offset ?? 0,
     };
     const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
     const placeholder = (process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim();
@@ -694,11 +708,13 @@ export async function POST(req: Request) {
     }
 
     const whereBase = options.types?.length ? { type: { in: options.types } } : {};
-    const where = options.cursor ? { ...whereBase, id: { gt: options.cursor } } : whereBase;
+    const cursorId = options.cursor ? parsePositiveInt(options.cursor) : undefined;
+    const useCursorPaging = typeof cursorId === "number" && cursorId > 0;
+    const safeOffset = Math.max(0, options.offset);
 
     const places = (await prisma.place.findMany({
-      where,
-      skip: options.cursor ? 0 : options.offset,
+      where: whereBase,
+      ...(useCursorPaging ? { cursor: { id: cursorId }, skip: 1 } : { skip: safeOffset }),
       take: options.limit,
       orderBy: { id: "asc" },
       select: {
@@ -710,6 +726,8 @@ export async function POST(req: Request) {
         heroImageUrl: true,
       },
     })) as PlaceRecord[];
+
+    const totalPlaces = await prisma.place.count({ where: whereBase });
 
     const results: HeroResult[] = [];
     let updated = 0;
@@ -847,11 +865,27 @@ export async function POST(req: Request) {
       }
     }
 
-    const nextCursor = places.length > 0 ? places[places.length - 1]?.id ?? null : null;
+    const lastPlaceId = places.length > 0 ? places[places.length - 1]?.id : null;
+    let hasMore = false;
+
+    if (lastPlaceId !== null) {
+      if (useCursorPaging) {
+        const nextPlace = await prisma.place.findFirst({
+          where: { ...whereBase, id: { gt: lastPlaceId } },
+          orderBy: { id: "asc" },
+          select: { id: true },
+        });
+        hasMore = Boolean(nextPlace);
+      } else {
+        hasMore = safeOffset + places.length < totalPlaces;
+      }
+    }
+
+    const nextCursor = hasMore && lastPlaceId !== null ? String(lastPlaceId) : null;
 
     return NextResponse.json(
       {
-        totalPlaces: places.length,
+        totalPlaces,
         processed: results.length,
         updated,
         skipped,
@@ -859,6 +893,7 @@ export async function POST(req: Request) {
         nextCursor,
         results,
         counts: { created, updated, skipped, errors: failed },
+        capApplied,
       },
       { status: 200 }
     );
@@ -873,6 +908,7 @@ export async function POST(req: Request) {
         nextCursor: null,
         results: [],
         counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
+        capApplied: null,
         error: error?.message ?? "Unexpected error",
       },
       { status: 500 }

@@ -58,7 +58,7 @@ type HeroAutofillResponse = {
   updated: number;
   skipped: number;
   failed: number;
-  nextCursor: number | null;
+  nextCursor: string | null;
   counts: { created: number; updated: number; skipped: number; errors: number };
   results: Array<{
     id: string;
@@ -74,6 +74,7 @@ type HeroAutofillResponse = {
     chosenUrl?: string;
   }>;
   error?: string;
+  capApplied?: { requestedLimit: number; appliedLimit: number; hardCap: number } | null;
 };
 
 const PLACE_TYPES: Array<{ type: PlaceType; label: string }> = [
@@ -568,12 +569,12 @@ export default function ImportPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Limit
-            <input type="number" min={1} max={500} value={heroLimit} onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+            <input type="number" min={1} value={heroLimit} onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Cursor (optional)
-            <input type="number" min={1} value={heroCursor} onChange={(e) => setHeroCursor(e.target.value)} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+            <input type="text" value={heroCursor} onChange={(e) => setHeroCursor(e.target.value)} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
@@ -632,6 +633,17 @@ export default function ImportPage() {
               <Badge label={`Skipped: ${heroResp.skipped}`} />
               <Badge label={`Failed: ${heroResp.failed}`} tone={heroResp.failed > 0 ? "bad" : "ok"} />
               <Badge label={`Next cursor: ${heroResp.nextCursor ?? "none"}`} />
+              <button
+                onClick={() => {
+                  if (!heroResp?.nextCursor) return;
+                  setHeroCursor(heroResp.nextCursor);
+                  setHeroOffset(0);
+                }}
+                disabled={!heroResp?.nextCursor || heroBusy}
+                style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(0,0,0,0.06)", fontWeight: 700, cursor: !heroResp?.nextCursor || heroBusy ? "not-allowed" : "pointer" }}
+              >
+                Run next page
+              </button>
               <button onClick={() => navigator.clipboard.writeText(JSON.stringify(heroResp, null, 2))} style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(0,0,0,0.06)", fontWeight: 700, cursor: "pointer" }}>Copy JSON</button>
               <button onClick={() => {
                 const blob = new Blob([JSON.stringify(heroResp, null, 2)], { type: "application/json" });
@@ -644,6 +656,11 @@ export default function ImportPage() {
               }} style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(0,0,0,0.06)", fontWeight: 700, cursor: "pointer" }}>Download JSON</button>
             </div>
 
+            {heroResp.capApplied && (
+              <div style={{ marginTop: 8, color: "#8a4b00", fontWeight: 700 }}>
+                Hard cap applied: requested {heroResp.capApplied.requestedLimit}, using {heroResp.capApplied.appliedLimit} (HERO_AUTOFILL_HARD_CAP={heroResp.capApplied.hardCap})
+              </div>
+            )}
             <div style={{ marginTop: 12, overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>

@@ -18,9 +18,34 @@ type HeroResult = {
   score?: number;
   source?: HeroSource;
   heroReason?: string;
+  visionDebug?: VisionDebug;
   action: HeroAction;
   placeId: string;
   placeName: string;
+};
+
+type VisionDebug = {
+  imageFetch: {
+    ok: boolean;
+    status: number;
+    contentType: string;
+    bytes: number;
+    ms: number;
+  };
+  visionCall: {
+    ok: boolean;
+    ms: number;
+    errorMessage?: string;
+  };
+  signals: {
+    labelsTop5: string[];
+    hasFace: boolean;
+    hasLogo: boolean;
+    hasText: boolean;
+    safeSearch: Record<string, string>;
+    landmarkLikely: boolean;
+    indoorLikely: boolean;
+  };
 };
 
 type PlaceRecord = {
@@ -60,6 +85,7 @@ type ScoredCandidate = {
   url: string;
   score: number;
   reason: string;
+  visionDebug?: VisionDebug;
 };
 
 const DEFAULT_LIMIT = 200;
@@ -540,7 +566,64 @@ async function findGoogleCandidates(
   });
 }
 
-async function analyzeWithVision(url: string): Promise<{ score: number; reason: string }> {
+async function fetchImageBytes(url: string, timeoutMs: number): Promise<{
+  ok: boolean;
+  status: number;
+  contentType: string;
+  bytes: number;
+  ms: number;
+  data?: Buffer;
+  message?: string;
+}> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+      redirect: "follow",
+      headers: { Accept: "image/*,*/*;q=0.8" },
+    });
+    const ms = Date.now() - startedAt;
+    const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        contentType,
+        bytes: 0,
+        ms,
+        message: response.statusText || "Fetch failed",
+      };
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const data = Buffer.from(arrayBuffer);
+    return {
+      ok: true,
+      status: response.status,
+      contentType,
+      bytes: data.byteLength,
+      ms,
+      data,
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      status: 0,
+      contentType: "",
+      bytes: 0,
+      ms: Date.now() - startedAt,
+      message: String(error?.message ?? "Fetch failed"),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function analyzeWithVision(url: string, includeDebug: boolean): Promise<{ score: number; reason: string; visionDebug?: VisionDebug }> {
   const visionKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
   if (!visionKey) {
     return { score: 0, reason: "Vision disabled (GOOGLE_CLOUD_VISION_API_KEY missing)" };
@@ -558,10 +641,41 @@ async function analyzeWithVision(url: string): Promise<{ score: number; reason: 
   };
 
   const timeoutMs = envInt("HERO_VISION_TIMEOUT_MS", 12000);
+  const imageFetch = await fetchImageBytes(url, timeoutMs);
+  if (!imageFetch.ok || !imageFetch.data || imageFetch.bytes <= 0) {
+    const message = imageFetch.message ?? "Failed to fetch image bytes";
+    const reason = `Vision fetch failed: ${imageFetch.status} ${message}`;
+    if (!includeDebug) return { score: -10, reason };
+    return {
+      score: -10,
+      reason,
+      visionDebug: {
+        imageFetch: {
+          ok: imageFetch.ok,
+          status: imageFetch.status,
+          contentType: imageFetch.contentType,
+          bytes: imageFetch.bytes,
+          ms: imageFetch.ms,
+        },
+        visionCall: { ok: false, ms: 0, errorMessage: "Skipped due to image fetch failure" },
+        signals: {
+          labelsTop5: [],
+          hasFace: false,
+          hasLogo: false,
+          hasText: false,
+          safeSearch: {},
+          landmarkLikely: false,
+          indoorLikely: false,
+        },
+      },
+    };
+  }
+
+  const visionStartedAt = Date.now();
   const payload = {
     requests: [
       {
-        image: { source: { imageUri: url } },
+        image: { content: imageFetch.data.toString("base64") },
         features: [
           { type: "LABEL_DETECTION", maxResults: 20 },
           { type: "FACE_DETECTION", maxResults: 5 },
@@ -573,13 +687,44 @@ async function analyzeWithVision(url: string): Promise<{ score: number; reason: 
     ],
   };
 
-  const data = await fetchJsonRequest<VisionResponse>(
-    `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(visionKey)}`,
-    "POST",
-    { "Content-Type": "application/json" },
-    payload,
-    timeoutMs
-  );
+  let data: VisionResponse;
+  try {
+    data = await fetchJsonRequest<VisionResponse>(
+      `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(visionKey)}`,
+      "POST",
+      { "Content-Type": "application/json" },
+      payload,
+      timeoutMs
+    );
+  } catch (error: any) {
+    const message = String(error?.message ?? "Unknown Vision API error");
+    const reason = `Vision error: ${message}`;
+    if (!includeDebug) return { score: -8, reason };
+    return {
+      score: -8,
+      reason,
+      visionDebug: {
+        imageFetch: {
+          ok: imageFetch.ok,
+          status: imageFetch.status,
+          contentType: imageFetch.contentType,
+          bytes: imageFetch.bytes,
+          ms: imageFetch.ms,
+        },
+        visionCall: { ok: false, ms: Date.now() - visionStartedAt, errorMessage: message },
+        signals: {
+          labelsTop5: [],
+          hasFace: false,
+          hasLogo: false,
+          hasText: false,
+          safeSearch: {},
+          landmarkLikely: false,
+          indoorLikely: false,
+        },
+      },
+    };
+  }
+  const visionMs = Date.now() - visionStartedAt;
 
   const item = data.responses?.[0];
   if (!item) return { score: -5, reason: "Vision empty response" };
@@ -628,9 +773,9 @@ async function analyzeWithVision(url: string): Promise<{ score: number; reason: 
     reasons.push(`+${points} landmarks:${landmarkCount}`);
   }
 
-  const safe = item.safeSearchAnnotation;
-  if (safe) {
-    const penalized = [safe.adult, safe.violence, safe.racy]
+  const safeSearch = item.safeSearchAnnotation;
+  if (safeSearch) {
+    const penalized = [safeSearch.adult, safeSearch.violence, safeSearch.racy]
       .filter(Boolean)
       .some((level) => level === "LIKELY" || level === "VERY_LIKELY");
     if (penalized) {
@@ -639,23 +784,59 @@ async function analyzeWithVision(url: string): Promise<{ score: number; reason: 
     }
   }
 
-  return { score, reason: reasons.length > 0 ? reasons.join("; ") : "Vision neutral" };
+  const labelsTop5 = labels.slice(0, 5).map((label) => label.description).filter(Boolean);
+  const hasFace = (item.faceAnnotations?.length ?? 0) > 0;
+  const hasLogo = (item.logoAnnotations?.length ?? 0) > 0;
+  const hasText = labels.some((label) => label.description.includes("text") || label.description.includes("sign"));
+  const safe = item.safeSearchAnnotation ?? {};
+  const landmarkLikely = (item.landmarkAnnotations?.length ?? 0) > 0;
+  const indoorLikely = labels.some((label) => label.description.includes("indoor") || label.description.includes("room"));
+
+  return {
+    score,
+    reason: reasons.length > 0 ? reasons.join("; ") : "Vision analyzed: neutral signals",
+    visionDebug: includeDebug
+      ? {
+          imageFetch: {
+            ok: imageFetch.ok,
+            status: imageFetch.status,
+            contentType: imageFetch.contentType,
+            bytes: imageFetch.bytes,
+            ms: imageFetch.ms,
+          },
+          visionCall: {
+            ok: true,
+            ms: visionMs,
+          },
+          signals: {
+            labelsTop5,
+            hasFace,
+            hasLogo,
+            hasText,
+            safeSearch: safe,
+            landmarkLikely,
+            indoorLikely,
+          },
+        }
+      : undefined,
+  };
 }
 
-async function scoreCandidates(candidates: ScoredCandidate[]): Promise<ScoredCandidate[]> {
+async function scoreCandidates(candidates: ScoredCandidate[], includeDebug: boolean): Promise<ScoredCandidate[]> {
   const concurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
   return runWithConcurrency(candidates, concurrency, async (candidate) => {
     try {
-      const vision = await analyzeWithVision(candidate.url);
+      const vision = await analyzeWithVision(candidate.url, includeDebug);
       return {
         ...candidate,
         score: candidate.score + vision.score,
         reason: `${candidate.reason}; ${vision.reason}`,
+        visionDebug: vision.visionDebug,
       };
     } catch (error: any) {
       return {
         ...candidate,
-        reason: `${candidate.reason}; vision-fallback:${String(error?.message ?? "error")}`,
+        reason: `${candidate.reason}; Vision error: ${String(error?.message ?? "error")}`,
       };
     }
   });
@@ -671,6 +852,7 @@ export async function POST(req: Request) {
     const searchParams = new URL(req.url).searchParams;
     const force = parseBool(searchParams, ["force", "forceUpdateExisting", "forceUpdateExistingUrls", "forceUpdate"]);
     const dryRun = parseBool(searchParams, ["dryRun"]);
+    const debugVision = parseBool(searchParams, ["debugVision"]);
     const queryLimit = parsePositiveInt(searchParams.get("limit"));
     const queryOffset = parsePositiveInt(searchParams.get("offset"));
     const queryCursor = searchParams.get("cursor")?.trim();
@@ -792,7 +974,7 @@ export async function POST(req: Request) {
       }
 
       const uniqueCandidates = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, maxCandidates);
-      const scoredCandidates = await scoreCandidates(uniqueCandidates);
+      const scoredCandidates = await scoreCandidates(uniqueCandidates, debugVision);
       const bestCandidate = [...scoredCandidates].sort((a, b) => b.score - a.score)[0] ?? null;
 
       let chosenUrl: string | undefined;
@@ -849,6 +1031,7 @@ export async function POST(req: Request) {
         source,
         score,
         heroReason,
+        visionDebug: debugVision ? bestCandidate?.visionDebug : undefined,
         action: options.dryRun ? (isForcedRescore ? "updated" : wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",
       };
     });

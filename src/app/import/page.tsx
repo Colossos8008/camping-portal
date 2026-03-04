@@ -111,7 +111,7 @@ export default function ImportPage() {
   const [heroDryRun, setHeroDryRun] = useState(true);
   const [heroProvider, setHeroProvider] = useState<"google" | "wikimedia" | "auto">("auto");
   const [heroRadiusMeters, setHeroRadiusMeters] = useState(200);
-  const [heroCursor, setHeroCursor] = useState<number | "">("");
+  const [heroCursor, setHeroCursor] = useState("");
   const [heroOffset, setHeroOffset] = useState(0);
   const [heroMaxCandidates, setHeroMaxCandidates] = useState(12);
   const [heroTypesInput, setHeroTypesInput] = useState("");
@@ -123,6 +123,33 @@ export default function ImportPage() {
     () => (resp?.results ?? []).some((r) => r.status === "error"),
     [resp]
   );
+
+  const heroRequestUrl = useMemo(() => {
+    const params = new URLSearchParams();
+
+    params.set("limit", String(heroLimit));
+    params.set("provider", heroProvider);
+    params.set("radius", String(heroRadiusMeters));
+    params.set("maxCandidatesPerPlace", String(heroMaxCandidates));
+
+    if (heroTypesInput !== "") params.set("types", heroTypesInput);
+    if (heroForce) params.set("force", "1");
+    if (heroDryRun) params.set("dryRun", "1");
+    if (heroCursor !== "") params.set("cursor", heroCursor);
+    if (heroOffset > 0) params.set("offset", String(heroOffset));
+
+    return `/api/admin/hero-autofill?${params.toString()}`;
+  }, [
+    heroLimit,
+    heroProvider,
+    heroRadiusMeters,
+    heroMaxCandidates,
+    heroTypesInput,
+    heroForce,
+    heroDryRun,
+    heroCursor,
+    heroOffset,
+  ]);
 
   async function loadCounts() {
     setCountsBusy(true);
@@ -264,26 +291,11 @@ export default function ImportPage() {
     setHeroResp(null);
 
     try {
-      const res = await fetch("/api/admin/hero-autofill", {
+      const res = await fetch(heroRequestUrl, {
         method: "POST",
         headers: {
           Accept: "application/json",
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          limit: heroLimit,
-          cursor: heroCursor === "" ? undefined : Number(heroCursor),
-          offset: heroOffset,
-          force: heroForce,
-          dryRun: heroDryRun,
-          provider: heroProvider,
-          radiusMeters: heroRadiusMeters,
-          maxCandidatesPerPlace: heroMaxCandidates,
-          types: heroTypesInput
-            .split(",")
-            .map((x) => x.trim().toUpperCase())
-            .filter(Boolean),
-        }),
       });
 
       const raw = await res.text();
@@ -561,7 +573,7 @@ export default function ImportPage() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Cursor (optional)
-            <input type="number" min={1} value={heroCursor} onChange={(e) => setHeroCursor(e.target.value === "" ? "" : Math.max(1, Number(e.target.value) || 1))} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+            <input type="number" min={1} value={heroCursor} onChange={(e) => setHeroCursor(e.target.value)} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
@@ -597,6 +609,16 @@ export default function ImportPage() {
           <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}><input type="checkbox" checked={heroDryRun} onChange={(e) => setHeroDryRun(e.target.checked)} />Dry run (no DB write)</label>
 
           <button onClick={onHeroAutofill} disabled={heroBusy} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)", cursor: heroBusy ? "not-allowed" : "pointer", fontWeight: 700 }}>{heroBusy ? "Fetching…" : "Auto fetch hero images"}</button>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Request URL</div>
+          <input
+            type="text"
+            readOnly
+            value={heroRequestUrl}
+            style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)", background: "rgba(0,0,0,0.03)", fontFamily: "monospace", fontSize: 12 }}
+          />
         </div>
 
         {heroError && <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>Fehler: {heroError}</div>}

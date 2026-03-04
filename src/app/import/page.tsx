@@ -59,7 +59,7 @@ type HeroAutofillResponse = {
     placeName: string;
     action: HeroAutofillAction;
     chosenUrl?: string;
-    source?: "wikimedia";
+    source?: "google" | "wikimedia";
     reason?: string;
   }>;
   error?: string;
@@ -98,6 +98,9 @@ export default function ImportPage() {
   const [heroLimit, setHeroLimit] = useState(50);
   const [heroForce, setHeroForce] = useState(false);
   const [heroDryRun, setHeroDryRun] = useState(true);
+  const [heroProvider, setHeroProvider] = useState<"google" | "wikimedia">("google");
+  const [heroRadiusMeters, setHeroRadiusMeters] = useState(200);
+  const [heroTypesInput, setHeroTypesInput] = useState("");
   const [heroBusy, setHeroBusy] = useState(false);
   const [heroResp, setHeroResp] = useState<HeroAutofillResponse | null>(null);
   const [heroError, setHeroError] = useState<string | null>(null);
@@ -257,6 +260,12 @@ export default function ImportPage() {
           limit: heroLimit,
           force: heroForce,
           dryRun: heroDryRun,
+          provider: heroProvider,
+          radiusMeters: heroRadiusMeters,
+          types: heroTypesInput
+            .split(",")
+            .map((x) => x.trim().toUpperCase())
+            .filter(Boolean),
         }),
       });
 
@@ -538,6 +547,56 @@ export default function ImportPage() {
               onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))}
               style={{
                 width: 100,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Provider
+            <select
+              value={heroProvider}
+              onChange={(e) => setHeroProvider(e.target.value as "google" | "wikimedia")}
+              style={{
+                minWidth: 140,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            >
+              <option value="google">Google</option>
+              <option value="wikimedia">Wikimedia</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Radius (meters)
+            <input
+              type="number"
+              min={50}
+              max={5000}
+              value={heroRadiusMeters}
+              onChange={(e) => setHeroRadiusMeters(Math.max(50, Number(e.target.value) || 50))}
+              style={{
+                width: 130,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Types filter (optional)
+            <input
+              type="text"
+              value={heroTypesInput}
+              onChange={(e) => setHeroTypesInput(e.target.value)}
+              placeholder="CAMPINGPLATZ,HVO_TANKSTELLE"
+              style={{
+                width: 260,
                 padding: "8px 10px",
                 borderRadius: 10,
                 border: "1px solid rgba(0,0,0,0.2)",

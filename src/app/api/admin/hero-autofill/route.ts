@@ -39,13 +39,14 @@ type GoogleCandidate = {
   lat?: number;
   lng?: number;
   distanceMeters?: number;
+  photos?: GooglePhoto[];
 };
 
 type GooglePhoto = {
-  photoReference: string;
-  width?: number;
-  height?: number;
-  htmlAttributions?: string[];
+  name: string;
+  widthPx?: number;
+  heightPx?: number;
+  attributionText?: string;
 };
 
 const MAX_LIMIT = 200;
@@ -81,30 +82,47 @@ function parseBody(value: unknown): {
     force: raw.force === true,
     dryRun: raw.dryRun === true,
     provider,
-    radiusMeters: Math.min(MAX_RADIUS_METERS, Math.max(50, Number.isFinite(radiusValue) ? radiusValue : DEFAULT_RADIUS_METERS)),
+    radiusMeters: Math.min(
+      MAX_RADIUS_METERS,
+      Math.max(50, Number.isFinite(radiusValue) ? radiusValue : DEFAULT_RADIUS_METERS)
+    ),
     types: types && types.length > 0 ? Array.from(new Set(types)) : undefined,
   };
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJsonRequest<T>(
+  url: string,
+  method: "GET" | "POST",
+  headers?: Record<string, string>,
+  body?: unknown
+): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method,
+      headers: {
+        Accept: "application/json",
+        ...(headers ?? {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
       cache: "no-store",
     });
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const raw = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${res.statusText}${raw ? ` - ${raw.slice(0, 300)}` : ""}`);
     }
 
     return (await res.json()) as T;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  return fetchJsonRequest<T>(url, "GET");
 }
 
 function normalize(value: string): string {
@@ -221,7 +239,13 @@ async function fetchPageImageTitles(pageId: number): Promise<string[]> {
 async function resolveCommonsImage(fileTitle: string): Promise<WikimediaCandidate | null> {
   type CommonsResponse = {
     query?: {
-      pages?: Record<string, { imageinfo?: Array<{ url?: string; width?: number; height?: number }>; missing?: boolean }>;
+      pages?: Record<
+        string,
+        {
+          imageinfo?: Array<{ url?: string; width?: number; height?: number }>;
+          missing?: boolean;
+        }
+      >;
     };
   };
 
@@ -255,7 +279,9 @@ function scoreWikimedia(c: WikimediaCandidate): number {
   return score;
 }
 
-async function findHeroFromWikimedia(placeName: string): Promise<{ candidate: WikimediaCandidate | null; reason?: string }> {
+async function findHeroFromWikimedia(
+  placeName: string
+): Promise<{ candidate: WikimediaCandidate | null; reason?: string }> {
   const pageId = await findPageIdBySearch(placeName);
   if (!pageId) return { candidate: null, reason: "No Wikipedia page found" };
 
@@ -280,39 +306,78 @@ async function findHeroFromWikimedia(placeName: string): Promise<{ candidate: Wi
   return { candidate: candidates.sort((a, b) => scoreWikimedia(b) - scoreWikimedia(a))[0] };
 }
 
-async function findGoogleMatch(place: PlaceRecord, radiusMeters: number, apiKey: string): Promise<{ match: GoogleCandidate | null; reason?: string }> {
-  type NearbyResponse = {
-    results?: Array<{
-      place_id?: string;
-      name?: string;
-      geometry?: { location?: { lat?: number; lng?: number } };
+function toGooglePhotos(photos: unknown): GooglePhoto[] {
+  if (!Array.isArray(photos)) return [];
+
+  return photos
+    .map((photo) => {
+      const item = photo as {
+        name?: string;
+        widthPx?: number;
+        heightPx?: number;
+        authorAttributions?: Array<{ displayName?: string; uri?: string }>;
+      };
+      const attributionText = Array.isArray(item.authorAttributions)
+        ? item.authorAttributions
+            .map((a) => `${a.displayName ?? ""} ${a.uri ?? ""}`.trim())
+            .filter(Boolean)
+            .join(" ")
+        : "";
+
+      return {
+        name: item.name ?? "",
+        widthPx: item.widthPx,
+        heightPx: item.heightPx,
+        attributionText,
+      };
+    })
+    .filter((p) => p.name);
+}
+
+async function findGoogleMatch(
+  place: PlaceRecord,
+  radiusMeters: number,
+  apiKey: string
+): Promise<{ match: GoogleCandidate | null; reason?: string }> {
+  type NearbyNewResponse = {
+    places?: Array<{
+      id?: string;
+      displayName?: { text?: string };
+      location?: { latitude?: number; longitude?: number };
+      photos?: unknown;
     }>;
-    status?: string;
-    error_message?: string;
   };
 
-  const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-  url.searchParams.set("location", `${place.lat},${place.lng}`);
-  url.searchParams.set("radius", String(radiusMeters));
-  url.searchParams.set("keyword", place.name);
-  url.searchParams.set("key", apiKey);
+  const data = await fetchJsonRequest<NearbyNewResponse>(
+    "https://places.googleapis.com/v1/places:searchNearby",
+    "POST",
+    {
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos",
+      "Content-Type": "application/json",
+    },
+    {
+      locationRestriction: {
+        circle: {
+          center: { latitude: place.lat, longitude: place.lng },
+          radius: radiusMeters,
+        },
+      },
+    }
+  );
 
-  const data = await fetchJson<NearbyResponse>(url.toString());
-  if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(`Google Nearby Search failed: ${data.status}${data.error_message ? ` (${data.error_message})` : ""}`);
-  }
-
-  const candidates: GoogleCandidate[] = (data.results ?? [])
+  const candidates: GoogleCandidate[] = (data.places ?? [])
     .map((r) => {
-      const lat = r.geometry?.location?.lat;
-      const lng = r.geometry?.location?.lng;
+      const lat = r.location?.latitude;
+      const lng = r.location?.longitude;
       const d = typeof lat === "number" && typeof lng === "number" ? distanceMeters(place.lat, place.lng, lat, lng) : undefined;
       return {
-        placeId: r.place_id ?? "",
-        name: r.name ?? "",
+        placeId: r.id ?? "",
+        name: r.displayName?.text ?? "",
         lat,
         lng,
         distanceMeters: d,
+        photos: toGooglePhotos(r.photos),
       };
     })
     .filter((r) => r.placeId && r.name);
@@ -349,62 +414,53 @@ async function findGoogleMatch(place: PlaceRecord, radiusMeters: number, apiKey:
   return { match: best };
 }
 
-async function findGooglePhotos(placeId: string, apiKey: string): Promise<GooglePhoto[]> {
-  type DetailsResponse = {
-    result?: {
-      photos?: Array<{
-        photo_reference?: string;
-        width?: number;
-        height?: number;
-        html_attributions?: string[];
-      }>;
-    };
-    status?: string;
-    error_message?: string;
-  };
-
-  const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
-  url.searchParams.set("place_id", placeId);
-  url.searchParams.set("fields", "photos,name");
-  url.searchParams.set("key", apiKey);
-
-  const data = await fetchJson<DetailsResponse>(url.toString());
-  if (data.status && data.status !== "OK") {
-    throw new Error(`Google Place Details failed: ${data.status}${data.error_message ? ` (${data.error_message})` : ""}`);
+async function findGooglePhotos(placeId: string, apiKey: string, initialPhotos?: GooglePhoto[]): Promise<GooglePhoto[]> {
+  if (initialPhotos && initialPhotos.length > 0) {
+    return initialPhotos;
   }
 
-  return (data.result?.photos ?? [])
-    .map((p) => ({
-      photoReference: p.photo_reference ?? "",
-      width: p.width,
-      height: p.height,
-      htmlAttributions: p.html_attributions,
-    }))
-    .filter((p) => p.photoReference);
+  type DetailsNewResponse = {
+    id?: string;
+    photos?: unknown;
+  };
+
+  const data = await fetchJsonRequest<DetailsNewResponse>(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+    "GET",
+    {
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "id,displayName,location,photos",
+    }
+  );
+
+  return toGooglePhotos(data.photos);
 }
 
 function scoreGooglePhoto(photo: GooglePhoto): number {
   let score = 0;
-  if ((photo.width ?? 0) >= 1200) score += 5;
-  score += scoreLandscape(photo.width, photo.height);
-  const attrib = (photo.htmlAttributions ?? []).join(" ");
-  if (hasBadHints(attrib)) score -= 6;
+  if ((photo.widthPx ?? 0) >= 1200) score += 5;
+  score += scoreLandscape(photo.widthPx, photo.heightPx);
+  if (hasBadHints(`${photo.name} ${photo.attributionText ?? ""}`)) score -= 6;
   return score;
 }
 
-function buildGooglePhotoUrl(photoReference: string, apiKey: string): string {
-  const url = new URL("https://maps.googleapis.com/maps/api/place/photo");
-  url.searchParams.set("maxwidth", String(PHOTO_MAX_WIDTH));
-  url.searchParams.set("photo_reference", photoReference);
+function buildGooglePhotoUrl(photoName: string, apiKey: string): string {
+  const base = `https://places.googleapis.com/v1/${photoName}/media`;
+  const url = new URL(base);
+  url.searchParams.set("maxWidthPx", String(PHOTO_MAX_WIDTH));
   url.searchParams.set("key", apiKey);
   return url.toString();
 }
 
-async function findHeroFromGoogle(place: PlaceRecord, radiusMeters: number, apiKey: string): Promise<{ chosenUrl: string | null; reason?: string }> {
+async function findHeroFromGoogle(
+  place: PlaceRecord,
+  radiusMeters: number,
+  apiKey: string
+): Promise<{ chosenUrl: string | null; reason?: string }> {
   const match = await findGoogleMatch(place, radiusMeters, apiKey);
   if (!match.match) return { chosenUrl: null, reason: match.reason ?? "no confident place match" };
 
-  const photos = await findGooglePhotos(match.match.placeId, apiKey);
+  const photos = await findGooglePhotos(match.match.placeId, apiKey, match.match.photos);
   if (photos.length === 0) {
     return { chosenUrl: null, reason: "no photos returned by place details" };
   }
@@ -414,7 +470,7 @@ async function findHeroFromGoogle(place: PlaceRecord, radiusMeters: number, apiK
     return { chosenUrl: null, reason: "no suitable hero photo" };
   }
 
-  return { chosenUrl: buildGooglePhotoUrl(best.photoReference, apiKey) };
+  return { chosenUrl: buildGooglePhotoUrl(best.name, apiKey) };
 }
 
 export async function POST(req: Request) {

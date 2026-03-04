@@ -486,7 +486,7 @@ export async function POST(req: Request) {
 
       if (existingAtCoord.length > 0) {
         const wantedKey = normNameKey(placeName);
-        const nameHit = existingAtCoord.find((x) => normNameKey(x.name) === wantedKey);
+        const nameHit = existingAtCoord.find((x: { id: number; type: string; name: string }) => normNameKey(x.name) === wantedKey);
         const chosen = nameHit ?? (existingAtCoord.length === 1 ? existingAtCoord[0] : null);
 
         if (!chosen) {

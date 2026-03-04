@@ -7,13 +7,24 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
+function createMissingDbProxy(): PrismaClient {
+  const message = 'Missing env DATABASE_URL. Put it into ".env.local".';
+  return new Proxy(
+    {},
+    {
+      get() {
+        throw new Error(message);
+      },
+    }
+  ) as PrismaClient;
+}
+
 function createClient() {
   const url = process.env.DATABASE_URL;
   if (!url) {
-    throw new Error('Missing env DATABASE_URL. Put it into ".env.local".');
+    return createMissingDbProxy();
   }
 
-  // Safety net for Vercel/Node TLS chain issues (Supabase pooler + cert chain edge cases)
   if (process.env.NODE_ENV === "production") {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }

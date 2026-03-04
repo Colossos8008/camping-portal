@@ -148,6 +148,17 @@ function parseBody(value: unknown): {
   };
 }
 
+
+function parseBool(searchParams: URLSearchParams, keys: string[]): boolean {
+  for (const key of keys) {
+    const value = searchParams.get(key);
+    if (!value) continue;
+    const v = value.toLowerCase();
+    if (["1", "true", "yes", "on"].includes(v)) return true;
+  }
+  return false;
+}
+
 async function fetchJsonRequest<T>(
   url: string,
   method: "GET" | "POST",
@@ -651,10 +662,21 @@ function isValidPlace(place: PlaceRecord): boolean {
 export async function POST(req: Request) {
   try {
     const body = parseBody(await req.json().catch(() => ({})));
+    const { searchParams } = new URL(req.url);
+    const force = parseBool(searchParams, ["force", "forceUpdateExisting", "forceUpdateExistingUrls", "forceUpdate"]);
+    const dryRun = parseBool(searchParams, ["dryRun"]);
+    const queryLimit = Number.parseInt(searchParams.get("limit") ?? "", 10);
+    const limit = Number.isFinite(queryLimit) ? Math.min(MAX_LIMIT, Math.max(1, queryLimit)) : body.limit;
+    const options = {
+      ...body,
+      limit,
+      force: body.force || force,
+      dryRun: body.dryRun || dryRun,
+    };
     const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
     const placeholder = (process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim();
 
-    if ((body.provider === "google" || body.provider === "auto") && !googleKey) {
+    if ((options.provider === "google" || options.provider === "auto") && !googleKey) {
       return NextResponse.json(
         {
           totalPlaces: 0,
@@ -671,13 +693,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const whereBase = body.types?.length ? { type: { in: body.types } } : {};
-    const where = body.cursor ? { ...whereBase, id: { gt: body.cursor } } : whereBase;
+    const whereBase = options.types?.length ? { type: { in: options.types } } : {};
+    const where = options.cursor ? { ...whereBase, id: { gt: options.cursor } } : whereBase;
 
     const places = (await prisma.place.findMany({
       where,
-      skip: body.cursor ? 0 : body.offset,
-      take: body.limit,
+      skip: options.cursor ? 0 : options.offset,
+      take: options.limit,
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -698,7 +720,7 @@ export async function POST(req: Request) {
     const placeConcurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
 
     const perPlaceResults = await runWithConcurrency(places, placeConcurrency, async (place): Promise<HeroResult> => {
-      if (place.heroImageUrl && !body.force) {
+      if (place.heroImageUrl && !options.force) {
         return {
           id: String(place.id),
           name: place.name,
@@ -724,11 +746,11 @@ export async function POST(req: Request) {
       }
 
       const candidates: ScoredCandidate[] = [];
-      const maxCandidates = body.maxCandidatesPerPlace;
+      const maxCandidates = options.maxCandidatesPerPlace;
 
       try {
-        if (body.provider === "google" || body.provider === "auto") {
-          const googleCandidates = await findGoogleCandidates(place, body.radiusMeters, googleKey, maxCandidates);
+        if (options.provider === "google" || options.provider === "auto") {
+          const googleCandidates = await findGoogleCandidates(place, options.radiusMeters, googleKey, maxCandidates);
           candidates.push(...googleCandidates);
         }
       } catch (error: any) {
@@ -736,7 +758,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        if (body.provider === "wikimedia" || body.provider === "auto") {
+        if (options.provider === "wikimedia" || options.provider === "auto") {
           const wiki = await findWikimediaCandidates(place.name, maxCandidates);
           candidates.push(
             ...wiki.map((c) => ({
@@ -786,8 +808,12 @@ export async function POST(req: Request) {
       }
 
       const wasExisting = Boolean(place.heroImageUrl);
+      const isForcedRescore = wasExisting && options.force;
+      const resultReason = isForcedRescore
+        ? `force enabled - rescored existing heroImageUrl${options.dryRun ? " (dry-run)" : ""}`
+        : `${reason}${options.dryRun ? " (dry-run)" : ""}`;
 
-      if (!body.dryRun) {
+      if (!options.dryRun) {
         await prisma.place.update({
           where: { id: place.id },
           data: { heroImageUrl: chosenUrl, heroScore: score, heroReason },
@@ -800,12 +826,12 @@ export async function POST(req: Request) {
         placeId: String(place.id),
         placeName: place.name,
         status: "UPDATED",
-        reason: `${reason}${body.dryRun ? " (dry-run)" : ""}`,
+        reason: resultReason,
         chosenUrl,
         source,
         score,
         heroReason,
-        action: body.dryRun ? (wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",
+        action: options.dryRun ? (isForcedRescore ? "updated" : wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",
       };
     });
 

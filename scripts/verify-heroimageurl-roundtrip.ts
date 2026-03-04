@@ -1,7 +1,7 @@
 import process from "node:process";
 import "dotenv/config";
 
-import { prisma } from "../src/lib/prisma.ts";
+import { prisma } from "../src/lib/prisma";
 
 type CheckResult = { status: "PASS" | "FAIL" | "SKIP"; message: string };
 

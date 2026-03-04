@@ -1,0 +1,27 @@
+export const PLACE_BASE_SELECT = {
+  id: true,
+  name: true,
+  type: true,
+  lat: true,
+  lng: true,
+  dogAllowed: true,
+  sanitary: true,
+  yearRound: true,
+  onlineBooking: true,
+  gastronomy: true,
+  heroImageUrl: true,
+  thumbnailImageId: true,
+  createdAt: true,
+  updatedAt: true,
+  ratingDetail: true,
+  ts2: true,
+  images: true,
+  thumbnailImage: true,
+} as const;
+
+export function placeSelect(canTs21: boolean) {
+  return {
+    ...PLACE_BASE_SELECT,
+    ...(canTs21 ? { ts21: true } : {}),
+  } as const;
+}

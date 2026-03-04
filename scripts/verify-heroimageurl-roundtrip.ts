@@ -1,62 +1,39 @@
-import { spawn } from "node:child_process";
 import process from "node:process";
 import "dotenv/config";
 
-import { Client } from "pg";
-
-const PORT = Number(process.env.VERIFY_HERO_PORT ?? 4011);
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+import { prisma } from "../src/lib/prisma.ts";
+import { GET } from "../src/app/api/places/[id]/route.ts";
 
 type CheckResult = { ok: boolean; message: string };
 
 type Candidate = { id: number; name: string; type: string; heroImageUrl: string };
 
-async function waitForServer(url: string, timeoutMs: number): Promise<void> {
-  const started = Date.now();
-  let lastError = "";
-
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (res.ok) return;
-      lastError = `HTTP ${res.status}`;
-    } catch (err: any) {
-      lastError = String(err?.message ?? err);
-    }
-
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  throw new Error(`Server not ready at ${url} within ${timeoutMs}ms (${lastError})`);
-}
-
 async function findCandidate(): Promise<Candidate | null> {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) return null;
+  const places = await prisma.place.findMany({
+    where: {
+      NOT: { type: "CAMPINGPLATZ" },
+      heroImageUrl: { not: null },
+    },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      heroImageUrl: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
 
-  const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
-  await client.connect();
-  try {
-    const result = await client.query(
-      `SELECT id, name, type, "heroImageUrl"
-       FROM "Place"
-       WHERE type <> 'CAMPINGPLATZ' AND "heroImageUrl" IS NOT NULL AND length(trim("heroImageUrl")) > 0
-       ORDER BY "updatedAt" DESC
-       LIMIT 1`
-    );
+  const place = places.find((item) => typeof item.heroImageUrl === "string" && item.heroImageUrl.trim().length > 0);
+  if (!place || typeof place.heroImageUrl !== "string") return null;
 
-    if (!result.rows[0]) return null;
-
-    const row = result.rows[0];
-    return {
-      id: Number(row.id),
-      name: String(row.name ?? ""),
-      type: String(row.type ?? ""),
-      heroImageUrl: String(row.heroImageUrl ?? "").trim(),
-    };
-  } finally {
-    await client.end();
-  }
+  return {
+    id: place.id,
+    name: place.name,
+    type: place.type,
+    heroImageUrl: place.heroImageUrl.trim(),
+  };
 }
 
 async function run(): Promise<CheckResult> {
@@ -65,40 +42,29 @@ async function run(): Promise<CheckResult> {
   }
 
   const candidate = await findCandidate();
-  if (!candidate?.heroImageUrl) {
+  if (!candidate) {
     return { ok: false, message: "No non-camping place with heroImageUrl found in DB." };
   }
 
-  const dev = spawn("npm", ["run", "dev", "--", "--port", String(PORT)], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
-  });
-
-  let logs = "";
-  dev.stdout.on("data", (d) => (logs += d.toString()));
-  dev.stderr.on("data", (d) => (logs += d.toString()));
-
-  try {
-    await waitForServer(`${BASE_URL}/api/places`, 90_000);
-
-    const byIdRes = await fetch(`${BASE_URL}/api/places/${candidate.id}`, { cache: "no-store" });
-    if (!byIdRes.ok) return { ok: false, message: `GET /api/places/${candidate.id} failed: HTTP ${byIdRes.status}` };
-
-    const byIdJson: any = await byIdRes.json();
-    if (String(byIdJson?.heroImageUrl ?? "").trim() !== candidate.heroImageUrl) {
-      return { ok: false, message: `Mismatch: DB=${candidate.heroImageUrl} API=${byIdJson?.heroImageUrl}` };
-    }
-
-    return { ok: true, message: `Verified ${candidate.type}#${candidate.id} (${candidate.name}).` };
-  } finally {
-    dev.kill("SIGTERM");
-    await new Promise((r) => setTimeout(r, 500));
-    if (!dev.killed) dev.kill("SIGKILL");
-    if (logs.trim()) {
-      console.log("[verify:hero server log excerpt]");
-      console.log(logs.split("\n").slice(-12).join("\n"));
-    }
+  const response = await GET({} as any, { params: { id: String(candidate.id) } });
+  if (!response.ok) {
+    return {
+      ok: false,
+      message: `GET handler for /api/places/${candidate.id} failed: HTTP ${response.status}`,
+    };
   }
+
+  const payload: any = await response.json();
+  const apiHeroImageUrl = String(payload?.heroImageUrl ?? "").trim();
+
+  if (apiHeroImageUrl !== candidate.heroImageUrl) {
+    return {
+      ok: false,
+      message: `Mismatch: DB=${candidate.heroImageUrl} API=${payload?.heroImageUrl}`,
+    };
+  }
+
+  return { ok: true, message: `Verified ${candidate.type}#${candidate.id} (${candidate.name}).` };
 }
 
 run()
@@ -113,4 +79,7 @@ run()
   .catch((err: any) => {
     console.error(`FAIL verify:hero - ${String(err?.message ?? err)}`);
     process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
   });

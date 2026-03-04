@@ -10,6 +10,8 @@ export const PLACE_BASE_SELECT = {
   onlineBooking: true,
   gastronomy: true,
   heroImageUrl: true,
+  heroScore: true,
+  heroReason: true,
   thumbnailImageId: true,
   createdAt: true,
   updatedAt: true,

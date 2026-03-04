@@ -4,25 +4,31 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type HeroAction = "created" | "updated" | "skipped" | "error" | "would-create" | "would-update";
-type HeroSource = "google" | "wikimedia";
+type HeroSource = "google" | "wikimedia" | "placeholder";
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
+type ResultStatus = "UPDATED" | "SKIPPED" | "FAILED";
+type HeroAction = "created" | "updated" | "skipped" | "error" | "would-create" | "would-update";
 
 type HeroResult = {
+  id: string;
+  name: string;
+  status: ResultStatus;
+  reason: string;
+  chosenUrl?: string;
+  score?: number;
+  source?: HeroSource;
+  heroReason?: string;
+  action: HeroAction;
   placeId: string;
   placeName: string;
-  action: HeroAction;
-  chosenUrl?: string;
-  source?: HeroSource;
-  reason?: string;
 };
 
 type PlaceRecord = {
   id: number;
   name: string;
   type: PlaceType;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   heroImageUrl: string | null;
 };
 
@@ -49,28 +55,77 @@ type GooglePhoto = {
   attributionText?: string;
 };
 
-const MAX_LIMIT = 200;
-const DEFAULT_LIMIT = 50;
+type ScoredCandidate = {
+  source: Exclude<HeroSource, "placeholder">;
+  url: string;
+  score: number;
+  reason: string;
+};
+
+const MAX_LIMIT = 500;
+const DEFAULT_LIMIT = 250;
 const DEFAULT_RADIUS_METERS = 200;
 const MAX_RADIUS_METERS = 5000;
 const FETCH_TIMEOUT_MS = 15000;
-const CONCURRENCY = 3;
 const PHOTO_MAX_WIDTH = 1600;
 const ALL_TYPES: PlaceType[] = ["CAMPINGPLATZ", "STELLPLATZ", "HVO_TANKSTELLE", "SEHENSWUERDIGKEIT"];
-const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem"];
+const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
+const POSITIVE_LABELS = [
+  "landscape",
+  "nature",
+  "outdoor",
+  "beach",
+  "coast",
+  "mountain",
+  "forest",
+  "campground",
+  "building",
+  "monument",
+  "landmark",
+];
+const NEGATIVE_LABELS = [
+  "person",
+  "selfie",
+  "portrait",
+  "indoor",
+  "room",
+  "logo",
+  "advertising",
+  "sign",
+  "text",
+  "vehicle",
+  "fuel dispenser",
+];
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function parseBody(value: unknown): {
   limit: number;
   force: boolean;
   dryRun: boolean;
-  provider: HeroSource;
+  provider: "google" | "wikimedia" | "auto";
   radiusMeters: number;
+  offset: number;
+  cursor?: number;
   types?: PlaceType[];
+  maxCandidatesPerPlace: number;
 } {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const limitValue = typeof raw.limit === "number" ? Math.floor(raw.limit) : DEFAULT_LIMIT;
   const radiusValue = typeof raw.radiusMeters === "number" ? Math.floor(raw.radiusMeters) : DEFAULT_RADIUS_METERS;
-  const provider = raw.provider === "wikimedia" ? "wikimedia" : "google";
+  const offsetValue = typeof raw.offset === "number" ? Math.max(0, Math.floor(raw.offset)) : 0;
+  const cursorValue = typeof raw.cursor === "number" ? Math.floor(raw.cursor) : undefined;
+  const provider = raw.provider === "google" || raw.provider === "wikimedia" ? raw.provider : "auto";
+  const maxCandidatesPerPlaceRaw =
+    typeof raw.maxCandidatesPerPlace === "number"
+      ? Math.floor(raw.maxCandidatesPerPlace)
+      : envInt("HERO_AUTOFILL_MAX_CANDIDATES", 12);
+
   const types = Array.isArray(raw.types)
     ? raw.types
         .map((x) => (typeof x === "string" ? x.trim().toUpperCase() : ""))
@@ -86,7 +141,10 @@ function parseBody(value: unknown): {
       MAX_RADIUS_METERS,
       Math.max(50, Number.isFinite(radiusValue) ? radiusValue : DEFAULT_RADIUS_METERS)
     ),
+    offset: offsetValue,
+    cursor: cursorValue && cursorValue > 0 ? cursorValue : undefined,
     types: types && types.length > 0 ? Array.from(new Set(types)) : undefined,
+    maxCandidatesPerPlace: Math.min(30, Math.max(1, maxCandidatesPerPlaceRaw)),
   };
 }
 
@@ -94,10 +152,11 @@ async function fetchJsonRequest<T>(
   url: string,
   method: "GET" | "POST",
   headers?: Record<string, string>,
-  body?: unknown
+  body?: unknown,
+  timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       method,
@@ -167,13 +226,13 @@ function hasBadHints(text: string): boolean {
 function scoreLandscape(width?: number, height?: number): number {
   if (!width || !height || height <= 0) return 0;
   const ratio = width / height;
-  if (ratio >= 1.2 && ratio <= 2.2) return 6;
-  if (ratio > 1 && ratio < 2.6) return 2;
-  if (ratio < 0.8) return -6;
-  return -1;
+  if (ratio >= 1.2 && ratio <= 2.2) return 8;
+  if (ratio > 1 && ratio < 2.6) return 3;
+  if (ratio < 0.8) return -8;
+  return -2;
 }
 
-async function runWithConcurrency<T, R>(items: T[], worker: (item: T) => Promise<R>): Promise<R[]> {
+async function runWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let cursor = 0;
 
@@ -186,7 +245,7 @@ async function runWithConcurrency<T, R>(items: T[], worker: (item: T) => Promise
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => next()));
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => next()));
   return out;
 }
 
@@ -198,7 +257,7 @@ async function findPageIdBySearch(placeName: string): Promise<number | null> {
   url.searchParams.set("srsearch", placeName);
   url.searchParams.set("format", "json");
   url.searchParams.set("utf8", "1");
-  url.searchParams.set("srlimit", "5");
+  url.searchParams.set("srlimit", "10");
   url.searchParams.set("origin", "*");
 
   const data = await fetchJson<SearchResponse>(url.toString());
@@ -224,7 +283,7 @@ async function fetchPageImageTitles(pageId: number): Promise<string[]> {
   const url = new URL("https://en.wikipedia.org/w/api.php");
   url.searchParams.set("action", "query");
   url.searchParams.set("prop", "images");
-  url.searchParams.set("imlimit", "50");
+  url.searchParams.set("imlimit", "200");
   url.searchParams.set("pageids", String(pageId));
   url.searchParams.set("format", "json");
   url.searchParams.set("origin", "*");
@@ -271,19 +330,17 @@ async function resolveCommonsImage(fileTitle: string): Promise<WikimediaCandidat
   return null;
 }
 
-function scoreWikimedia(c: WikimediaCandidate): number {
+function scoreWikimediaBase(c: WikimediaCandidate): number {
   let score = 0;
   if ((c.width ?? 0) >= 1200) score += 4;
   score += scoreLandscape(c.width, c.height);
-  if (hasBadHints(c.title)) score -= 10;
+  if (hasBadHints(c.title)) score -= 12;
   return score;
 }
 
-async function findHeroFromWikimedia(
-  placeName: string
-): Promise<{ candidate: WikimediaCandidate | null; reason?: string }> {
+async function findWikimediaCandidates(placeName: string, maxCandidates: number): Promise<WikimediaCandidate[]> {
   const pageId = await findPageIdBySearch(placeName);
-  if (!pageId) return { candidate: null, reason: "No Wikipedia page found" };
+  if (!pageId) return [];
 
   const candidates: WikimediaCandidate[] = [];
   const representative = await fetchRepresentativeFileTitle(pageId);
@@ -292,18 +349,17 @@ async function findHeroFromWikimedia(
     if (resolved) candidates.push(resolved);
   }
 
-  if (candidates.length === 0) {
+  if (candidates.length < maxCandidates) {
     const titles = Array.from(new Set(await fetchPageImageTitles(pageId)));
     for (const title of titles) {
       if (hasBadHints(title)) continue;
       const resolved = await resolveCommonsImage(title);
       if (resolved) candidates.push(resolved);
-      if (candidates.length >= 10) break;
+      if (candidates.length >= maxCandidates) break;
     }
   }
 
-  if (candidates.length === 0) return { candidate: null, reason: "No suitable Wikimedia Commons image" };
-  return { candidate: candidates.sort((a, b) => scoreWikimedia(b) - scoreWikimedia(a))[0] };
+  return candidates;
 }
 
 function toGooglePhotos(photos: unknown): GooglePhoto[] {
@@ -357,6 +413,7 @@ async function findGoogleMatch(
       "Content-Type": "application/json",
     },
     {
+      maxResultCount: 20,
       locationRestriction: {
         circle: {
           center: { latitude: place.lat, longitude: place.lng },
@@ -370,7 +427,7 @@ async function findGoogleMatch(
     .map((r) => {
       const lat = r.location?.latitude;
       const lng = r.location?.longitude;
-      const d = typeof lat === "number" && typeof lng === "number" ? distanceMeters(place.lat, place.lng, lat, lng) : undefined;
+      const d = typeof lat === "number" && typeof lng === "number" ? distanceMeters(place.lat!, place.lng!, lat, lng) : undefined;
       return {
         placeId: r.id ?? "",
         name: r.displayName?.text ?? "",
@@ -383,7 +440,7 @@ async function findGoogleMatch(
     .filter((r) => r.placeId && r.name);
 
   if (candidates.length === 0) {
-    return { match: null, reason: "no nearby results" };
+    return { match: null, reason: "No nearby Google Places result" };
   }
 
   let best: GoogleCandidate | null = null;
@@ -404,11 +461,11 @@ async function findGoogleMatch(
     }
   }
 
-  if (!best) return { match: null, reason: "no candidate" };
+  if (!best) return { match: null, reason: "No Google candidate" };
   const bestNameSim = similarity(place.name, best.name);
   const far = typeof best.distanceMeters === "number" && best.distanceMeters > radiusMeters * 1.5;
   if (bestNameSim < 0.45 || far) {
-    return { match: null, reason: "no confident place match" };
+    return { match: null, reason: "No confident Google place match" };
   }
 
   return { match: best };
@@ -436,14 +493,6 @@ async function findGooglePhotos(placeId: string, apiKey: string, initialPhotos?:
   return toGooglePhotos(data.photos);
 }
 
-function scoreGooglePhoto(photo: GooglePhoto): number {
-  let score = 0;
-  if ((photo.widthPx ?? 0) >= 1200) score += 5;
-  score += scoreLandscape(photo.widthPx, photo.heightPx);
-  if (hasBadHints(`${photo.name} ${photo.attributionText ?? ""}`)) score -= 6;
-  return score;
-}
-
 function buildGooglePhotoUrl(photoName: string, apiKey: string): string {
   const base = `https://places.googleapis.com/v1/${photoName}/media`;
   const url = new URL(base);
@@ -452,48 +501,184 @@ function buildGooglePhotoUrl(photoName: string, apiKey: string): string {
   return url.toString();
 }
 
-async function findHeroFromGoogle(
+async function findGoogleCandidates(
   place: PlaceRecord,
   radiusMeters: number,
-  apiKey: string
-): Promise<{ chosenUrl: string | null; reason?: string }> {
+  apiKey: string,
+  maxCandidates: number
+): Promise<ScoredCandidate[]> {
   const match = await findGoogleMatch(place, radiusMeters, apiKey);
-  if (!match.match) return { chosenUrl: null, reason: match.reason ?? "no confident place match" };
+  if (!match.match) return [];
 
   const photos = await findGooglePhotos(match.match.placeId, apiKey, match.match.photos);
-  if (photos.length === 0) {
-    return { chosenUrl: null, reason: "no photos returned by place details" };
+  return photos.slice(0, maxCandidates).map((photo) => {
+    const base = scoreLandscape(photo.widthPx, photo.heightPx) + ((photo.widthPx ?? 0) >= 1200 ? 5 : 0);
+    const hintPenalty = hasBadHints(`${photo.name} ${photo.attributionText ?? ""}`) ? -8 : 0;
+    return {
+      source: "google",
+      url: buildGooglePhotoUrl(photo.name, apiKey),
+      score: base + hintPenalty,
+      reason: `Google base score ${base + hintPenalty}`,
+    };
+  });
+}
+
+async function analyzeWithVision(url: string): Promise<{ score: number; reason: string }> {
+  const visionKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
+  if (!visionKey) {
+    return { score: 0, reason: "Vision disabled (GOOGLE_CLOUD_VISION_API_KEY missing)" };
   }
 
-  const best = [...photos].sort((a, b) => scoreGooglePhoto(b) - scoreGooglePhoto(a))[0];
-  if (scoreGooglePhoto(best) < 0) {
-    return { chosenUrl: null, reason: "no suitable hero photo" };
+  type VisionResponse = {
+    responses?: Array<{
+      labelAnnotations?: Array<{ description?: string; score?: number }>;
+      faceAnnotations?: Array<unknown>;
+      logoAnnotations?: Array<unknown>;
+      landmarkAnnotations?: Array<unknown>;
+      safeSearchAnnotation?: Record<string, string>;
+      error?: { message?: string };
+    }>;
+  };
+
+  const timeoutMs = envInt("HERO_VISION_TIMEOUT_MS", 12000);
+  const payload = {
+    requests: [
+      {
+        image: { source: { imageUri: url } },
+        features: [
+          { type: "LABEL_DETECTION", maxResults: 20 },
+          { type: "FACE_DETECTION", maxResults: 5 },
+          { type: "LOGO_DETECTION", maxResults: 5 },
+          { type: "LANDMARK_DETECTION", maxResults: 5 },
+          { type: "SAFE_SEARCH_DETECTION", maxResults: 1 },
+        ],
+      },
+    ],
+  };
+
+  const data = await fetchJsonRequest<VisionResponse>(
+    `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(visionKey)}`,
+    "POST",
+    { "Content-Type": "application/json" },
+    payload,
+    timeoutMs
+  );
+
+  const item = data.responses?.[0];
+  if (!item) return { score: -5, reason: "Vision empty response" };
+  if (item.error?.message) return { score: -8, reason: `Vision error: ${item.error.message}` };
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  const labels = (item.labelAnnotations ?? []).map((l) => ({
+    description: (l.description ?? "").toLowerCase(),
+    score: typeof l.score === "number" ? l.score : 0,
+  }));
+
+  for (const label of labels) {
+    if (POSITIVE_LABELS.some((k) => label.description.includes(k))) {
+      const points = Math.round(8 * Math.max(0.2, label.score));
+      score += points;
+      reasons.push(`+${points} label:${label.description}`);
+    }
+
+    if (NEGATIVE_LABELS.some((k) => label.description.includes(k))) {
+      const points = Math.round(10 * Math.max(0.2, label.score));
+      score -= points;
+      reasons.push(`-${points} label:${label.description}`);
+    }
   }
 
-  return { chosenUrl: buildGooglePhotoUrl(best.name, apiKey) };
+  const faceCount = item.faceAnnotations?.length ?? 0;
+  if (faceCount > 0) {
+    const points = Math.min(35, faceCount * 12);
+    score -= points;
+    reasons.push(`-${points} faces:${faceCount}`);
+  }
+
+  const logoCount = item.logoAnnotations?.length ?? 0;
+  if (logoCount > 0) {
+    const points = Math.min(40, logoCount * 15);
+    score -= points;
+    reasons.push(`-${points} logos:${logoCount}`);
+  }
+
+  const landmarkCount = item.landmarkAnnotations?.length ?? 0;
+  if (landmarkCount > 0) {
+    const points = Math.min(35, landmarkCount * 16);
+    score += points;
+    reasons.push(`+${points} landmarks:${landmarkCount}`);
+  }
+
+  const safe = item.safeSearchAnnotation;
+  if (safe) {
+    const penalized = [safe.adult, safe.violence, safe.racy]
+      .filter(Boolean)
+      .some((level) => level === "LIKELY" || level === "VERY_LIKELY");
+    if (penalized) {
+      score -= 10;
+      reasons.push("-10 safe-search");
+    }
+  }
+
+  return { score, reason: reasons.length > 0 ? reasons.join("; ") : "Vision neutral" };
+}
+
+async function scoreCandidates(candidates: ScoredCandidate[]): Promise<ScoredCandidate[]> {
+  const concurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
+  return runWithConcurrency(candidates, concurrency, async (candidate) => {
+    try {
+      const vision = await analyzeWithVision(candidate.url);
+      return {
+        ...candidate,
+        score: candidate.score + vision.score,
+        reason: `${candidate.reason}; ${vision.reason}`,
+      };
+    } catch (error: any) {
+      return {
+        ...candidate,
+        reason: `${candidate.reason}; vision-fallback:${String(error?.message ?? "error")}`,
+      };
+    }
+  });
+}
+
+function isValidPlace(place: PlaceRecord): boolean {
+  return typeof place.lat === "number" && Number.isFinite(place.lat) && typeof place.lng === "number" && Number.isFinite(place.lng);
 }
 
 export async function POST(req: Request) {
   try {
     const body = parseBody(await req.json().catch(() => ({})));
+    const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+    const placeholder = (process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim();
 
-    if (body.provider === "google" && !process.env.GOOGLE_MAPS_API_KEY) {
+    if ((body.provider === "google" || body.provider === "auto") && !googleKey) {
       return NextResponse.json(
         {
-          counts: { created: 0, updated: 0, skipped: 0, errors: 0 },
+          totalPlaces: 0,
+          processed: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          nextCursor: null,
           results: [],
-          error: "Missing GOOGLE_MAPS_API_KEY env variable",
+          counts: { created: 0, updated: 0, skipped: 0, errors: 0 },
+          error: "Missing GOOGLE_PLACES_API_KEY (or GOOGLE_MAPS_API_KEY) env variable",
         },
         { status: 400 }
       );
     }
 
-    const where = body.types?.length ? { type: { in: body.types } } : undefined;
+    const whereBase = body.types?.length ? { type: { in: body.types } } : {};
+    const where = body.cursor ? { ...whereBase, id: { gt: body.cursor } } : whereBase;
 
     const places = (await prisma.place.findMany({
       where,
+      skip: body.cursor ? 0 : body.offset,
       take: body.limit,
-      orderBy: { updatedAt: "desc" },
+      orderBy: { id: "asc" },
       select: {
         id: true,
         name: true,
@@ -504,112 +689,164 @@ export async function POST(req: Request) {
       },
     })) as PlaceRecord[];
 
-    const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
-    const googleKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+    const results: HeroResult[] = [];
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    let created = 0;
 
-    const results = await runWithConcurrency(places, async (place): Promise<HeroResult> => {
+    const placeConcurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
+
+    const perPlaceResults = await runWithConcurrency(places, placeConcurrency, async (place): Promise<HeroResult> => {
       if (place.heroImageUrl && !body.force) {
-        counts.skipped += 1;
         return {
+          id: String(place.id),
+          name: place.name,
           placeId: String(place.id),
           placeName: place.name,
-          action: "skipped",
-          source: body.provider,
-          reason: "heroImageUrl already set",
+          status: "SKIPPED",
+          reason: "heroImageUrl already set and force=false",
           chosenUrl: place.heroImageUrl,
+          action: "skipped",
         };
+      }
+
+      if (!isValidPlace(place)) {
+        return {
+          id: String(place.id),
+          name: place.name,
+          placeId: String(place.id),
+          placeName: place.name,
+          status: "SKIPPED",
+          reason: "Invalid place coordinates (lat/lng missing)",
+          action: "skipped",
+        };
+      }
+
+      const candidates: ScoredCandidate[] = [];
+      const maxCandidates = body.maxCandidatesPerPlace;
+
+      try {
+        if (body.provider === "google" || body.provider === "auto") {
+          const googleCandidates = await findGoogleCandidates(place, body.radiusMeters, googleKey, maxCandidates);
+          candidates.push(...googleCandidates);
+        }
+      } catch (error: any) {
+        console.warn("hero-autofill google error", place.id, error?.message ?? error);
       }
 
       try {
-        let chosenUrl: string | null = null;
-        let reason: string | undefined;
-
-        if (body.provider === "google") {
-          const found = await findHeroFromGoogle(place, body.radiusMeters, googleKey);
-          chosenUrl = found.chosenUrl;
-          reason = found.reason;
-        } else {
-          const found = await findHeroFromWikimedia(place.name);
-          chosenUrl = found.candidate?.url ?? null;
-          reason = found.reason;
+        if (body.provider === "wikimedia" || body.provider === "auto") {
+          const wiki = await findWikimediaCandidates(place.name, maxCandidates);
+          candidates.push(
+            ...wiki.map((c) => ({
+              source: "wikimedia" as const,
+              url: c.url,
+              score: scoreWikimediaBase(c),
+              reason: `Wikimedia base score ${scoreWikimediaBase(c)}`,
+            }))
+          );
         }
-
-        if (!chosenUrl) {
-          counts.skipped += 1;
-          return {
-            placeId: String(place.id),
-            placeName: place.name,
-            action: "skipped",
-            source: body.provider,
-            reason: reason ?? "No image found",
-          };
-        }
-
-        const isUpdate = Boolean(place.heroImageUrl);
-
-        if (body.dryRun) {
-          if (isUpdate) {
-            counts.updated += 1;
-            return {
-              placeId: String(place.id),
-              placeName: place.name,
-              action: "would-update",
-              source: body.provider,
-              chosenUrl,
-              reason: "Dry run",
-            };
-          }
-
-          counts.created += 1;
-          return {
-            placeId: String(place.id),
-            placeName: place.name,
-            action: "would-create",
-            source: body.provider,
-            chosenUrl,
-            reason: "Dry run",
-          };
-        }
-
-        await prisma.place.update({ where: { id: place.id }, data: { heroImageUrl: chosenUrl } });
-
-        if (isUpdate) {
-          counts.updated += 1;
-          return {
-            placeId: String(place.id),
-            placeName: place.name,
-            action: "updated",
-            chosenUrl,
-            source: body.provider,
-          };
-        }
-
-        counts.created += 1;
-        return {
-          placeId: String(place.id),
-          placeName: place.name,
-          action: "created",
-          chosenUrl,
-          source: body.provider,
-        };
       } catch (error: any) {
-        counts.errors += 1;
+        console.warn("hero-autofill wikimedia error", place.id, error?.message ?? error);
+      }
+
+      const uniqueCandidates = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, maxCandidates);
+      const scoredCandidates = await scoreCandidates(uniqueCandidates);
+      const bestCandidate = [...scoredCandidates].sort((a, b) => b.score - a.score)[0] ?? null;
+
+      let chosenUrl: string | undefined;
+      let source: HeroSource | undefined;
+      let score: number | undefined;
+      let reason = "";
+      let heroReason = "";
+
+      if (bestCandidate) {
+        chosenUrl = bestCandidate.url;
+        source = bestCandidate.source;
+        score = Math.round(bestCandidate.score);
+        heroReason = `Fallback A used best candidate. ${bestCandidate.reason}`;
+        reason = score >= 0 ? `Selected ${source} candidate with score ${score}` : `Selected low-score candidate (fallback A) from ${source} with score ${score}`;
+      } else if (placeholder) {
+        chosenUrl = placeholder;
+        source = "placeholder";
+        score = -999;
+        heroReason = "Fallback B placeholder used";
+        reason = "No candidates from Google/Wikimedia. Placeholder set (fallback B).";
+      } else {
         return {
+          id: String(place.id),
+          name: place.name,
           placeId: String(place.id),
           placeName: place.name,
+          status: "FAILED",
+          reason: "No candidate found and HERO_IMAGE_PLACEHOLDER_URL is missing",
           action: "error",
-          source: body.provider,
-          reason: error?.message ?? "Unexpected error",
         };
       }
+
+      const wasExisting = Boolean(place.heroImageUrl);
+
+      if (!body.dryRun) {
+        await prisma.place.update({
+          where: { id: place.id },
+          data: { heroImageUrl: chosenUrl, heroScore: score, heroReason },
+        });
+      }
+
+      return {
+        id: String(place.id),
+        name: place.name,
+        placeId: String(place.id),
+        placeName: place.name,
+        status: "UPDATED",
+        reason: `${reason}${body.dryRun ? " (dry-run)" : ""}`,
+        chosenUrl,
+        source,
+        score,
+        heroReason,
+        action: body.dryRun ? (wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",
+      };
     });
 
-    return NextResponse.json({ counts, results }, { status: 200 });
+    for (const r of perPlaceResults) {
+      results.push(r);
+      if (r.status === "UPDATED") {
+        updated += 1;
+        if (r.action === "created" || r.action === "would-create") created += 1;
+      } else if (r.status === "SKIPPED") {
+        skipped += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    const nextCursor = places.length > 0 ? places[places.length - 1]?.id ?? null : null;
+
+    return NextResponse.json(
+      {
+        totalPlaces: places.length,
+        processed: results.length,
+        updated,
+        skipped,
+        failed,
+        nextCursor,
+        results,
+        counts: { created, updated, skipped, errors: failed },
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     return NextResponse.json(
       {
-        counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
+        totalPlaces: 0,
+        processed: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 1,
+        nextCursor: null,
         results: [],
+        counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
         error: error?.message ?? "Unexpected error",
       },
       { status: 500 }

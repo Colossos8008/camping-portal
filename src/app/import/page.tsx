@@ -53,14 +53,25 @@ type HeroAutofillAction =
   | "would-update";
 
 type HeroAutofillResponse = {
+  totalPlaces: number;
+  processed: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  nextCursor: number | null;
   counts: { created: number; updated: number; skipped: number; errors: number };
   results: Array<{
+    id: string;
+    name: string;
+    status: "UPDATED" | "SKIPPED" | "FAILED";
+    reason: string;
+    score?: number;
+    source?: "google" | "wikimedia" | "placeholder";
+    heroReason?: string;
     placeId: string;
     placeName: string;
     action: HeroAutofillAction;
     chosenUrl?: string;
-    source?: "google" | "wikimedia";
-    reason?: string;
   }>;
   error?: string;
 };
@@ -95,11 +106,14 @@ export default function ImportPage() {
   });
   const [deleteResp, setDeleteResp] = useState<DeleteResponse | null>(null);
 
-  const [heroLimit, setHeroLimit] = useState(50);
+  const [heroLimit, setHeroLimit] = useState(250);
   const [heroForce, setHeroForce] = useState(false);
   const [heroDryRun, setHeroDryRun] = useState(true);
-  const [heroProvider, setHeroProvider] = useState<"google" | "wikimedia">("google");
+  const [heroProvider, setHeroProvider] = useState<"google" | "wikimedia" | "auto">("auto");
   const [heroRadiusMeters, setHeroRadiusMeters] = useState(200);
+  const [heroCursor, setHeroCursor] = useState<number | "">("");
+  const [heroOffset, setHeroOffset] = useState(0);
+  const [heroMaxCandidates, setHeroMaxCandidates] = useState(12);
   const [heroTypesInput, setHeroTypesInput] = useState("");
   const [heroBusy, setHeroBusy] = useState(false);
   const [heroResp, setHeroResp] = useState<HeroAutofillResponse | null>(null);
@@ -258,10 +272,13 @@ export default function ImportPage() {
         },
         body: JSON.stringify({
           limit: heroLimit,
+          cursor: heroCursor === "" ? undefined : Number(heroCursor),
+          offset: heroOffset,
           force: heroForce,
           dryRun: heroDryRun,
           provider: heroProvider,
           radiusMeters: heroRadiusMeters,
+          maxCandidatesPerPlace: heroMaxCandidates,
           types: heroTypesInput
             .split(",")
             .map((x) => x.trim().toUpperCase())
@@ -539,33 +556,28 @@ export default function ImportPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Limit
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={heroLimit}
-              onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))}
-              style={{
-                width: 100,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
-            />
+            <input type="number" min={1} max={500} value={heroLimit} onChange={(e) => setHeroLimit(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Cursor (optional)
+            <input type="number" min={1} value={heroCursor} onChange={(e) => setHeroCursor(e.target.value === "" ? "" : Math.max(1, Number(e.target.value) || 1))} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Offset
+            <input type="number" min={0} value={heroOffset} onChange={(e) => setHeroOffset(Math.max(0, Number(e.target.value) || 0))} style={{ width: 100, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
+            Max candidates/place
+            <input type="number" min={1} max={30} value={heroMaxCandidates} onChange={(e) => setHeroMaxCandidates(Math.max(1, Math.min(30, Number(e.target.value) || 1)))} style={{ width: 150, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Provider
-            <select
-              value={heroProvider}
-              onChange={(e) => setHeroProvider(e.target.value as "google" | "wikimedia")}
-              style={{
-                minWidth: 140,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
-            >
+            <select value={heroProvider} onChange={(e) => setHeroProvider(e.target.value as "google" | "wikimedia" | "auto")} style={{ minWidth: 140, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }}>
+              <option value="auto">Auto (Google + Wikimedia)</option>
               <option value="google">Google</option>
               <option value="wikimedia">Wikimedia</option>
             </select>
@@ -573,116 +585,58 @@ export default function ImportPage() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Radius (meters)
-            <input
-              type="number"
-              min={50}
-              max={5000}
-              value={heroRadiusMeters}
-              onChange={(e) => setHeroRadiusMeters(Math.max(50, Number(e.target.value) || 50))}
-              style={{
-                width: 130,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
-            />
+            <input type="number" min={50} max={5000} value={heroRadiusMeters} onChange={(e) => setHeroRadiusMeters(Math.max(50, Number(e.target.value) || 50))} style={{ width: 130, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontWeight: 700 }}>
             Types filter (optional)
-            <input
-              type="text"
-              value={heroTypesInput}
-              onChange={(e) => setHeroTypesInput(e.target.value)}
-              placeholder="CAMPINGPLATZ,HVO_TANKSTELLE"
-              style={{
-                width: 260,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
-            />
+            <input type="text" value={heroTypesInput} onChange={(e) => setHeroTypesInput(e.target.value)} placeholder="CAMPINGPLATZ,HVO_TANKSTELLE" style={{ width: 260, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)" }} />
           </label>
 
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
-            <input
-              type="checkbox"
-              checked={heroForce}
-              onChange={(e) => setHeroForce(e.target.checked)}
-            />
-            Force update existing URLs
-          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}><input type="checkbox" checked={heroForce} onChange={(e) => setHeroForce(e.target.checked)} />Force update existing URLs</label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}><input type="checkbox" checked={heroDryRun} onChange={(e) => setHeroDryRun(e.target.checked)} />Dry run (no DB write)</label>
 
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
-            <input
-              type="checkbox"
-              checked={heroDryRun}
-              onChange={(e) => setHeroDryRun(e.target.checked)}
-            />
-            Dry run (no DB write)
-          </label>
-
-          <button
-            onClick={onHeroAutofill}
-            disabled={heroBusy}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.2)",
-              cursor: heroBusy ? "not-allowed" : "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {heroBusy ? "Fetching…" : "Auto fetch hero images"}
-          </button>
+          <button onClick={onHeroAutofill} disabled={heroBusy} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)", cursor: heroBusy ? "not-allowed" : "pointer", fontWeight: 700 }}>{heroBusy ? "Fetching…" : "Auto fetch hero images"}</button>
         </div>
 
-        {heroError && (
-          <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>Fehler: {heroError}</div>
-        )}
+        {heroError && <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>Fehler: {heroError}</div>}
 
         {heroResp && (
           <>
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Badge label={`Created: ${heroResp.counts.created}`} />
-              <Badge label={`Updated: ${heroResp.counts.updated}`} />
-              <Badge label={`Skipped: ${heroResp.counts.skipped}`} />
-              <Badge
-                label={`Errors: ${heroResp.counts.errors}`}
-                tone={heroResp.counts.errors > 0 ? "bad" : "ok"}
-              />
+              <Badge label={`Total: ${heroResp.totalPlaces}`} />
+              <Badge label={`Processed: ${heroResp.processed}`} />
+              <Badge label={`Updated: ${heroResp.updated}`} />
+              <Badge label={`Skipped: ${heroResp.skipped}`} />
+              <Badge label={`Failed: ${heroResp.failed}`} tone={heroResp.failed > 0 ? "bad" : "ok"} />
+              <Badge label={`Next cursor: ${heroResp.nextCursor ?? "none"}`} />
+              <button onClick={() => navigator.clipboard.writeText(JSON.stringify(heroResp, null, 2))} style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(0,0,0,0.06)", fontWeight: 700, cursor: "pointer" }}>Copy JSON</button>
+              <button onClick={() => {
+                const blob = new Blob([JSON.stringify(heroResp, null, 2)], { type: "application/json" });
+                const href = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = href;
+                a.download = `hero-autofill-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(href);
+              }} style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(0,0,0,0.06)", fontWeight: 700, cursor: "pointer" }}>Download JSON</button>
             </div>
 
             <div style={{ marginTop: 12, overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>
-                    <th style={th}>Place</th>
-                    <th style={th}>Action</th>
-                    <th style={th}>Chosen URL</th>
-                    <th style={th}>Reason</th>
-                  </tr>
+                  <tr><th style={th}>Place</th><th style={th}>Status</th><th style={th}>Action</th><th style={th}>Source</th><th style={th}>Score</th><th style={th}>Chosen URL</th><th style={th}>Reason</th></tr>
                 </thead>
                 <tbody>
                   {heroResp.results.map((r) => (
                     <tr key={`${r.placeId}-${r.action}-${r.chosenUrl ?? "none"}`}>
-                      <td style={td}>
-                        <div style={{ fontWeight: 700 }}>{r.placeName}</div>
-                        <div style={{ opacity: 0.7, fontSize: 12 }}>ID: {r.placeId}</div>
-                      </td>
-                      <td style={td}>
-                        <HeroStatusPill status={r.action} />
-                      </td>
-                      <td style={td}>
-                        {r.chosenUrl ? (
-                          <a href={r.chosenUrl} target="_blank" rel="noreferrer">
-                            {r.chosenUrl}
-                          </a>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td style={td}>{r.reason ?? "-"}</td>
+                      <td style={td}><div style={{ fontWeight: 700 }}>{r.placeName}</div><div style={{ opacity: 0.7, fontSize: 12 }}>ID: {r.placeId}</div></td>
+                      <td style={td}>{r.status}</td>
+                      <td style={td}><HeroStatusPill status={r.action} /></td>
+                      <td style={td}>{r.source ?? "-"}</td>
+                      <td style={td}>{typeof r.score === "number" ? r.score : "-"}</td>
+                      <td style={td}>{r.chosenUrl ? <a href={r.chosenUrl} target="_blank" rel="noreferrer">{r.chosenUrl}</a> : "-"}</td>
+                      <td style={td}><div>{r.reason ?? "-"}</div><div style={{ opacity: 0.75, fontSize: 12 }}>{r.heroReason ?? ""}</div></td>
                     </tr>
                   ))}
                 </tbody>

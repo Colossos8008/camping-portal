@@ -1,0 +1,3 @@
+ALTER TABLE "Place"
+ADD COLUMN "heroScore" INTEGER,
+ADD COLUMN "heroReason" TEXT;

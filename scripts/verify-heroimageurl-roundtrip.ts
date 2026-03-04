@@ -1,14 +1,24 @@
 import process from "node:process";
 import "dotenv/config";
 
-import { prisma } from "../src/lib/prisma";
+import prismaPkg from "@prisma/client";
+
+const { PrismaClient } = prismaPkg as unknown as { PrismaClient: new () => any };
+const prisma = new PrismaClient();
 
 type CheckResult = { status: "PASS" | "FAIL" | "SKIP"; message: string };
-
 type Candidate = { id: number; name: string; type: string; heroImageUrl: string };
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+function parseSampleArg(): number {
+  const idx = process.argv.findIndex((x) => x === "--sample");
+  if (idx === -1) return 0;
+  const next = process.argv[idx + 1];
+  const n = Number.parseInt(String(next ?? "0"), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 async function findCandidate(): Promise<Candidate | null> {
@@ -39,11 +49,7 @@ async function findCandidate(): Promise<Candidate | null> {
   };
 }
 
-async function run(): Promise<CheckResult> {
-  if (!process.env.DATABASE_URL) {
-    return { status: "SKIP", message: "DATABASE_URL missing in environment." };
-  }
-
+async function verifySingleRoundtrip(): Promise<CheckResult> {
   const candidate = await findCandidate();
   if (!candidate) {
     return { status: "SKIP", message: "No non-camping place with heroImageUrl found in DB." };
@@ -90,6 +96,50 @@ async function run(): Promise<CheckResult> {
     status: "FAIL",
     message: `heroImageUrl missing/empty from API for ${candidate.type}#${candidate.id}. DB=${candidate.heroImageUrl} API=${payload?.heroImageUrl}`,
   };
+}
+
+async function verifySample(sampleSize: number): Promise<CheckResult> {
+  const rows = await prisma.place.findMany({
+    where: { heroImageUrl: { not: null } },
+    select: { id: true, name: true, type: true, heroImageUrl: true, heroScore: true, heroReason: true },
+    take: Math.max(1, sampleSize * 4),
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const candidates = rows
+    .filter((r) => typeof r.heroImageUrl === "string" && r.heroImageUrl.trim().length > 0)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, sampleSize);
+
+  if (candidates.length === 0) {
+    return { status: "SKIP", message: "No places with heroImageUrl for sample verification." };
+  }
+
+  const scored = candidates.filter((c) => typeof c.heroScore === "number").length;
+  const withReason = candidates.filter((c) => typeof c.heroReason === "string" && c.heroReason.trim().length > 0).length;
+
+  console.log(`Sampled ${candidates.length} places.`);
+  for (const c of candidates) {
+    console.log(`- ${c.id} ${c.name} score=${c.heroScore ?? "n/a"} url=${String(c.heroImageUrl).slice(0, 80)}`);
+  }
+
+  return {
+    status: "PASS",
+    message: `Sample verification complete. scored=${scored}/${candidates.length}, reasons=${withReason}/${candidates.length}.`,
+  };
+}
+
+async function run(): Promise<CheckResult> {
+  if (!process.env.DATABASE_URL) {
+    return { status: "SKIP", message: "DATABASE_URL missing in environment." };
+  }
+
+  const sampleSize = parseSampleArg();
+  if (sampleSize > 0) {
+    return verifySample(sampleSize);
+  }
+
+  return verifySingleRoundtrip();
 }
 
 run()

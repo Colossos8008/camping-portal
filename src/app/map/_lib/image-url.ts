@@ -6,6 +6,7 @@ const SUPABASE_BUCKET = "place-images";
 export function getSupabasePublicUrl(path: string): string {
   const cleanPath = String(path ?? "").trim();
   if (!cleanPath) return "";
+  if (cleanPath.startsWith("/")) return cleanPath;
   if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) return cleanPath;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

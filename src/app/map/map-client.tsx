@@ -87,6 +87,7 @@ function publicUrlForObjectKey(filename: string | null | undefined) {
   if (!key) return null;
 
   if (key.startsWith("http://") || key.startsWith("https://")) return key;
+  if (key.startsWith("/")) return key;
 
   const supabaseUrl =
     (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||

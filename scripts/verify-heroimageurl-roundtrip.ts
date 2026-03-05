@@ -38,7 +38,10 @@ async function findCandidate(): Promise<Candidate | null> {
     take: 50,
   });
 
-  const place = places.find((item) => typeof item.heroImageUrl === "string" && item.heroImageUrl.trim().length > 0);
+  const place = places.find(
+    (item: any) => typeof item.heroImageUrl === "string" && item.heroImageUrl.trim().length > 0
+  );
+
   if (!place || typeof place.heroImageUrl !== "string") return null;
 
   return {
@@ -101,13 +104,20 @@ async function verifySingleRoundtrip(): Promise<CheckResult> {
 async function verifySample(sampleSize: number): Promise<CheckResult> {
   const rows = await prisma.place.findMany({
     where: { heroImageUrl: { not: null } },
-    select: { id: true, name: true, type: true, heroImageUrl: true, heroScore: true, heroReason: true },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      heroImageUrl: true,
+      heroScore: true,
+      heroReason: true,
+    },
     take: Math.max(1, sampleSize * 4),
     orderBy: { updatedAt: "desc" },
   });
 
   const candidates = rows
-    .filter((r) => typeof r.heroImageUrl === "string" && r.heroImageUrl.trim().length > 0)
+    .filter((r: any) => typeof r.heroImageUrl === "string" && r.heroImageUrl.trim().length > 0)
     .sort(() => Math.random() - 0.5)
     .slice(0, sampleSize);
 
@@ -115,12 +125,16 @@ async function verifySample(sampleSize: number): Promise<CheckResult> {
     return { status: "SKIP", message: "No places with heroImageUrl for sample verification." };
   }
 
-  const scored = candidates.filter((c) => typeof c.heroScore === "number").length;
-  const withReason = candidates.filter((c) => typeof c.heroReason === "string" && c.heroReason.trim().length > 0).length;
+  const scored = candidates.filter((c: any) => typeof c.heroScore === "number").length;
+  const withReason = candidates.filter(
+    (c: any) => typeof c.heroReason === "string" && c.heroReason.trim().length > 0
+  ).length;
 
   console.log(`Sampled ${candidates.length} places.`);
-  for (const c of candidates) {
-    console.log(`- ${c.id} ${c.name} score=${c.heroScore ?? "n/a"} url=${String(c.heroImageUrl).slice(0, 80)}`);
+  for (const c of candidates as any[]) {
+    console.log(
+      `- ${c.id} ${c.name} score=${c.heroScore ?? "n/a"} url=${String(c.heroImageUrl).slice(0, 80)}`
+    );
   }
 
   return {

@@ -1,6 +1,7 @@
 // src/app/api/places/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { placeSelect } from "@/lib/place-select";
 
 export const runtime = "nodejs";
 
@@ -271,22 +272,13 @@ async function findManyPlaces() {
   if (canTs21) {
     return prisma.place.findMany({
       orderBy: { updatedAt: "desc" },
-      include: {
-        ratingDetail: true,
-        ts2: true,
-        ts21: true,
-        images: true,
-      },
+      select: placeSelect(true),
     });
   }
 
   const places = await prisma.place.findMany({
     orderBy: { updatedAt: "desc" },
-    include: {
-      ratingDetail: true,
-      ts2: true,
-      images: true,
-    },
+    select: placeSelect(false),
   });
 
   return places.map((p: any) => ({ ...p, ts21: null }));
@@ -355,12 +347,7 @@ export async function POST(req: NextRequest) {
   try {
     const created = await prisma.place.create({
       data,
-      include: {
-        ratingDetail: true,
-        ts2: true,
-        ...(canTs21 ? { ts21: true } : {}),
-        images: true,
-      } as any,
+      select: placeSelect(canTs21),
     });
 
     if (!canTs21) return NextResponse.json({ ...created, ts21: null });
@@ -469,12 +456,7 @@ export async function PUT(req: NextRequest) {
     const updated = await prisma.place.update({
       where: { id: idNum },
       data,
-      include: {
-        ratingDetail: true,
-        ts2: true,
-        ...(canTs21 ? { ts21: true } : {}),
-        images: true,
-      } as any,
+      select: placeSelect(canTs21),
     });
 
     if (!canTs21) return NextResponse.json({ ...updated, ts21: null });

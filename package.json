@@ -4,20 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-
     "build": "next build",
     "vercel-build": "prisma migrate deploy && next build",
-
     "start": "next start",
     "lint": "eslint",
-
     "prisma:generate": "dotenv -e .env -- prisma generate",
     "db:migrate": "dotenv -e .env -- prisma migrate dev",
     "db:deploy": "dotenv -e .env -- prisma migrate deploy",
-
     "db:push": "node scripts/blocked-db-push.mjs",
-
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "verify:hero": "node --experimental-strip-types scripts/verify-heroimageurl-roundtrip.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

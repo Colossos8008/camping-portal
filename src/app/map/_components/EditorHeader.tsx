@@ -33,7 +33,7 @@ export default function EditorHeader(props: {
   const title = props.formName || (props.editingNew ? "Ort neu" : "Ort bearbeiten");
   const dist = formatDistanceKm(props.distanceKm);
 
-  const heroSrc = props.heroImage?.filename ? getSupabasePublicUrl(props.heroImage.filename) : "";
+  const heroSrc = props.heroImage?.filename ? getSupabasePublicUrl(props.heroImage.filename) : "/hero-placeholder.jpg";
 
   return (
     <div className="shrink-0 border-b border-white/10">

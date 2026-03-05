@@ -6,7 +6,9 @@ const SUPABASE_BUCKET = "place-images";
 export function getSupabasePublicUrl(path: string): string {
   const cleanPath = String(path ?? "").trim();
   if (!cleanPath) return "";
+  if (cleanPath.startsWith("/")) return cleanPath;
   if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) return cleanPath;
+  if (cleanPath.startsWith("/")) return cleanPath;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -17,3 +19,4 @@ export function getSupabasePublicUrl(path: string): string {
   const { data } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(cleanPath);
   return data?.publicUrl ?? "";
 }
+

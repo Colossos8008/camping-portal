@@ -1,6 +1,7 @@
 // src/app/api/places/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { placeSelect } from "@/lib/place-select";
 
 export const runtime = "nodejs";
 
@@ -262,24 +263,13 @@ async function getPlaceById(id: number) {
   if (canTs21) {
     return prisma.place.findUnique({
       where: { id },
-      include: {
-        ratingDetail: true,
-        ts2: true,
-        ts21: true,
-        images: true,
-        thumbnailImage: true,
-      } as any,
+      select: placeSelect(true),
     });
   }
 
   const place = await prisma.place.findUnique({
     where: { id },
-    include: {
-      ratingDetail: true,
-      ts2: true,
-      images: true,
-      thumbnailImage: true,
-    } as any,
+    select: placeSelect(false),
   });
 
   return place ? ({ ...place, ts21: null } as any) : null;
@@ -400,13 +390,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const updated = await prisma.place.update({
       where: { id: idNum },
       data,
-      include: {
-        ratingDetail: true,
-        ts2: true,
-        ...(canTs21 ? { ts21: true } : {}),
-        images: true,
-        thumbnailImage: true,
-      } as any,
+      select: placeSelect(canTs21),
     });
 
     if (!canTs21) return NextResponse.json({ ...updated, ts21: null });

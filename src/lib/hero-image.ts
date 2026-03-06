@@ -58,3 +58,24 @@ export function buildGooglePhotoMediaUrl(photoResourceName: string, maxWidthPx: 
   url.searchParams.set("maxWidthPx", String(width));
   return url.toString();
 }
+
+export function buildPlaceHeroProxyPath(placeId: number | string | null | undefined): string | null {
+  const idNum = Number(placeId);
+  if (!Number.isFinite(idNum) || idNum <= 0) return null;
+  return `/api/places/${Math.trunc(idNum)}/hero`;
+}
+
+export function normalizePlaceHeroImageUrlForPublic(
+  placeId: number | string | null | undefined,
+  heroImageUrl: string | null | undefined
+): string | null {
+  const raw = String(heroImageUrl ?? "").trim();
+  if (!raw) return null;
+
+  if (isGooglePhotoReference(raw)) {
+    const proxyPath = buildPlaceHeroProxyPath(placeId);
+    if (proxyPath) return proxyPath;
+  }
+
+  return raw;
+}

@@ -52,7 +52,7 @@ export default function ImagesPanel(props: {
         <div className="mt-3 grid grid-cols-3 gap-2">
           {(Array.isArray(props.images) ? props.images : []).map((img: any) => {
             const isThumb = Number(props.thumbnailImageId) === Number(img.id);
-            const src = getSupabasePublicUrl(String(img.filename ?? ""));
+            const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
 
             return (
               <div key={img.id} className="rounded-xl border border-white/10 bg-black/30 p-1">

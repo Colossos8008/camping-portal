@@ -13,7 +13,8 @@
     "db:deploy": "dotenv -e .env -- prisma migrate deploy",
     "db:push": "node scripts/blocked-db-push.mjs",
     "postinstall": "prisma generate",
-    "verify:hero": "node --experimental-strip-types scripts/verify-heroimageurl-roundtrip.ts"
+    "verify:hero": "node --experimental-strip-types scripts/verify-heroimageurl-roundtrip.ts",
+    "verify:google-hero-proxy": "node --experimental-strip-types scripts/verify-google-hero-proxy.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

@@ -158,7 +158,7 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
       negatives.push("vehicle-closeup-no-scenic -16");
     }
     if (signal.pool) {
-      const points = Math.round(24 + 12 * Math.min(1.4, poolStrength / 1.1));
+      const points = Math.round(34 + 16 * Math.min(1.5, poolStrength / 1.1));
       score -= points;
       negatives.push(`pool/swimming -${points}`);
     }

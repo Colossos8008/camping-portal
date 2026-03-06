@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
+import { scoreVisionByPlaceType } from "@/lib/hero-type-scoring";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,6 +84,7 @@ type GooglePhoto = {
 
 type ScoredCandidate = {
   source: Exclude<HeroSource, "placeholder">;
+  placeType: PlaceType;
   url: string;
   fetchUrl?: string;
   score: number;
@@ -97,32 +99,6 @@ const FETCH_TIMEOUT_MS = 15000;
 const PHOTO_MAX_WIDTH = 1600;
 const ALL_TYPES: PlaceType[] = ["CAMPINGPLATZ", "STELLPLATZ", "HVO_TANKSTELLE", "SEHENSWUERDIGKEIT"];
 const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
-const POSITIVE_LABELS = [
-  "landscape",
-  "nature",
-  "outdoor",
-  "beach",
-  "coast",
-  "mountain",
-  "forest",
-  "campground",
-  "building",
-  "monument",
-  "landmark",
-];
-const NEGATIVE_LABELS = [
-  "person",
-  "selfie",
-  "portrait",
-  "indoor",
-  "room",
-  "logo",
-  "advertising",
-  "sign",
-  "text",
-  "vehicle",
-  "fuel dispenser",
-];
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -556,6 +532,7 @@ async function findGoogleCandidates(
     scoreUrl.searchParams.set("key", apiKey);
     return {
       source: "google",
+      placeType: place.type,
       url: clientUrl,
       fetchUrl: scoreUrl.toString(),
       score: base + hintPenalty,
@@ -621,7 +598,7 @@ async function fetchImageBytes(url: string, timeoutMs: number): Promise<{
   }
 }
 
-async function analyzeWithVision(url: string, includeDebug: boolean): Promise<{ score: number; reason: string; visionDebug?: VisionDebug }> {
+async function analyzeWithVision(url: string, placeType: PlaceType, includeDebug: boolean): Promise<{ score: number; reason: string; visionDebug?: VisionDebug }> {
   const visionKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
   if (!visionKey) {
     return { score: 0, reason: "Vision disabled (GOOGLE_CLOUD_VISION_API_KEY missing)" };
@@ -728,71 +705,39 @@ async function analyzeWithVision(url: string, includeDebug: boolean): Promise<{ 
   if (!item) return { score: -5, reason: "Vision empty response" };
   if (item.error?.message) return { score: -8, reason: `Vision error: ${item.error.message}` };
 
-  let score = 0;
-  const reasons: string[] = [];
-
   const labels = (item.labelAnnotations ?? []).map((l) => ({
     description: (l.description ?? "").toLowerCase(),
     score: typeof l.score === "number" ? l.score : 0,
   }));
 
-  for (const label of labels) {
-    if (POSITIVE_LABELS.some((k) => label.description.includes(k))) {
-      const points = Math.round(8 * Math.max(0.2, label.score));
-      score += points;
-      reasons.push(`+${points} label:${label.description}`);
-    }
-
-    if (NEGATIVE_LABELS.some((k) => label.description.includes(k))) {
-      const points = Math.round(10 * Math.max(0.2, label.score));
-      score -= points;
-      reasons.push(`-${points} label:${label.description}`);
-    }
-  }
-
   const faceCount = item.faceAnnotations?.length ?? 0;
-  if (faceCount > 0) {
-    const points = Math.min(35, faceCount * 12);
-    score -= points;
-    reasons.push(`-${points} faces:${faceCount}`);
-  }
-
   const logoCount = item.logoAnnotations?.length ?? 0;
-  if (logoCount > 0) {
-    const points = Math.min(40, logoCount * 15);
-    score -= points;
-    reasons.push(`-${points} logos:${logoCount}`);
-  }
-
   const landmarkCount = item.landmarkAnnotations?.length ?? 0;
-  if (landmarkCount > 0) {
-    const points = Math.min(35, landmarkCount * 16);
-    score += points;
-    reasons.push(`+${points} landmarks:${landmarkCount}`);
-  }
-
   const safeSearch = item.safeSearchAnnotation;
-  if (safeSearch) {
-    const penalized = [safeSearch.adult, safeSearch.violence, safeSearch.racy]
-      .filter(Boolean)
-      .some((level) => level === "LIKELY" || level === "VERY_LIKELY");
-    if (penalized) {
-      score -= 10;
-      reasons.push("-10 safe-search");
-    }
-  }
+  const hasText = labels.some((label) => label.description.includes("text") || label.description.includes("sign"));
+  const safeSearchPenalized = !!safeSearch && [safeSearch.adult, safeSearch.violence, safeSearch.racy]
+    .filter(Boolean)
+    .some((level) => level === "LIKELY" || level === "VERY_LIKELY");
+
+  const typedScore = scoreVisionByPlaceType(placeType, {
+    labels,
+    faceCount,
+    logoCount,
+    landmarkCount,
+    hasText,
+    safeSearchPenalized,
+  });
 
   const labelsTop5 = labels.slice(0, 5).map((label) => label.description).filter(Boolean);
   const hasFace = (item.faceAnnotations?.length ?? 0) > 0;
   const hasLogo = (item.logoAnnotations?.length ?? 0) > 0;
-  const hasText = labels.some((label) => label.description.includes("text") || label.description.includes("sign"));
   const safe = item.safeSearchAnnotation ?? {};
   const landmarkLikely = (item.landmarkAnnotations?.length ?? 0) > 0;
   const indoorLikely = labels.some((label) => label.description.includes("indoor") || label.description.includes("room"));
 
   return {
-    score,
-    reason: reasons.length > 0 ? reasons.join("; ") : "Vision analyzed: neutral signals",
+    score: typedScore.score,
+    reason: typedScore.reason,
     visionDebug: includeDebug
       ? {
           imageFetch: {
@@ -824,7 +769,7 @@ async function scoreCandidates(candidates: ScoredCandidate[], includeDebug: bool
   const concurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
   return runWithConcurrency(candidates, concurrency, async (candidate) => {
     try {
-      const vision = await analyzeWithVision(candidate.fetchUrl ?? candidate.url, includeDebug);
+      const vision = await analyzeWithVision(candidate.fetchUrl ?? candidate.url, candidate.placeType, includeDebug);
       return {
         ...candidate,
         score: candidate.score + vision.score,
@@ -961,6 +906,7 @@ export async function POST(req: Request) {
           candidates.push(
             ...wiki.map((c) => ({
               source: "wikimedia" as const,
+              placeType: place.type,
               url: c.url,
               score: scoreWikimediaBase(c),
               reason: `Wikimedia base score ${scoreWikimediaBase(c)}`,

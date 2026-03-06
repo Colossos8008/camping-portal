@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
 import { scoreVisionByPlaceType } from "@/lib/hero-type-scoring";
 import { selectHeroCandidateByThreshold } from "@/lib/hero-candidate-selection";
+import { parseExplicitIds } from "@/lib/hero-autofill-ids";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1006,6 +1007,7 @@ export async function POST(req: Request) {
     const queryCursor = searchParams.get("cursor")?.trim();
     const hardCap = parsePositiveInt(process.env.HERO_AUTOFILL_HARD_CAP ?? null);
     const typeFilter = parseTypeFilter(searchParams);
+    const idsFilter = parseExplicitIds(searchParams.get("ids"));
 
     if (typeFilter.error) {
       return NextResponse.json(
@@ -1020,6 +1022,24 @@ export async function POST(req: Request) {
           counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
           capApplied: null,
           error: typeFilter.error,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (idsFilter.error) {
+      return NextResponse.json(
+        {
+          totalPlaces: 0,
+          processed: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 1,
+          nextCursor: null,
+          results: [],
+          counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
+          capApplied: null,
+          error: idsFilter.error,
         },
         { status: 400 }
       );
@@ -1061,15 +1081,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const whereBase = options.types?.length ? { type: { in: options.types } } : {};
-    const cursorId = options.cursor ? parsePositiveInt(options.cursor) : undefined;
-    const useCursorPaging = typeof cursorId === "number" && cursorId > 0;
-    const safeOffset = Math.max(0, options.offset);
+    const explicitIds = idsFilter.ids;
+    const explicitIdsMode = Boolean(explicitIds && explicitIds.length > 0);
+
+    const whereBase = {
+      ...(options.types?.length ? { type: { in: options.types } } : {}),
+      ...(explicitIdsMode ? { id: { in: explicitIds } } : {}),
+    };
+
+    const cursorId = !explicitIdsMode && options.cursor ? parsePositiveInt(options.cursor) : undefined;
+    const useCursorPaging = !explicitIdsMode && typeof cursorId === "number" && cursorId > 0;
+    const safeOffset = explicitIdsMode ? 0 : Math.max(0, options.offset);
 
     const places = (await prisma.place.findMany({
       where: whereBase,
-      ...(useCursorPaging ? { cursor: { id: cursorId }, skip: 1 } : { skip: safeOffset }),
-      take: options.limit,
+      ...(explicitIdsMode ? {} : useCursorPaging ? { cursor: { id: cursorId }, skip: 1 } : { skip: safeOffset }),
+      ...(explicitIdsMode ? {} : { take: options.limit }),
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -1081,7 +1108,7 @@ export async function POST(req: Request) {
       },
     })) as PlaceRecord[];
 
-    const totalPlaces = await prisma.place.count({ where: whereBase });
+    const totalPlaces = explicitIdsMode ? places.length : await prisma.place.count({ where: whereBase });
 
     const results: HeroResult[] = [];
     let updated = 0;
@@ -1369,7 +1396,7 @@ export async function POST(req: Request) {
     const lastPlaceId = places.length > 0 ? places[places.length - 1]?.id : null;
     let hasMore = false;
 
-    if (lastPlaceId !== null) {
+    if (!explicitIdsMode && lastPlaceId !== null) {
       if (useCursorPaging) {
         const nextPlace = await prisma.place.findFirst({
           where: { ...whereBase, id: { gt: lastPlaceId } },
@@ -1382,7 +1409,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const nextCursor = hasMore && lastPlaceId !== null ? String(lastPlaceId) : null;
+    const nextCursor = explicitIdsMode ? null : hasMore && lastPlaceId !== null ? String(lastPlaceId) : null;
 
     return NextResponse.json(
       {
@@ -1395,6 +1422,10 @@ export async function POST(req: Request) {
         results,
         counts: { created, updated, skipped, errors: failed },
         capApplied,
+        debug: {
+          explicitIdsMode,
+          parsedIds: explicitIdsMode ? explicitIds : undefined,
+        },
       },
       { status: 200 }
     );

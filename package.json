@@ -16,7 +16,8 @@
     "verify:hero": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-heroimageurl-roundtrip.ts",
     "verify:google-hero-proxy": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-google-hero-proxy.ts",
     "verify:hero-type-scoring": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-type-scoring.ts",
-    "verify:hero-candidate-selection": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-candidate-selection.ts"
+    "verify:hero-candidate-selection": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-candidate-selection.ts",
+    "verify:hero-autofill-ids-mode": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-autofill-ids-mode.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

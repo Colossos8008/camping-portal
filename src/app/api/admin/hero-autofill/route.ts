@@ -41,6 +41,7 @@ type HeroResult = {
     bestPreferredCandidate?: { source: HeroSource; score: number; url: string };
     acceptableFallbackCandidate?: { source: HeroSource; score: number; url: string };
     selectedCandidate?: { source: HeroSource; score: number; url: string; tier: "preferred" | "acceptable" };
+    whyWikimediaRejected?: string[];
     noSelectionReason?: string;
   };
   action: HeroAction;
@@ -131,6 +132,41 @@ const FETCH_TIMEOUT_MS = 15000;
 const PHOTO_MAX_WIDTH = 1600;
 const ALL_TYPES: PlaceType[] = ["CAMPINGPLATZ", "STELLPLATZ", "HVO_TANKSTELLE", "SEHENSWUERDIGKEIT"];
 const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
+const CAMPING_WIKIMEDIA_POSITIVE_HINTS = [
+  "camping",
+  "campsite",
+  "campground",
+  "camper",
+  "motorhome",
+  "wohnmobil",
+  "caravan",
+  "campervan",
+  "rv",
+  "zeltplatz",
+];
+const CAMPING_WIKIMEDIA_NEGATIVE_HINTS = [
+  "war",
+  "military",
+  "museum",
+  "church",
+  "memorial",
+  "portrait",
+  "person",
+  "statue",
+  "monument",
+  "cathedral",
+  "basilica",
+  "fortress",
+  "castle",
+  "building",
+  "architecture",
+  "therme",
+  "thermal",
+  "pool",
+  "swimming",
+  "waterpark",
+  "resort",
+];
 
 
 function envInt(name: string, fallback: number): number {
@@ -283,6 +319,26 @@ function normalize(value: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function tokenizeNormalized(value: string): Set<string> {
+  return new Set(normalize(value).split(" ").filter(Boolean));
+}
+
+function evaluateCampingWikimediaCandidate(candidate: WikimediaCandidate): { accepted: boolean; reason?: string } {
+  const merged = `${candidate.title} ${candidate.url}`;
+  const tokens = tokenizeNormalized(merged);
+  const hasPositive = CAMPING_WIKIMEDIA_POSITIVE_HINTS.some((hint) => tokens.has(hint));
+  if (!hasPositive) {
+    return { accepted: false, reason: `Rejected '${candidate.title}': missing strong camping relevance keyword.` };
+  }
+
+  const negative = CAMPING_WIKIMEDIA_NEGATIVE_HINTS.find((hint) => tokens.has(hint));
+  if (negative) {
+    return { accepted: false, reason: `Rejected '${candidate.title}': contains negative keyword '${negative}'.` };
+  }
+
+  return { accepted: true };
 }
 
 function similarity(a: string, b: string): number {
@@ -960,7 +1016,8 @@ export async function POST(req: Request) {
       const existingHeroUrl = place.heroImageUrl;
       const existingHeroIsPlaceholder = isPlaceholderHeroUrl(existingHeroUrl);
       const shouldRefreshExisting = place.type === "CAMPINGPLATZ" && options.refresh;
-      const shouldCleanupPlaceholder = existingHeroIsPlaceholder && options.cleanupPlaceholders;
+      const shouldCleanupPlaceholder = existingHeroIsPlaceholder && (options.cleanupPlaceholders || place.type === "CAMPINGPLATZ");
+      const wikimediaRejectReasons: string[] = [];
 
       if (existingHeroUrl && !options.force && !shouldRefreshExisting && !shouldCleanupPlaceholder) {
         return {
@@ -978,6 +1035,7 @@ export async function POST(req: Request) {
             discardedExistingHero: false,
             existingHeroWasPlaceholder: existingHeroIsPlaceholder,
             sourceDebug: [],
+            noSelectionReason: "Existing heroImageUrl retained (force=false)",
           },
           action: "skipped",
         };
@@ -1031,13 +1089,26 @@ export async function POST(req: Request) {
         if (options.provider === "wikimedia" || options.provider === "auto") {
           const wikimediaMax = place.type === "CAMPINGPLATZ" ? Math.min(30, maxCandidates * 2) : maxCandidates;
           const wiki = await findWikimediaCandidates(place.name, wikimediaMax);
-          const mapped = wiki.map((c) => ({
+          const filteredWiki =
+            place.type === "CAMPINGPLATZ"
+              ? wiki.filter((candidate) => {
+                  const verdict = evaluateCampingWikimediaCandidate(candidate);
+                  if (!verdict.accepted && verdict.reason) {
+                    wikimediaRejectReasons.push(verdict.reason);
+                  }
+                  return verdict.accepted;
+                })
+              : wiki;
+          const mapped = filteredWiki.map((c) => {
+            const baseScore = scoreWikimediaBase(c);
+            return {
               source: "wikimedia" as const,
               placeType: place.type,
               url: c.url,
-              score: scoreWikimediaBase(c),
-              reason: `Wikimedia base score ${scoreWikimediaBase(c)}`,
-            }));
+              score: baseScore,
+              reason: `Wikimedia base score ${baseScore}`,
+            };
+          });
           const boosted = mapped.map(withSourceBonus);
           candidates.push(...boosted);
           const top = boosted.sort((a, b) => b.score - a.score)[0];
@@ -1048,6 +1119,7 @@ export async function POST(req: Request) {
             scored: boosted.length,
             topScore: top ? Math.round(top.score) : undefined,
             topUrl: top?.url,
+            error: wikimediaRejectReasons.length > 0 ? `${wikimediaRejectReasons.length} candidate(s) rejected by camping filter` : undefined,
           });
         } else {
           sourceDebug.push({ source: "wikimedia", attempted: false, discovered: 0, scored: 0 });
@@ -1070,7 +1142,7 @@ export async function POST(req: Request) {
       const selection = selectHeroCandidateByThreshold(place.type, scoredCandidates);
       const bestCandidate = selection.bestPreferred ?? selection.bestAcceptable ?? null;
 
-      const discardedExistingHero = Boolean(existingHeroUrl) && Boolean(bestCandidate) && bestCandidate.url !== existingHeroUrl;
+      const discardedExistingHero = Boolean(existingHeroUrl) && (bestCandidate?.url ?? null) !== existingHeroUrl;
       const removedPlaceholder = shouldCleanupPlaceholder && !bestCandidate;
 
       let chosenUrl: string | undefined;
@@ -1134,6 +1206,7 @@ export async function POST(req: Request) {
             bestPreferredCandidate: undefined,
             acceptableFallbackCandidate: undefined,
             selectedCandidate: undefined,
+            whyWikimediaRejected: wikimediaRejectReasons.length > 0 ? wikimediaRejectReasons.slice(0, 8) : undefined,
             noSelectionReason: removedPlaceholder
               ? `No placeholder used; ${noSelectionReason}; placeholder removed during cleanup`
               : `No placeholder used; ${noSelectionReason}`,
@@ -1202,6 +1275,7 @@ export async function POST(req: Request) {
             url: bestCandidate.url,
             tier: selection.bestPreferred ? "preferred" : "acceptable",
           },
+          whyWikimediaRejected: wikimediaRejectReasons.length > 0 ? wikimediaRejectReasons.slice(0, 8) : undefined,
           noSelectionReason: undefined,
         },
         action: options.dryRun ? (isForcedRescore ? "updated" : wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",

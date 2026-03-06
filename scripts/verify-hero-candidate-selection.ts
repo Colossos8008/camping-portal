@@ -27,6 +27,12 @@ const scenicVehicleCamping = score("CAMPINGPLATZ", [
   { description: "outdoor", score: 0.88 },
 ]);
 
+const vehiclePoolCamping = score("CAMPINGPLATZ", [
+  { description: "motorhome", score: 0.95 },
+  { description: "swimming pool", score: 0.94 },
+  { description: "outdoor", score: 0.82 },
+]);
+
 const neutralCamping = score("CAMPINGPLATZ", [
   { description: "vehicle", score: 0.58 },
   { description: "outdoor", score: 0.45 },
@@ -64,7 +70,7 @@ const scenarios: Scenario[] = [
     expect: (selection) => selection.chosen?.url === "https://example.com/a.jpg" && selection.bestPreferred === null,
   },
   {
-    name: "CAMPINGPLATZ prefers scenic vehicle/water candidate",
+    name: "CAMPINGPLATZ prefers scenic vehicle/natural-water candidate",
     placeType: "CAMPINGPLATZ",
     candidates: [
       { source: "google", score: neutralCamping, url: "https://example.com/neutral.jpg" },
@@ -72,6 +78,15 @@ const scenarios: Scenario[] = [
       { source: "google", score: poorCamping, url: "https://example.com/poor.jpg" },
     ],
     expect: (selection) => selection.chosen?.url === "https://example.com/scenic.jpg" && selection.bestPreferred?.score === scenicVehicleCamping,
+  },
+  {
+    name: "CAMPINGPLATZ vehicle + pool is far below natural-water option",
+    placeType: "CAMPINGPLATZ",
+    candidates: [
+      { source: "google", score: vehiclePoolCamping, url: "https://example.com/pool.jpg" },
+      { source: "wikimedia", score: scenicVehicleCamping, url: "https://example.com/scenic.jpg" },
+    ],
+    expect: (selection) => selection.chosen?.url === "https://example.com/scenic.jpg" && vehiclePoolCamping < scenicVehicleCamping,
   },
   {
     name: "HVO neutral exterior beats logo/fuel-dispenser candidate",
@@ -83,7 +98,7 @@ const scenarios: Scenario[] = [
     expect: (selection) => selection.chosen?.url === "https://example.com/exterior.jpg",
   },
   {
-    name: "no acceptable candidate => placeholder path expected",
+    name: "no acceptable candidate => no selected hero candidate",
     placeType: "STELLPLATZ",
     candidates: [
       { source: "google", score: -20, url: "https://example.com/bad1.jpg" },
@@ -97,7 +112,7 @@ let allOk = true;
 for (const scenario of scenarios) {
   const selection = selectHeroCandidateByThreshold(scenario.placeType, scenario.candidates);
   const ok = scenario.expect(selection);
-  const msg = `${ok ? "PASS" : "FAIL"} ${scenario.name} => chosen=${selection.chosen?.url ?? "<placeholder>"} thresholds(preferred>=${selection.thresholds.preferredMin}, acceptable>=${selection.thresholds.acceptableMin})`;
+  const msg = `${ok ? "PASS" : "FAIL"} ${scenario.name} => chosen=${selection.chosen?.url ?? "<none>"} thresholds(preferred>=${selection.thresholds.preferredMin}, acceptable>=${selection.thresholds.acceptableMin})`;
   console.log(msg);
   if (!ok) allOk = false;
 }

@@ -18,6 +18,29 @@ const LABEL_SETS = {
   vehicle: ["vehicle", "motor vehicle", "car", "van", "rv", "motorhome", "camper", "caravan", "truck", "transport"],
   nature: ["nature", "landscape", "forest", "tree", "meadow", "field", "grass", "valley", "wilderness"],
   water: ["water", "lake", "river", "sea", "ocean", "coast", "beach", "shore", "bay"],
+  naturalWater: [
+    "sea",
+    "ocean",
+    "coast",
+    "beach",
+    "lake",
+    "river",
+    "shore",
+    "shoreline",
+    "bay",
+    "waterfront",
+    "natural",
+  ],
+  pool: [
+    "pool",
+    "swimming pool",
+    "resort pool",
+    "water park",
+    "indoor pool",
+    "hotel pool",
+    "water slide",
+    "aquatic centre",
+  ],
   mountain: ["mountain", "hill", "alps", "peak", "cliff"],
   outdoor: ["outdoor", "sky", "cloud", "horizon", "sunset", "sunrise"],
   camping: ["camping", "campground", "campsite", "tent", "caravan site", "holiday park"],
@@ -57,6 +80,8 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
     vehicle: hasAnyLabel(labels, LABEL_SETS.vehicle),
     nature: hasAnyLabel(labels, LABEL_SETS.nature),
     water: hasAnyLabel(labels, LABEL_SETS.water),
+    naturalWater: hasAnyLabel(labels, LABEL_SETS.naturalWater),
+    pool: hasAnyLabel(labels, LABEL_SETS.pool),
     mountain: hasAnyLabel(labels, LABEL_SETS.mountain),
     outdoor: hasAnyLabel(labels, LABEL_SETS.outdoor),
     camping: hasAnyLabel(labels, LABEL_SETS.camping),
@@ -78,6 +103,8 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
   const vehicleStrength = labelStrength(labels, LABEL_SETS.vehicle);
   const natureStrength = labelStrength(labels, [...LABEL_SETS.nature, ...LABEL_SETS.outdoor]);
   const waterStrength = labelStrength(labels, LABEL_SETS.water);
+  const naturalWaterStrength = labelStrength(labels, LABEL_SETS.naturalWater);
+  const poolStrength = labelStrength(labels, LABEL_SETS.pool);
   const scenicStrength = labelStrength(labels, [...LABEL_SETS.mountain, ...LABEL_SETS.water, ...LABEL_SETS.nature, ...LABEL_SETS.outdoor]);
 
   if (placeType === "CAMPINGPLATZ" || placeType === "STELLPLATZ") {
@@ -94,9 +121,13 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
       score += 10;
       positives.push("nature/outdoor +10");
     }
-    if (signal.water) {
-      score += 10;
-      positives.push("water +10");
+    if (signal.naturalWater) {
+      const waterBonus = Math.round(14 + 8 * Math.min(1.2, naturalWaterStrength / 1.2));
+      score += waterBonus;
+      positives.push(`natural-water +${waterBonus}`);
+    } else if (signal.water) {
+      score += 6;
+      positives.push("generic-water +6");
     }
     if (signal.mountain) {
       score += 8;
@@ -108,8 +139,9 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
       score += combo;
       positives.push(`vehicle+landscape +${combo}`);
     }
-    if (signal.vehicle && signal.water) {
-      const combo = Math.round(16 + 8 * Math.min(1.2, (vehicleStrength + waterStrength) / 2));
+    if (signal.vehicle && (signal.naturalWater || signal.water)) {
+      const naturalWaterBoost = signal.naturalWater ? naturalWaterStrength : waterStrength;
+      const combo = Math.round(14 + 10 * Math.min(1.2, (vehicleStrength + naturalWaterBoost) / 2));
       score += combo;
       positives.push(`vehicle+water +${combo}`);
     }
@@ -124,6 +156,11 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
     if (signal.vehicle && scenicStrength < 0.6 && !signal.camping) {
       score -= 16;
       negatives.push("vehicle-closeup-no-scenic -16");
+    }
+    if (signal.pool) {
+      const points = Math.round(24 + 12 * Math.min(1.4, poolStrength / 1.1));
+      score -= points;
+      negatives.push(`pool/swimming -${points}`);
     }
 
     if (signal.indoor) {

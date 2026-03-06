@@ -169,6 +169,20 @@ function parsePositiveInt(value: string | null): number | undefined {
 }
 
 
+function parseTypeFilter(searchParams: URLSearchParams): { types?: PlaceType[]; error?: string } {
+  const rawType = searchParams.get("type")?.trim();
+  if (!rawType) return {};
+
+  const normalizedType = rawType.toUpperCase();
+  if (!ALL_TYPES.includes(normalizedType as PlaceType)) {
+    return {
+      error: `Invalid type '${rawType}'. Allowed types: ${ALL_TYPES.join(", ")}`,
+    };
+  }
+
+  return { types: [normalizedType as PlaceType] };
+}
+
 function parseBool(searchParams: URLSearchParams, keys: string[]): boolean {
   for (const key of keys) {
     const value = searchParams.get(key);
@@ -810,6 +824,26 @@ export async function POST(req: Request) {
     const queryOffset = parsePositiveInt(searchParams.get("offset"));
     const queryCursor = searchParams.get("cursor")?.trim();
     const hardCap = parsePositiveInt(process.env.HERO_AUTOFILL_HARD_CAP ?? null);
+    const typeFilter = parseTypeFilter(searchParams);
+
+    if (typeFilter.error) {
+      return NextResponse.json(
+        {
+          totalPlaces: 0,
+          processed: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 1,
+          nextCursor: null,
+          results: [],
+          counts: { created: 0, updated: 0, skipped: 0, errors: 1 },
+          capApplied: null,
+          error: typeFilter.error,
+        },
+        { status: 400 }
+      );
+    }
+
     const requestedLimit = Math.max(1, queryLimit ?? body.limit ?? DEFAULT_LIMIT);
     const limit = hardCap ? Math.min(requestedLimit, hardCap) : requestedLimit;
     const capApplied = hardCap && limit < requestedLimit ? { requestedLimit, appliedLimit: limit, hardCap } : null;
@@ -821,6 +855,7 @@ export async function POST(req: Request) {
       dryRun: body.dryRun || dryRun,
       cursor: queryCursor && queryCursor.length > 0 ? queryCursor : body.cursor,
       offset: queryOffset ?? body.offset ?? 0,
+      types: typeFilter.types ?? body.types,
     };
     const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
     const placeholder = (process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim();

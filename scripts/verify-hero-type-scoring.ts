@@ -1,4 +1,5 @@
-import { scoreVisionByPlaceType, type VisionLabel } from "../src/lib/hero-type-scoring";
+// @ts-nocheck
+import { scoreVisionByPlaceType, type VisionLabel } from "../src/lib/hero-type-scoring.ts";
 
 type Scenario = {
   name: string;

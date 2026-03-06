@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
 import { scoreVisionByPlaceType } from "@/lib/hero-type-scoring";
+import { selectHeroCandidateByThreshold } from "@/lib/hero-candidate-selection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,14 @@ type HeroResult = {
   source?: HeroSource;
   heroReason?: string;
   visionDebug?: VisionDebug;
+  selectionDebug?: {
+    sourcesTried: Array<Exclude<HeroSource, "placeholder">>;
+    totalCandidates: number;
+    bestOverall?: { source: Exclude<HeroSource, "placeholder">; score: number; url: string };
+    bestPreferredCandidate?: { source: Exclude<HeroSource, "placeholder">; score: number; url: string };
+    acceptableFallbackCandidate?: { source: Exclude<HeroSource, "placeholder">; score: number; url: string };
+    placeholderReason?: string;
+  };
   action: HeroAction;
   placeId: string;
   placeName: string;
@@ -99,6 +108,7 @@ const FETCH_TIMEOUT_MS = 15000;
 const PHOTO_MAX_WIDTH = 1600;
 const ALL_TYPES: PlaceType[] = ["CAMPINGPLATZ", "STELLPLATZ", "HVO_TANKSTELLE", "SEHENSWUERDIGKEIT"];
 const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
+
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -917,9 +927,12 @@ export async function POST(req: Request) {
         console.warn("hero-autofill wikimedia error", place.id, error?.message ?? error);
       }
 
-      const uniqueCandidates = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, maxCandidates);
+      const uniqueCandidates = Array.from(new Map(candidates.map((c) => [c.url, c])).values())
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxCandidates);
       const scoredCandidates = await scoreCandidates(uniqueCandidates, debugVision);
-      const bestCandidate = [...scoredCandidates].sort((a, b) => b.score - a.score)[0] ?? null;
+      const selection = selectHeroCandidateByThreshold(place.type, scoredCandidates);
+      const bestCandidate = selection.bestPreferred ?? selection.bestAcceptable ?? null;
 
       let chosenUrl: string | undefined;
       let source: HeroSource | undefined;
@@ -927,18 +940,28 @@ export async function POST(req: Request) {
       let reason = "";
       let heroReason = "";
 
+      const sourcesTried = Array.from(new Set(uniqueCandidates.map((c) => c.source)));
+
       if (bestCandidate) {
         chosenUrl = bestCandidate.url;
         source = bestCandidate.source;
         score = Math.round(bestCandidate.score);
-        heroReason = `Fallback A used best candidate. ${bestCandidate.reason}`;
-        reason = score >= 0 ? `Selected ${source} candidate with score ${score}` : `Selected low-score candidate (fallback A) from ${source} with score ${score}`;
+        const tier = selection.bestPreferred ? "preferred" : "acceptable";
+        heroReason = `Selected ${tier} ${source} candidate (score ${score}; preferred>=${selection.thresholds.preferredMin}, acceptable>=${selection.thresholds.acceptableMin}). ${bestCandidate.reason}`;
+        reason = `Selected ${tier} ${source} candidate with score ${score}`;
       } else if (placeholder) {
         chosenUrl = placeholder;
         source = "placeholder";
         score = -999;
-        heroReason = "Fallback B placeholder used";
-        reason = "No candidates from Google/Wikimedia. Placeholder set (fallback B).";
+        const bestOverallScore = selection.bestOverall ? Math.round(selection.bestOverall.score) : undefined;
+        heroReason =
+          bestOverallScore === undefined
+            ? "Placeholder used: no source candidate discovered"
+            : `Placeholder used: best real candidate score ${bestOverallScore} is below acceptable threshold ${selection.thresholds.acceptableMin}`;
+        reason =
+          bestOverallScore === undefined
+            ? "No candidates from Google/Wikimedia. Placeholder set as last resort."
+            : `No acceptable real candidate (best=${bestOverallScore}, acceptable>=${selection.thresholds.acceptableMin}). Placeholder set as last resort.`;
       } else {
         return {
           id: String(place.id),
@@ -976,6 +999,32 @@ export async function POST(req: Request) {
         score,
         heroReason,
         visionDebug: debugVision ? bestCandidate?.visionDebug : undefined,
+        selectionDebug: {
+          sourcesTried,
+          totalCandidates: uniqueCandidates.length,
+          bestOverall: selection.bestOverall
+            ? {
+                source: selection.bestOverall.source,
+                score: Math.round(selection.bestOverall.score),
+                url: selection.bestOverall.url,
+              }
+            : undefined,
+          bestPreferredCandidate: selection.bestPreferred
+            ? {
+                source: selection.bestPreferred.source,
+                score: Math.round(selection.bestPreferred.score),
+                url: selection.bestPreferred.url,
+              }
+            : undefined,
+          acceptableFallbackCandidate: selection.bestAcceptable
+            ? {
+                source: selection.bestAcceptable.source,
+                score: Math.round(selection.bestAcceptable.score),
+                url: selection.bestAcceptable.url,
+              }
+            : undefined,
+          placeholderReason: source === "placeholder" ? heroReason : undefined,
+        },
         action: options.dryRun ? (isForcedRescore ? "updated" : wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",
       };
     });

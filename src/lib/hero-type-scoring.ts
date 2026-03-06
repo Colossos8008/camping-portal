@@ -18,6 +18,9 @@ const LABEL_SETS = {
   vehicle: ["vehicle", "motor vehicle", "car", "van", "rv", "motorhome", "camper", "caravan", "truck", "transport"],
   nature: ["nature", "landscape", "forest", "tree", "meadow", "field", "grass", "valley", "wilderness"],
   water: ["water", "lake", "river", "sea", "ocean", "coast", "beach", "shore", "bay"],
+  genericWater: ["water", "waterfront"],
+  seaWater: ["sea", "ocean", "coast", "beach", "shore", "shoreline", "bay"],
+  inlandWater: ["lake", "river", "stream", "creek"],
   naturalWater: [
     "sea",
     "ocean",
@@ -103,6 +106,9 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
   const vehicleStrength = labelStrength(labels, LABEL_SETS.vehicle);
   const natureStrength = labelStrength(labels, [...LABEL_SETS.nature, ...LABEL_SETS.outdoor]);
   const waterStrength = labelStrength(labels, LABEL_SETS.water);
+  const genericWaterStrength = labelStrength(labels, LABEL_SETS.genericWater);
+  const seaWaterStrength = labelStrength(labels, LABEL_SETS.seaWater);
+  const inlandWaterStrength = labelStrength(labels, LABEL_SETS.inlandWater);
   const naturalWaterStrength = labelStrength(labels, LABEL_SETS.naturalWater);
   const poolStrength = labelStrength(labels, LABEL_SETS.pool);
   const scenicStrength = labelStrength(labels, [...LABEL_SETS.mountain, ...LABEL_SETS.water, ...LABEL_SETS.nature, ...LABEL_SETS.outdoor]);
@@ -122,12 +128,23 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
       positives.push("nature/outdoor +10");
     }
     if (signal.naturalWater) {
-      const waterBonus = Math.round(14 + 8 * Math.min(1.2, naturalWaterStrength / 1.2));
+      const waterBonus = Math.round(16 + 10 * Math.min(1.2, naturalWaterStrength / 1.2));
       score += waterBonus;
       positives.push(`natural-water +${waterBonus}`);
     } else if (signal.water) {
-      score += 6;
-      positives.push("generic-water +6");
+      const genericBonus = Math.round(4 + 5 * Math.min(1, Math.max(0.3, genericWaterStrength)));
+      score += genericBonus;
+      positives.push(`generic-water +${genericBonus}`);
+    }
+    if (seaWaterStrength > 0) {
+      const seaBonus = Math.round(10 + 8 * Math.min(1.2, seaWaterStrength / 1.1));
+      score += seaBonus;
+      positives.push(`sea/coast-water +${seaBonus}`);
+    }
+    if (inlandWaterStrength > 0) {
+      const inlandBonus = Math.round(8 + 7 * Math.min(1.2, inlandWaterStrength / 1.1));
+      score += inlandBonus;
+      positives.push(`lake/river-water +${inlandBonus}`);
     }
     if (signal.mountain) {
       score += 8;
@@ -135,15 +152,20 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
     }
 
     if (signal.vehicle && (signal.nature || signal.outdoor)) {
-      const combo = Math.round(20 + 8 * Math.min(1.2, (vehicleStrength + natureStrength) / 2));
+      const combo = Math.round(24 + 10 * Math.min(1.2, (vehicleStrength + natureStrength) / 2));
       score += combo;
       positives.push(`vehicle+landscape +${combo}`);
     }
     if (signal.vehicle && (signal.naturalWater || signal.water)) {
       const naturalWaterBoost = signal.naturalWater ? naturalWaterStrength : waterStrength;
-      const combo = Math.round(14 + 10 * Math.min(1.2, (vehicleStrength + naturalWaterBoost) / 2));
+      const combo = Math.round(18 + 12 * Math.min(1.2, (vehicleStrength + naturalWaterBoost) / 2));
       score += combo;
       positives.push(`vehicle+water +${combo}`);
+    }
+    if (signal.vehicle && signal.naturalWater && (signal.nature || signal.outdoor)) {
+      const combo = Math.round(16 + 10 * Math.min(1.2, (vehicleStrength + naturalWaterStrength + natureStrength) / 3));
+      score += combo;
+      positives.push(`vehicle+landscape+natural-water +${combo}`);
     }
     if (signal.vehicle && signal.mountain) {
       score += 12;
@@ -158,7 +180,7 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
       negatives.push("vehicle-closeup-no-scenic -16");
     }
     if (signal.pool) {
-      const points = Math.round(34 + 16 * Math.min(1.5, poolStrength / 1.1));
+      const points = Math.round(46 + 18 * Math.min(1.5, poolStrength / 1.1));
       score -= points;
       negatives.push(`pool/swimming -${points}`);
     }

@@ -166,6 +166,10 @@ const CAMPING_WIKIMEDIA_NEGATIVE_HINTS = [
   "swimming",
   "waterpark",
   "resort",
+  "hotel",
+  "spa",
+  "water slide",
+  "bath",
 ];
 
 
@@ -180,7 +184,9 @@ function parseBody(value: unknown): {
   limit: number;
   force: boolean;
   refresh: boolean;
+  refreshCamping: boolean;
   cleanupPlaceholders: boolean;
+  cleanupCampingPlaceholders: boolean;
   dryRun: boolean;
   provider: "google" | "wikimedia" | "auto";
   radiusMeters: number;
@@ -210,7 +216,9 @@ function parseBody(value: unknown): {
     limit: Math.max(1, Number.isFinite(limitValue) ? limitValue : DEFAULT_LIMIT),
     force: raw.force === true,
     refresh: raw.refresh === true || raw.rediscover === true,
+    refreshCamping: raw.refreshCamping === true || raw.refreshCampings === true,
     cleanupPlaceholders: raw.cleanupPlaceholders === true || raw.cleanPlaceholders === true,
+    cleanupCampingPlaceholders: raw.cleanupCampingPlaceholders === true || raw.cleanupCamping === true,
     dryRun: raw.dryRun === true,
     provider,
     radiusMeters: Math.min(
@@ -325,7 +333,34 @@ function tokenizeNormalized(value: string): Set<string> {
   return new Set(normalize(value).split(" ").filter(Boolean));
 }
 
-function evaluateCampingWikimediaCandidate(candidate: WikimediaCandidate): { accepted: boolean; reason?: string } {
+function isRateLimitError(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error ?? "").toLowerCase();
+  return message.includes("http 429") || message.includes("too many requests") || message.includes("rate limit");
+}
+
+function campingRelevanceScore(candidate: WikimediaCandidate, placeName: string): number {
+  const merged = `${candidate.title} ${candidate.url}`;
+  const tokens = tokenizeNormalized(merged);
+  let score = 0;
+
+  for (const hint of CAMPING_WIKIMEDIA_POSITIVE_HINTS) {
+    if (tokens.has(hint)) score += 2;
+  }
+  for (const hint of CAMPING_WIKIMEDIA_NEGATIVE_HINTS) {
+    if (tokens.has(hint)) score -= 3;
+  }
+
+  const placeTokens = tokenizeNormalized(placeName);
+  let overlap = 0;
+  for (const token of tokens) {
+    if (placeTokens.has(token)) overlap += 1;
+  }
+  score += Math.min(4, overlap);
+
+  return score;
+}
+
+function evaluateCampingWikimediaCandidate(candidate: WikimediaCandidate, placeName: string): { accepted: boolean; reason?: string } {
   const merged = `${candidate.title} ${candidate.url}`;
   const tokens = tokenizeNormalized(merged);
   const hasPositive = CAMPING_WIKIMEDIA_POSITIVE_HINTS.some((hint) => tokens.has(hint));
@@ -336,6 +371,11 @@ function evaluateCampingWikimediaCandidate(candidate: WikimediaCandidate): { acc
   const negative = CAMPING_WIKIMEDIA_NEGATIVE_HINTS.find((hint) => tokens.has(hint));
   if (negative) {
     return { accepted: false, reason: `Rejected '${candidate.title}': contains negative keyword '${negative}'.` };
+  }
+
+  const relevance = campingRelevanceScore(candidate, placeName);
+  if (relevance < 2) {
+    return { accepted: false, reason: `Rejected '${candidate.title}': thematic match too weak (relevance=${relevance}).` };
   }
 
   return { accepted: true };
@@ -442,6 +482,29 @@ async function fetchPageImageTitles(pageId: number): Promise<string[]> {
     .map((title) => `File:${title.replace(/^File:/i, "").replaceAll("_", " ")}`);
 }
 
+async function findCommonsFileTitlesBySearch(query: string, maxCandidates: number): Promise<string[]> {
+  type CommonsSearchResponse = {
+    query?: {
+      search?: Array<{ title?: string }>;
+    };
+  };
+
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  url.searchParams.set("action", "query");
+  url.searchParams.set("list", "search");
+  url.searchParams.set("srnamespace", "6");
+  url.searchParams.set("srsearch", query);
+  url.searchParams.set("srlimit", String(Math.min(30, Math.max(5, maxCandidates))));
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+
+  const data = await fetchJson<CommonsSearchResponse>(url.toString());
+  return (data.query?.search ?? [])
+    .map((entry) => entry.title)
+    .filter((title): title is string => typeof title === "string" && /^File:/i.test(title))
+    .map((title) => `File:${title.replace(/^File:/i, "").replaceAll("_", " ")}`);
+}
+
 async function resolveCommonsImage(fileTitle: string): Promise<WikimediaCandidate | null> {
   type CommonsResponse = {
     query?: {
@@ -486,18 +549,30 @@ function scoreWikimediaBase(c: WikimediaCandidate): number {
 }
 
 async function findWikimediaCandidates(placeName: string, maxCandidates: number): Promise<WikimediaCandidate[]> {
-  const pageId = await findPageIdBySearch(placeName);
-  if (!pageId) return [];
-
   const candidates: WikimediaCandidate[] = [];
-  const representative = await fetchRepresentativeFileTitle(pageId);
-  if (representative && !hasBadHints(representative)) {
-    const resolved = await resolveCommonsImage(representative);
-    if (resolved) candidates.push(resolved);
+  const pageId = await findPageIdBySearch(placeName);
+
+  if (pageId) {
+    const representative = await fetchRepresentativeFileTitle(pageId);
+    if (representative && !hasBadHints(representative)) {
+      const resolved = await resolveCommonsImage(representative);
+      if (resolved) candidates.push(resolved);
+    }
+
+    if (candidates.length < maxCandidates) {
+      const titles = Array.from(new Set(await fetchPageImageTitles(pageId)));
+      for (const title of titles) {
+        if (hasBadHints(title)) continue;
+        const resolved = await resolveCommonsImage(title);
+        if (resolved) candidates.push(resolved);
+        if (candidates.length >= maxCandidates) break;
+      }
+    }
   }
 
   if (candidates.length < maxCandidates) {
-    const titles = Array.from(new Set(await fetchPageImageTitles(pageId)));
+    const searchQuery = `${placeName} camping OR campsite OR camper OR motorhome`;
+    const titles = Array.from(new Set(await findCommonsFileTitlesBySearch(searchQuery, maxCandidates * 2)));
     for (const title of titles) {
       if (hasBadHints(title)) continue;
       const resolved = await resolveCommonsImage(title);
@@ -923,6 +998,8 @@ export async function POST(req: Request) {
     const dryRun = parseBool(searchParams, ["dryRun"]);
     const refresh = parseBool(searchParams, ["refresh", "rediscover"]);
     const cleanupPlaceholders = parseBool(searchParams, ["cleanupPlaceholders", "cleanPlaceholders", "placeholderCleanup"]);
+    const refreshCamping = parseBool(searchParams, ["refreshCamping", "refreshCampingHeroes"]);
+    const cleanupCampingPlaceholders = parseBool(searchParams, ["cleanupCampingPlaceholders", "cleanupCamping"]);
     const debugVision = parseBool(searchParams, ["debugVision"]);
     const queryLimit = parsePositiveInt(searchParams.get("limit"));
     const queryOffset = parsePositiveInt(searchParams.get("offset"));
@@ -957,7 +1034,9 @@ export async function POST(req: Request) {
       limit,
       force: body.force || force,
       refresh: body.refresh || refresh,
+      refreshCamping: body.refreshCamping || refreshCamping,
       cleanupPlaceholders: body.cleanupPlaceholders || cleanupPlaceholders,
+      cleanupCampingPlaceholders: body.cleanupCampingPlaceholders || cleanupCampingPlaceholders,
       dryRun: body.dryRun || dryRun,
       cursor: queryCursor && queryCursor.length > 0 ? queryCursor : body.cursor,
       offset: queryOffset ?? body.offset ?? 0,
@@ -1015,8 +1094,9 @@ export async function POST(req: Request) {
     const perPlaceResults = await runWithConcurrency(places, placeConcurrency, async (place): Promise<HeroResult> => {
       const existingHeroUrl = place.heroImageUrl;
       const existingHeroIsPlaceholder = isPlaceholderHeroUrl(existingHeroUrl);
-      const shouldRefreshExisting = place.type === "CAMPINGPLATZ" && options.refresh;
-      const shouldCleanupPlaceholder = existingHeroIsPlaceholder && (options.cleanupPlaceholders || place.type === "CAMPINGPLATZ");
+      const isCamping = place.type === "CAMPINGPLATZ";
+      const shouldRefreshExisting = isCamping && (options.refresh || options.refreshCamping);
+      const shouldCleanupPlaceholder = isCamping && existingHeroIsPlaceholder && (options.cleanupPlaceholders || options.cleanupCampingPlaceholders);
       const wikimediaRejectReasons: string[] = [];
 
       if (existingHeroUrl && !options.force && !shouldRefreshExisting && !shouldCleanupPlaceholder) {
@@ -1092,7 +1172,7 @@ export async function POST(req: Request) {
           const filteredWiki =
             place.type === "CAMPINGPLATZ"
               ? wiki.filter((candidate) => {
-                  const verdict = evaluateCampingWikimediaCandidate(candidate);
+                  const verdict = evaluateCampingWikimediaCandidate(candidate, place.name);
                   if (!verdict.accepted && verdict.reason) {
                     wikimediaRejectReasons.push(verdict.reason);
                   }
@@ -1126,12 +1206,15 @@ export async function POST(req: Request) {
         }
       } catch (error: any) {
         console.warn("hero-autofill wikimedia error", place.id, error?.message ?? error);
+        const isRateLimited = isRateLimitError(error);
         sourceDebug.push({
           source: "wikimedia",
           attempted: true,
           discovered: 0,
           scored: 0,
-          error: String(error?.message ?? error),
+          error: isRateLimited
+            ? "Wikimedia rate-limited (HTTP 429); continuing with remaining sources"
+            : String(error?.message ?? error),
         });
       }
 
@@ -1140,10 +1223,10 @@ export async function POST(req: Request) {
         .slice(0, maxCandidates);
       const scoredCandidates = await scoreCandidates(uniqueCandidates, debugVision);
       const selection = selectHeroCandidateByThreshold(place.type, scoredCandidates);
-      const bestCandidate = selection.bestPreferred ?? selection.bestAcceptable ?? null;
+      const rawBestCandidate = selection.bestPreferred ?? selection.bestAcceptable ?? null;
+      const bestCandidate = isCamping && rawBestCandidate && isPlaceholderHeroUrl(rawBestCandidate.url) ? null : rawBestCandidate;
 
       const discardedExistingHero = Boolean(existingHeroUrl) && (bestCandidate?.url ?? null) !== existingHeroUrl;
-      const removedPlaceholder = shouldCleanupPlaceholder && !bestCandidate;
 
       let chosenUrl: string | undefined;
       let source: HeroSource | undefined;
@@ -1171,29 +1254,20 @@ export async function POST(req: Request) {
           bestOverallScore === undefined
             ? "No candidates discovered from active sources"
             : `No acceptable real candidate (best=${bestOverallScore}, acceptable>=${selection.thresholds.acceptableMin})`;
-        if (removedPlaceholder && !options.dryRun) {
-          await prisma.place.update({
-            where: { id: place.id },
-            data: { heroImageUrl: null, heroScore: null, heroReason: "Placeholder removed during cleanup; no acceptable replacement discovered." },
-          });
-        }
-
         return {
           id: String(place.id),
           name: place.name,
           placeId: String(place.id),
           placeName: place.name,
-          reason: removedPlaceholder
-            ? `${noSelectionReason}; removed old placeholder hero`
-            : `${noSelectionReason}; kept existing hero value (${existingHeroUrl ? "unchanged" : "null"})`,
-          chosenUrl: removedPlaceholder ? undefined : existingHeroUrl ?? undefined,
+          reason: `${noSelectionReason}; kept existing hero value (${existingHeroUrl ? "unchanged" : "null"})`,
+          chosenUrl: existingHeroUrl ?? undefined,
           source: undefined,
           heroReason: `No placeholder used; ${noSelectionReason}`,
           selectionDebug: {
             sourcesTried: sourcesAttempted,
             sourceDebug,
             totalCandidates: uniqueCandidates.length,
-            removedPlaceholder,
+            removedPlaceholder: false,
             discardedExistingHero: false,
             existingHeroWasPlaceholder: existingHeroIsPlaceholder,
             bestOverall: selection.bestOverall
@@ -1207,12 +1281,10 @@ export async function POST(req: Request) {
             acceptableFallbackCandidate: undefined,
             selectedCandidate: undefined,
             whyWikimediaRejected: wikimediaRejectReasons.length > 0 ? wikimediaRejectReasons.slice(0, 8) : undefined,
-            noSelectionReason: removedPlaceholder
-              ? `No placeholder used; ${noSelectionReason}; placeholder removed during cleanup`
-              : `No placeholder used; ${noSelectionReason}`,
+            noSelectionReason: `No placeholder used; ${noSelectionReason}`,
           },
-          action: removedPlaceholder && options.dryRun ? "would-update" : removedPlaceholder ? "updated" : "skipped",
-          status: removedPlaceholder ? "UPDATED" : "SKIPPED",
+          action: "skipped",
+          status: "SKIPPED",
         };
       }
 

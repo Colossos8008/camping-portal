@@ -10,14 +10,28 @@ function run(): void {
   const normalIds = normal.ids;
   assert(Array.isArray(normalIds), "Expected parsed ids for normal input");
   assert(normalIds.length === 3, `Expected 3 ids, got ${normalIds.length}`);
-  assert(normalIds[0] === 1270 && normalIds[1] === 1284 && normalIds[2] === 1290, "Unexpected ids order for normal input");
+  assert(
+    normalIds[0] === 1270 && normalIds[1] === 1284 && normalIds[2] === 1290,
+    "Unexpected ids order for normal input",
+  );
+
+  const explicit = parseExplicitIds("1270, 1284,1290,1287,1278");
+  assert(!explicit.error, `Unexpected explicit parse error: ${explicit.error ?? ""}`);
+  const explicitIds = explicit.ids;
+  assert(Array.isArray(explicitIds), "Expected parsed ids for explicit input");
+  assert(explicitIds.length === 5, `Expected 5 ids, got ${explicitIds.length}`);
+  assert(explicitIds[0] === 1270, `Expected first id 1270, got ${explicitIds[0]}`);
+  assert(explicitIds[4] === 1278, `Expected last id 1278, got ${explicitIds[4]}`);
 
   const deduped = parseExplicitIds("1270,1284,1270,1290,1284");
   assert(!deduped.error, `Unexpected dedupe parse error: ${deduped.error ?? ""}`);
   const dedupedIds = deduped.ids;
   assert(Array.isArray(dedupedIds), "Expected parsed ids for dedupe input");
   assert(dedupedIds.length === 3, `Expected 3 deduped ids, got ${dedupedIds.length}`);
-  assert(dedupedIds[0] === 1270 && dedupedIds[1] === 1284 && dedupedIds[2] === 1290, "Unexpected deduped ids");
+  assert(
+    dedupedIds[0] === 1270 && dedupedIds[1] === 1284 && dedupedIds[2] === 1290,
+    "Unexpected deduped ids",
+  );
 
   const invalid = parseExplicitIds("12,abc,13");
   assert(Boolean(invalid.error), "Expected invalid ids parsing to fail");
@@ -27,7 +41,7 @@ function run(): void {
   assert(!empty.error, `Unexpected parse error for empty input: ${empty.error ?? ""}`);
   assert(empty.ids === undefined, "Expected empty input to produce undefined ids");
 
-  const requestedIds = normal.ids ?? [];
+  const requestedIds = explicit.ids ?? [];
   const fakePlaces = [
     { id: 1269, name: "x" },
     { id: 1270, name: "a" },
@@ -37,7 +51,7 @@ function run(): void {
   ];
 
   const filtered = fakePlaces.filter((place) => requestedIds.includes(place.id));
-  assert(filtered.length === requestedIds.length, "Filtered places length mismatch for explicit ids mode");
+  assert(filtered.length === 3, `Expected 3 filtered places, got ${filtered.length}`);
   assert(filtered.every((place) => requestedIds.includes(place.id)), "Found unrelated place in explicit ids mode");
 
   console.log("hero-autofill ids mode verification passed", {

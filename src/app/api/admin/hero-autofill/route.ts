@@ -24,10 +24,23 @@ type HeroResult = {
   visionDebug?: VisionDebug;
   selectionDebug?: {
     sourcesTried: HeroSource[];
+    sourceDebug?: Array<{
+      source: HeroSource;
+      attempted: boolean;
+      discovered: number;
+      scored: number;
+      topScore?: number;
+      topUrl?: string;
+      error?: string;
+    }>;
     totalCandidates: number;
+    removedPlaceholder?: boolean;
+    discardedExistingHero?: boolean;
+    existingHeroWasPlaceholder?: boolean;
     bestOverall?: { source: HeroSource; score: number; url: string };
     bestPreferredCandidate?: { source: HeroSource; score: number; url: string };
     acceptableFallbackCandidate?: { source: HeroSource; score: number; url: string };
+    selectedCandidate?: { source: HeroSource; score: number; url: string; tier: "preferred" | "acceptable" };
     noSelectionReason?: string;
   };
   action: HeroAction;
@@ -66,6 +79,16 @@ type PlaceRecord = {
   lat: number | null;
   lng: number | null;
   heroImageUrl: string | null;
+};
+
+type SourceAttemptDebug = {
+  source: HeroSource;
+  attempted: boolean;
+  discovered: number;
+  scored: number;
+  topScore?: number;
+  topUrl?: string;
+  error?: string;
 };
 
 type WikimediaCandidate = {
@@ -120,6 +143,8 @@ function envInt(name: string, fallback: number): number {
 function parseBody(value: unknown): {
   limit: number;
   force: boolean;
+  refresh: boolean;
+  cleanupPlaceholders: boolean;
   dryRun: boolean;
   provider: "google" | "wikimedia" | "auto";
   radiusMeters: number;
@@ -148,6 +173,8 @@ function parseBody(value: unknown): {
   return {
     limit: Math.max(1, Number.isFinite(limitValue) ? limitValue : DEFAULT_LIMIT),
     force: raw.force === true,
+    refresh: raw.refresh === true || raw.rediscover === true,
+    cleanupPlaceholders: raw.cleanupPlaceholders === true || raw.cleanPlaceholders === true,
     dryRun: raw.dryRun === true,
     provider,
     radiusMeters: Math.min(
@@ -159,6 +186,25 @@ function parseBody(value: unknown): {
     types: types && types.length > 0 ? Array.from(new Set(types)) : undefined,
     maxCandidatesPerPlace: Math.min(30, Math.max(1, maxCandidatesPerPlaceRaw)),
   };
+}
+
+function isPlaceholderHeroUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized === "/hero-placeholder.jpg" || normalized.endsWith("/hero-placeholder.jpg");
+}
+
+function withSourceBonus(candidate: ScoredCandidate): ScoredCandidate {
+  if (candidate.placeType !== "CAMPINGPLATZ") return candidate;
+  if (candidate.source === "wikimedia") {
+    return {
+      ...candidate,
+      score: candidate.score + 4,
+      reason: `${candidate.reason}; source bonus +4 (wikimedia camping fallback)`,
+    };
+  }
+  return candidate;
 }
 
 function parsePositiveInt(value: string | null): number | undefined {
@@ -819,6 +865,8 @@ export async function POST(req: Request) {
     const searchParams = new URL(req.url).searchParams;
     const force = parseBool(searchParams, ["force", "forceUpdateExisting", "forceUpdateExistingUrls", "forceUpdate"]);
     const dryRun = parseBool(searchParams, ["dryRun"]);
+    const refresh = parseBool(searchParams, ["refresh", "rediscover"]);
+    const cleanupPlaceholders = parseBool(searchParams, ["cleanupPlaceholders", "cleanPlaceholders", "placeholderCleanup"]);
     const debugVision = parseBool(searchParams, ["debugVision"]);
     const queryLimit = parsePositiveInt(searchParams.get("limit"));
     const queryOffset = parsePositiveInt(searchParams.get("offset"));
@@ -852,6 +900,8 @@ export async function POST(req: Request) {
       ...body,
       limit,
       force: body.force || force,
+      refresh: body.refresh || refresh,
+      cleanupPlaceholders: body.cleanupPlaceholders || cleanupPlaceholders,
       dryRun: body.dryRun || dryRun,
       cursor: queryCursor && queryCursor.length > 0 ? queryCursor : body.cursor,
       offset: queryOffset ?? body.offset ?? 0,
@@ -907,7 +957,12 @@ export async function POST(req: Request) {
     const placeConcurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
 
     const perPlaceResults = await runWithConcurrency(places, placeConcurrency, async (place): Promise<HeroResult> => {
-      if (place.heroImageUrl && !options.force) {
+      const existingHeroUrl = place.heroImageUrl;
+      const existingHeroIsPlaceholder = isPlaceholderHeroUrl(existingHeroUrl);
+      const shouldRefreshExisting = place.type === "CAMPINGPLATZ" && options.refresh;
+      const shouldCleanupPlaceholder = existingHeroIsPlaceholder && options.cleanupPlaceholders;
+
+      if (existingHeroUrl && !options.force && !shouldRefreshExisting && !shouldCleanupPlaceholder) {
         return {
           id: String(place.id),
           name: place.name,
@@ -915,7 +970,15 @@ export async function POST(req: Request) {
           placeName: place.name,
           status: "SKIPPED",
           reason: "heroImageUrl already set and force=false",
-          chosenUrl: place.heroImageUrl,
+          chosenUrl: existingHeroUrl,
+          selectionDebug: {
+            sourcesTried: options.provider === "google" ? ["google"] : options.provider === "wikimedia" ? ["wikimedia"] : ["google", "wikimedia"],
+            totalCandidates: 0,
+            removedPlaceholder: false,
+            discardedExistingHero: false,
+            existingHeroWasPlaceholder: existingHeroIsPlaceholder,
+            sourceDebug: [],
+          },
           action: "skipped",
         };
       }
@@ -933,32 +996,71 @@ export async function POST(req: Request) {
       }
 
       const candidates: ScoredCandidate[] = [];
+      const sourceDebug: SourceAttemptDebug[] = [];
       const maxCandidates = options.maxCandidatesPerPlace;
 
       try {
         if (options.provider === "google" || options.provider === "auto") {
           const googleCandidates = await findGoogleCandidates(place, options.radiusMeters, googleKey, maxCandidates);
-          candidates.push(...googleCandidates);
+          const boosted = googleCandidates.map(withSourceBonus);
+          candidates.push(...boosted);
+          const top = boosted.sort((a, b) => b.score - a.score)[0];
+          sourceDebug.push({
+            source: "google",
+            attempted: true,
+            discovered: googleCandidates.length,
+            scored: boosted.length,
+            topScore: top ? Math.round(top.score) : undefined,
+            topUrl: top?.url,
+          });
+        } else {
+          sourceDebug.push({ source: "google", attempted: false, discovered: 0, scored: 0 });
         }
       } catch (error: any) {
         console.warn("hero-autofill google error", place.id, error?.message ?? error);
+        sourceDebug.push({
+          source: "google",
+          attempted: true,
+          discovered: 0,
+          scored: 0,
+          error: String(error?.message ?? error),
+        });
       }
 
       try {
         if (options.provider === "wikimedia" || options.provider === "auto") {
-          const wiki = await findWikimediaCandidates(place.name, maxCandidates);
-          candidates.push(
-            ...wiki.map((c) => ({
+          const wikimediaMax = place.type === "CAMPINGPLATZ" ? Math.min(30, maxCandidates * 2) : maxCandidates;
+          const wiki = await findWikimediaCandidates(place.name, wikimediaMax);
+          const mapped = wiki.map((c) => ({
               source: "wikimedia" as const,
               placeType: place.type,
               url: c.url,
               score: scoreWikimediaBase(c),
               reason: `Wikimedia base score ${scoreWikimediaBase(c)}`,
-            }))
-          );
+            }));
+          const boosted = mapped.map(withSourceBonus);
+          candidates.push(...boosted);
+          const top = boosted.sort((a, b) => b.score - a.score)[0];
+          sourceDebug.push({
+            source: "wikimedia",
+            attempted: true,
+            discovered: wiki.length,
+            scored: boosted.length,
+            topScore: top ? Math.round(top.score) : undefined,
+            topUrl: top?.url,
+          });
+        } else {
+          sourceDebug.push({ source: "wikimedia", attempted: false, discovered: 0, scored: 0 });
         }
       } catch (error: any) {
         console.warn("hero-autofill wikimedia error", place.id, error?.message ?? error);
+        sourceDebug.push({
+          source: "wikimedia",
+          attempted: true,
+          discovered: 0,
+          scored: 0,
+          error: String(error?.message ?? error),
+        });
       }
 
       const uniqueCandidates = Array.from(new Map(candidates.map((c) => [c.url, c])).values())
@@ -967,6 +1069,9 @@ export async function POST(req: Request) {
       const scoredCandidates = await scoreCandidates(uniqueCandidates, debugVision);
       const selection = selectHeroCandidateByThreshold(place.type, scoredCandidates);
       const bestCandidate = selection.bestPreferred ?? selection.bestAcceptable ?? null;
+
+      const discardedExistingHero = Boolean(existingHeroUrl) && Boolean(bestCandidate) && bestCandidate.url !== existingHeroUrl;
+      const removedPlaceholder = shouldCleanupPlaceholder && !bestCandidate;
 
       let chosenUrl: string | undefined;
       let source: HeroSource | undefined;
@@ -994,19 +1099,31 @@ export async function POST(req: Request) {
           bestOverallScore === undefined
             ? "No candidates discovered from active sources"
             : `No acceptable real candidate (best=${bestOverallScore}, acceptable>=${selection.thresholds.acceptableMin})`;
+        if (removedPlaceholder && !options.dryRun) {
+          await prisma.place.update({
+            where: { id: place.id },
+            data: { heroImageUrl: null, heroScore: null, heroReason: "Placeholder removed during cleanup; no acceptable replacement discovered." },
+          });
+        }
+
         return {
           id: String(place.id),
           name: place.name,
           placeId: String(place.id),
           placeName: place.name,
-          status: "SKIPPED",
-          reason: `${noSelectionReason}; kept existing hero value (${place.heroImageUrl ? "unchanged" : "null"})`,
-          chosenUrl: place.heroImageUrl ?? undefined,
+          reason: removedPlaceholder
+            ? `${noSelectionReason}; removed old placeholder hero`
+            : `${noSelectionReason}; kept existing hero value (${existingHeroUrl ? "unchanged" : "null"})`,
+          chosenUrl: removedPlaceholder ? undefined : existingHeroUrl ?? undefined,
           source: undefined,
           heroReason: `No placeholder used; ${noSelectionReason}`,
           selectionDebug: {
             sourcesTried: sourcesAttempted,
+            sourceDebug,
             totalCandidates: uniqueCandidates.length,
+            removedPlaceholder,
+            discardedExistingHero: false,
+            existingHeroWasPlaceholder: existingHeroIsPlaceholder,
             bestOverall: selection.bestOverall
               ? {
                   source: selection.bestOverall.source,
@@ -1016,9 +1133,13 @@ export async function POST(req: Request) {
               : undefined,
             bestPreferredCandidate: undefined,
             acceptableFallbackCandidate: undefined,
-            noSelectionReason: `No placeholder used; ${noSelectionReason}`,
+            selectedCandidate: undefined,
+            noSelectionReason: removedPlaceholder
+              ? `No placeholder used; ${noSelectionReason}; placeholder removed during cleanup`
+              : `No placeholder used; ${noSelectionReason}`,
           },
-          action: "skipped",
+          action: removedPlaceholder && options.dryRun ? "would-update" : removedPlaceholder ? "updated" : "skipped",
+          status: removedPlaceholder ? "UPDATED" : "SKIPPED",
         };
       }
 
@@ -1049,7 +1170,11 @@ export async function POST(req: Request) {
         visionDebug: debugVision ? bestCandidate?.visionDebug : undefined,
         selectionDebug: {
           sourcesTried: sourcesAttempted,
+          sourceDebug,
           totalCandidates: uniqueCandidates.length,
+          removedPlaceholder: false,
+          discardedExistingHero,
+          existingHeroWasPlaceholder: existingHeroIsPlaceholder,
           bestOverall: selection.bestOverall
             ? {
                 source: selection.bestOverall.source,
@@ -1071,6 +1196,12 @@ export async function POST(req: Request) {
                 url: selection.bestAcceptable.url,
               }
             : undefined,
+          selectedCandidate: {
+            source: bestCandidate.source,
+            score: Math.round(bestCandidate.score),
+            url: bestCandidate.url,
+            tier: selection.bestPreferred ? "preferred" : "acceptable",
+          },
           noSelectionReason: undefined,
         },
         action: options.dryRun ? (isForcedRescore ? "updated" : wasExisting ? "would-update" : "would-create") : wasExisting ? "updated" : "created",

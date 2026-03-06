@@ -39,7 +39,7 @@ export default function EditorHeader(props: {
   const heroSrc = heroFilename
     ? isGooglePhotoReference(heroFilename) && props.placeId
       ? `/api/places/${props.placeId}/hero`
-      : getSupabasePublicUrl(heroFilename)
+      : getSupabasePublicUrl(heroFilename, { placeId: props.placeId })
     : "/hero-placeholder.jpg";
 
   return (

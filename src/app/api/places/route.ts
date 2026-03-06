@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
+import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
 
 export const runtime = "nodejs";
 
@@ -287,7 +288,11 @@ async function findManyPlaces() {
 export async function GET() {
   try {
     const places = await findManyPlaces();
-    return NextResponse.json({ places });
+    const normalizedPlaces = places.map((place: any) => ({
+      ...place,
+      heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
+    }));
+    return NextResponse.json({ places: normalizedPlaces });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
@@ -350,8 +355,13 @@ export async function POST(req: NextRequest) {
       select: placeSelect(canTs21),
     });
 
-    if (!canTs21) return NextResponse.json({ ...created, ts21: null });
-    return NextResponse.json(created);
+    const normalizedCreated = {
+      ...created,
+      heroImageUrl: normalizePlaceHeroImageUrlForPublic(created?.id, (created as any)?.heroImageUrl),
+    };
+
+    if (!canTs21) return NextResponse.json({ ...normalizedCreated, ts21: null });
+    return NextResponse.json(normalizedCreated);
   } catch (e: any) {
     return NextResponse.json({ error: "Create fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }
@@ -459,8 +469,13 @@ export async function PUT(req: NextRequest) {
       select: placeSelect(canTs21),
     });
 
-    if (!canTs21) return NextResponse.json({ ...updated, ts21: null });
-    return NextResponse.json(updated);
+    const normalizedUpdated = {
+      ...updated,
+      heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
+    };
+
+    if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });
+    return NextResponse.json(normalizedUpdated);
   } catch (e: any) {
     return NextResponse.json({ error: "Update fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }

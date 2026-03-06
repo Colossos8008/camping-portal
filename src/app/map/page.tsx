@@ -1274,7 +1274,7 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      <Lightbox open={lbOpen} index={lbIndex} images={lbImages as any} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
+      <Lightbox open={lbOpen} index={lbIndex} images={lbImages as any} placeId={typeof form.id === "number" ? form.id : null} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
     </div>
   );
 }

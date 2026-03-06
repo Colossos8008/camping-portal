@@ -8,12 +8,13 @@ export default function Lightbox(props: {
   open: boolean;
   index: number;
   images: { filename: string }[];
+  placeId: number | null;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
 }) {
   const current = props.images[props.index] ?? null;
-  const src = current?.filename ? getSupabasePublicUrl(current.filename) : "";
+  const src = current?.filename ? getSupabasePublicUrl(current.filename, { placeId: props.placeId }) : "";
 
   useEffect(() => {
     if (!props.open) return;

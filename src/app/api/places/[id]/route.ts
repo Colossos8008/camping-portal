@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
+import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
 
 export const runtime = "nodejs";
 
@@ -284,7 +285,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const place = await getPlaceById(idNum);
     if (!place) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(place);
+    return NextResponse.json({
+      ...place,
+      heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, (place as any)?.heroImageUrl),
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
@@ -393,8 +397,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       select: placeSelect(canTs21),
     });
 
-    if (!canTs21) return NextResponse.json({ ...updated, ts21: null });
-    return NextResponse.json(updated);
+    const normalizedUpdated = {
+      ...updated,
+      heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
+    };
+
+    if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });
+    return NextResponse.json(normalizedUpdated);
   } catch (e: any) {
     return NextResponse.json({ error: "Update fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }

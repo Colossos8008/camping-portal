@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { isGooglePlacesPhotoUrl } from "@/lib/hero-image";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 type TSHaltung = "DNA" | "EXPLORER";
@@ -110,7 +111,10 @@ function publicUrlForObjectKey(filename: string | null | undefined) {
 
 function heroFilename(p: Place): string | null {
   const heroImageUrl = String(p.heroImageUrl ?? "").trim();
-  if (heroImageUrl) return heroImageUrl;
+  if (heroImageUrl) {
+    if (isGooglePlacesPhotoUrl(heroImageUrl)) return `/api/places/${p.id}/hero`;
+    return heroImageUrl;
+  }
 
   const imgs = Array.isArray(p.images) ? p.images : [];
   if (!imgs.length) return null;

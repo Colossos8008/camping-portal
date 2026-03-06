@@ -5,6 +5,7 @@ import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
 import { getSupabasePublicUrl } from "../_lib/image-url";
+import { isGooglePlacesPhotoUrl } from "@/lib/hero-image";
 
 export default function EditorHeader(props: {
   editingNew: boolean;
@@ -16,6 +17,7 @@ export default function EditorHeader(props: {
   score: { value: number; max: number; title: string } | null;
 
   heroImage: { filename: string } | null;
+  placeId: number | null;
   headerImages: { id: number; filename: string }[];
 
   imagesCount: number;
@@ -33,7 +35,12 @@ export default function EditorHeader(props: {
   const title = props.formName || (props.editingNew ? "Ort neu" : "Ort bearbeiten");
   const dist = formatDistanceKm(props.distanceKm);
 
-  const heroSrc = props.heroImage?.filename ? getSupabasePublicUrl(props.heroImage.filename) : "/hero-placeholder.jpg";
+  const heroFilename = String(props.heroImage?.filename ?? "").trim();
+  const heroSrc = heroFilename
+    ? isGooglePlacesPhotoUrl(heroFilename) && props.placeId
+      ? `/api/places/${props.placeId}/hero`
+      : getSupabasePublicUrl(heroFilename)
+    : "/hero-placeholder.jpg";
 
   return (
     <div className="shrink-0 border-b border-white/10">

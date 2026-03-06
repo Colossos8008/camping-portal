@@ -1077,6 +1077,7 @@ export default function MapPage() {
               formType={String((form.type ?? "CAMPINGPLATZ") as string)}
               score={editorScore}
               heroImage={heroImage ? { filename: heroImage.filename } : null}
+              placeId={typeof form.id === "number" ? form.id : null}
               headerImages={headerImages}
               imagesCount={Array.isArray(form.images) ? form.images.length : 0}
               selectedPlace={selectedPlace}
@@ -1188,6 +1189,7 @@ export default function MapPage() {
                 formType={String((form.type ?? "CAMPINGPLATZ") as string)}
                 score={editorScore}
                 heroImage={heroImage ? { filename: heroImage.filename } : null}
+                placeId={typeof form.id === "number" ? form.id : null}
                 headerImages={headerImages}
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}
                 selectedPlace={selectedPlace}

@@ -26,6 +26,10 @@ export function isGooglePlacesPhotoUrl(input: string | null | undefined): boolea
   return parsed.hostname.toLowerCase() === GOOGLE_PLACES_HOST && parsed.pathname.includes("/media");
 }
 
+export function isGooglePhotoReference(input: string | null | undefined): boolean {
+  return extractGooglePhotoResourceName(input) !== null;
+}
+
 export function extractGooglePhotoResourceName(input: string | null | undefined): string | null {
   const raw = String(input ?? "").trim();
   if (!raw) return null;

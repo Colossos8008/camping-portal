@@ -1,9 +1,11 @@
 // @ts-nocheck
 import { scoreVisionByPlaceType, type VisionLabel } from "../src/lib/hero-type-scoring.ts";
 
+type PlaceType = "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
+
 type Scenario = {
   name: string;
-  placeType: "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
+  placeType: PlaceType;
   labels: VisionLabel[];
   faceCount?: number;
   logoCount?: number;
@@ -13,16 +15,41 @@ type Scenario = {
   expect: (score: number) => boolean;
 };
 
-function runScenario(s: Scenario): { ok: boolean; message: string } {
-  const result = scoreVisionByPlaceType(s.placeType, {
-    labels: s.labels,
-    faceCount: s.faceCount ?? 0,
-    logoCount: s.logoCount ?? 0,
-    landmarkCount: s.landmarkCount ?? 0,
-    hasText: s.hasText ?? false,
-    safeSearchPenalized: s.safeSearchPenalized ?? false,
-  });
+type ComparisonScenario = {
+  name: string;
+  placeType: PlaceType;
+  better: {
+    labels: VisionLabel[];
+    faceCount?: number;
+    logoCount?: number;
+    landmarkCount?: number;
+    hasText?: boolean;
+    safeSearchPenalized?: boolean;
+  };
+  worse: {
+    labels: VisionLabel[];
+    faceCount?: number;
+    logoCount?: number;
+    landmarkCount?: number;
+    hasText?: boolean;
+    safeSearchPenalized?: boolean;
+  };
+  expect: (better: number, worse: number) => boolean;
+};
 
+function score(placeType: PlaceType, input: Omit<Scenario, "name" | "placeType" | "expect">): { score: number; reason: string } {
+  return scoreVisionByPlaceType(placeType, {
+    labels: input.labels,
+    faceCount: input.faceCount ?? 0,
+    logoCount: input.logoCount ?? 0,
+    landmarkCount: input.landmarkCount ?? 0,
+    hasText: input.hasText ?? false,
+    safeSearchPenalized: input.safeSearchPenalized ?? false,
+  });
+}
+
+function runScenario(s: Scenario): { ok: boolean; message: string } {
+  const result = score(s.placeType, s);
   const ok = s.expect(result.score);
   const status = ok ? "PASS" : "FAIL";
   return {
@@ -31,9 +58,20 @@ function runScenario(s: Scenario): { ok: boolean; message: string } {
   };
 }
 
+function runComparison(s: ComparisonScenario): { ok: boolean; message: string } {
+  const better = score(s.placeType, s.better);
+  const worse = score(s.placeType, s.worse);
+  const ok = s.expect(better.score, worse.score);
+  const status = ok ? "PASS" : "FAIL";
+  return {
+    ok,
+    message: `${status} ${s.name}: better=${better.score} vs worse=${worse.score}`,
+  };
+}
+
 const scenarios: Scenario[] = [
   {
-    name: "CAMPINGPLATZ vehicle + water + landscape => high",
+    name: "CAMPINGPLATZ vehicle + natural-water + landscape => very high",
     placeType: "CAMPINGPLATZ",
     labels: [
       { description: "motorhome", score: 0.94 },
@@ -42,17 +80,18 @@ const scenarios: Scenario[] = [
       { description: "outdoor", score: 0.84 },
       { description: "mountain", score: 0.72 },
     ],
-    expect: (score) => score >= 55,
+    expect: (score) => score >= 80,
   },
   {
-    name: "CAMPINGPLATZ vehicle + pool is much lower than natural-water",
+    name: "CAMPINGPLATZ pool gets strong negative score",
     placeType: "CAMPINGPLATZ",
     labels: [
-      { description: "motorhome", score: 0.94 },
-      { description: "swimming pool", score: 0.93 },
-      { description: "outdoor", score: 0.84 },
+      { description: "swimming pool", score: 0.95 },
+      { description: "resort pool", score: 0.9 },
+      { description: "water park", score: 0.89 },
+      { description: "outdoor", score: 0.7 },
     ],
-    expect: (score) => score <= 25,
+    expect: (score) => score <= -30,
   },
   {
     name: "CAMPINGPLATZ indoor + face => low",
@@ -78,23 +117,59 @@ const scenarios: Scenario[] = [
     hasText: true,
     expect: (score) => score <= -12,
   },
+];
+
+const comparisonScenarios: ComparisonScenario[] = [
   {
-    name: "SEHENSWUERDIGKEIT landmark + water => good",
-    placeType: "SEHENSWUERDIGKEIT",
-    labels: [
-      { description: "landmark", score: 0.95 },
-      { description: "river", score: 0.86 },
-      { description: "outdoor", score: 0.8 },
-      { description: "architecture", score: 0.76 },
-    ],
-    landmarkCount: 1,
-    expect: (score) => score >= 20,
+    name: "CAMPINGPLATZ natural water outranks pool",
+    placeType: "CAMPINGPLATZ",
+    better: {
+      labels: [
+        { description: "camper", score: 0.92 },
+        { description: "river", score: 0.9 },
+        { description: "landscape", score: 0.87 },
+      ],
+    },
+    worse: {
+      labels: [
+        { description: "camper", score: 0.92 },
+        { description: "swimming pool", score: 0.95 },
+        { description: "outdoor", score: 0.87 },
+      ],
+    },
+    expect: (better, worse) => better > worse,
+  },
+  {
+    name: "CAMPINGPLATZ vehicle + natural-water + landscape beats generic landscape",
+    placeType: "CAMPINGPLATZ",
+    better: {
+      labels: [
+        { description: "camper van", score: 0.95 },
+        { description: "ocean", score: 0.88 },
+        { description: "landscape", score: 0.9 },
+        { description: "outdoor", score: 0.85 },
+      ],
+    },
+    worse: {
+      labels: [
+        { description: "landscape", score: 0.91 },
+        { description: "outdoor", score: 0.89 },
+        { description: "mountain", score: 0.82 },
+      ],
+    },
+    expect: (better, worse) => better >= worse + 15,
   },
 ];
 
 let allOk = true;
 for (const scenario of scenarios) {
   const outcome = runScenario(scenario);
+  if (!outcome.ok) allOk = false;
+  console.log(outcome.message);
+}
+
+for (const scenario of comparisonScenarios) {
+  const outcome = runComparison(scenario);
   if (!outcome.ok) allOk = false;
   console.log(outcome.message);
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,6 +84,7 @@ type GooglePhoto = {
 type ScoredCandidate = {
   source: Exclude<HeroSource, "placeholder">;
   url: string;
+  fetchUrl?: string;
   score: number;
   reason: string;
   visionDebug?: VisionDebug;
@@ -536,14 +538,6 @@ async function findGooglePhotos(placeId: string, apiKey: string, initialPhotos?:
   return toGooglePhotos(data.photos);
 }
 
-function buildGooglePhotoUrl(photoName: string, apiKey: string): string {
-  const base = `https://places.googleapis.com/v1/${photoName}/media`;
-  const url = new URL(base);
-  url.searchParams.set("maxWidthPx", String(PHOTO_MAX_WIDTH));
-  url.searchParams.set("key", apiKey);
-  return url.toString();
-}
-
 async function findGoogleCandidates(
   place: PlaceRecord,
   radiusMeters: number,
@@ -557,9 +551,13 @@ async function findGoogleCandidates(
   return photos.slice(0, maxCandidates).map((photo) => {
     const base = scoreLandscape(photo.widthPx, photo.heightPx) + ((photo.widthPx ?? 0) >= 1200 ? 5 : 0);
     const hintPenalty = hasBadHints(`${photo.name} ${photo.attributionText ?? ""}`) ? -8 : 0;
+    const clientUrl = buildGooglePhotoMediaUrl(photo.name, PHOTO_MAX_WIDTH);
+    const scoreUrl = new URL(clientUrl);
+    scoreUrl.searchParams.set("key", apiKey);
     return {
       source: "google",
-      url: buildGooglePhotoUrl(photo.name, apiKey),
+      url: clientUrl,
+      fetchUrl: scoreUrl.toString(),
       score: base + hintPenalty,
       reason: `Google base score ${base + hintPenalty}`,
     };
@@ -826,7 +824,7 @@ async function scoreCandidates(candidates: ScoredCandidate[], includeDebug: bool
   const concurrency = Math.min(8, Math.max(1, envInt("HERO_AUTOFILL_CONCURRENCY", 5)));
   return runWithConcurrency(candidates, concurrency, async (candidate) => {
     try {
-      const vision = await analyzeWithVision(candidate.url, includeDebug);
+      const vision = await analyzeWithVision(candidate.fetchUrl ?? candidate.url, includeDebug);
       return {
         ...candidate,
         score: candidate.score + vision.score,

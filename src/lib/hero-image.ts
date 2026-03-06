@@ -1,0 +1,56 @@
+const GOOGLE_PLACES_HOST = "places.googleapis.com";
+const GOOGLE_PHOTO_RESOURCE_PATTERN = /^(places\/[\w-]+\/photos\/[\w-]+)$/;
+
+function safeUrl(input: string): URL | null {
+  try {
+    return new URL(input);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePhotoResourceName(raw: string): string | null {
+  const trimmed = String(raw ?? "").trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!trimmed) return null;
+  if (!GOOGLE_PHOTO_RESOURCE_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function isGooglePlacesPhotoUrl(input: string | null | undefined): boolean {
+  const raw = String(input ?? "").trim();
+  if (!raw) return false;
+
+  const parsed = safeUrl(raw);
+  if (!parsed) return false;
+
+  return parsed.hostname.toLowerCase() === GOOGLE_PLACES_HOST && parsed.pathname.includes("/media");
+}
+
+export function extractGooglePhotoResourceName(input: string | null | undefined): string | null {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+
+  if (GOOGLE_PHOTO_RESOURCE_PATTERN.test(raw)) {
+    return normalizePhotoResourceName(raw);
+  }
+
+  const parsed = safeUrl(raw);
+  if (!parsed) return null;
+  if (parsed.hostname.toLowerCase() !== GOOGLE_PLACES_HOST) return null;
+
+  const withoutPrefix = parsed.pathname.replace(/^\/v1\//, "").replace(/\/media$/, "");
+  return normalizePhotoResourceName(withoutPrefix);
+}
+
+export function buildGooglePhotoMediaUrl(photoResourceName: string, maxWidthPx: number): string {
+  const normalized = normalizePhotoResourceName(photoResourceName);
+  if (!normalized) {
+    throw new Error("Invalid Google photo resource name");
+  }
+
+  const base = `https://${GOOGLE_PLACES_HOST}/v1/${normalized}/media`;
+  const url = new URL(base);
+  const width = Number.isFinite(maxWidthPx) ? Math.max(128, Math.floor(maxWidthPx)) : 1600;
+  url.searchParams.set("maxWidthPx", String(width));
+  return url.toString();
+}

@@ -45,6 +45,16 @@ const scenarios: Scenario[] = [
     expect: (score) => score >= 55,
   },
   {
+    name: "CAMPINGPLATZ vehicle + pool is much lower than natural-water",
+    placeType: "CAMPINGPLATZ",
+    labels: [
+      { description: "motorhome", score: 0.94 },
+      { description: "swimming pool", score: 0.93 },
+      { description: "outdoor", score: 0.84 },
+    ],
+    expect: (score) => score <= 25,
+  },
+  {
     name: "CAMPINGPLATZ indoor + face => low",
     placeType: "CAMPINGPLATZ",
     labels: [

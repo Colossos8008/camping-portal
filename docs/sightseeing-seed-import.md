@@ -31,11 +31,35 @@ Der Import ist bewusst region-begrenzt über Overpass Area Queries. Es wird **ni
 ## CLI Optionen
 
 - `--region=normandie|bretagne|all`
-- `--limit=<n>`
+- `--limit=<n>` (begrenzt nur die lokale Weiterverarbeitung nach Normalisierung/Dedupe)
+- `--bbox=minLon,minLat,maxLon,maxLat` (verkleinert die Overpass-Abfrage wirklich auf eine kleine Box)
+- `--test-mode` (nutzt pro Region eine kleine, feste BBox für schnelle lokale Tests)
+- `--max-elements=<n>` (kürzt die Overpass-Response auf n Elemente direkt nach dem Fetch)
 - `--dry-run` (keine DB Writes)
 - `--force` (ignoriert DB-Dublettenprüfung)
 - `--verbose`
 - `--overpass-url=<url>` (überschreibt `OVERPASS_URL`)
+
+
+## Kleiner Testmodus (echte Overpass-Reduktion)
+
+Für lokale Tests gibt es jetzt zwei Wege, die **Overpass-Last selbst** zu verkleinern:
+
+1. `--bbox=...`
+   - Schränkt die Query direkt auf eine Bounding Box ein.
+   - Das reduziert Request-Volumen/Antwortgröße schon auf Overpass-Seite.
+2. `--test-mode`
+   - Nutzt eine kleine vordefinierte Test-BBox je Region (Normandie/Bretagne).
+   - Gut für schnelle, reproduzierbare Dry-Runs ohne manuelle Koordinaten.
+
+Optional zusätzlich:
+
+- `--max-elements=<n>` kappt die Overpass-Elementliste direkt nach der API-Antwort (vor Normalisierung/Filterung).
+
+Wichtig zur Abgrenzung:
+
+- `--limit=<n>` wirkt **nur lokal** nach Normalisierung + Dedupe auf die Anzahl der weiterverarbeiteten Kandidaten.
+- `--limit` macht die eigentliche Overpass-Abfrage **nicht** kleiner.
 
 ## Overpass Endpoint (Standard + Fallback)
 
@@ -51,13 +75,26 @@ Beispiele:
 - CLI:
   - `npm run import:sightseeing:seed -- --region=normandie --dry-run --limit=30 --overpass-url=https://lz4.overpass-api.de/api/interpreter`
 
-## Ablaufempfehlung
+## Praktische lokale Testläufe
 
-1. Seed importieren (erst trocken testen):
-   - `npm run import:sightseeing:seed:normandie -- --dry-run --limit=30`
-   - `npm run import:sightseeing:seed:bretagne -- --dry-run --limit=30`
-2. Echten Import starten.
-3. Danach TS-Sehenswürdigkeiten anreichern:
+Kleine echte Overpass-Abfrage per vordefiniertem Testmodus:
+
+- `npm run import:sightseeing:seed:normandie -- --dry-run --test-mode --limit=30`
+- `npm run import:sightseeing:seed:bretagne -- --dry-run --test-mode --limit=30`
+
+Kleine echte Overpass-Abfrage per expliziter BBox:
+
+- `npm run import:sightseeing:seed:normandie -- --dry-run --bbox=-1.585,49.63,-1.42,49.705 --limit=30`
+- `npm run import:sightseeing:seed:bretagne -- --dry-run --bbox=-4.495,48.36,-4.405,48.41 --limit=30`
+
+Zusätzlich optional für besonders kleine Runs:
+
+- `npm run import:sightseeing:seed:normandie -- --dry-run --test-mode --max-elements=50 --limit=30`
+
+Danach regulär:
+
+1. Echten Import starten (ohne `--dry-run`, ohne Test-BBox falls Vollimport gewünscht).
+2. Danach TS-Sehenswürdigkeiten anreichern:
    - `POST /api/admin/sightseeing-autofill`
 
 ## Dublettenlogik (v1)

@@ -6,6 +6,7 @@ import {
   normalizeCandidate,
   parseOverpassElements,
   REGION_CONFIGS,
+  type BoundingBox,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
 
@@ -21,6 +22,9 @@ type CliOptions = {
   force: boolean;
   verbose: boolean;
   overpassUrl: string;
+  bbox: BoundingBox | null;
+  maxElements: number | null;
+  testMode: boolean;
 };
 
 type ExistingPlace = {
@@ -29,6 +33,22 @@ type ExistingPlace = {
   type: "SEHENSWUERDIGKEIT";
   lat: number;
   lng: number;
+};
+
+
+const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
+  normandie: {
+    minLon: -1.585,
+    minLat: 49.63,
+    maxLon: -1.42,
+    maxLat: 49.705,
+  },
+  bretagne: {
+    minLon: -4.495,
+    minLat: 48.36,
+    maxLon: -4.405,
+    maxLat: 48.41,
+  },
 };
 
 type RegionSummary = {
@@ -62,6 +82,34 @@ function parseCliArgs(argv: string[]): CliOptions {
     throw new Error("Invalid --limit value. Must be a positive number.");
   }
 
+  const bboxRaw = readValue("--bbox");
+  let bbox: BoundingBox | null = null;
+  if (bboxRaw) {
+    const parts = bboxRaw.split(",").map((part) => Number(part.trim()));
+    if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
+      throw new Error("Invalid --bbox value. Expected format: minLon,minLat,maxLon,maxLat");
+    }
+
+    const [minLon, minLat, maxLon, maxLat] = parts;
+    if (minLon >= maxLon || minLat >= maxLat) {
+      throw new Error("Invalid --bbox value. Must satisfy minLon < maxLon and minLat < maxLat.");
+    }
+
+    if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90) {
+      throw new Error("Invalid --bbox value. Coordinates outside valid lon/lat range.");
+    }
+
+    bbox = { minLon, minLat, maxLon, maxLat };
+  }
+
+  const maxElementsRaw = readValue("--max-elements");
+  const maxElements = maxElementsRaw ? Number(maxElementsRaw) : null;
+  if (maxElementsRaw && (!Number.isFinite(maxElements) || Number(maxElements) <= 0)) {
+    throw new Error("Invalid --max-elements value. Must be a positive number.");
+  }
+
+  const testMode = args.has("--test-mode");
+
   const overpassUrlRaw = readValue("--overpass-url") ?? process.env.OVERPASS_URL ?? DEFAULT_OVERPASS_URL;
   const overpassUrl = overpassUrlRaw.trim();
   if (!overpassUrl) {
@@ -81,6 +129,9 @@ function parseCliArgs(argv: string[]): CliOptions {
     force: args.has("--force"),
     verbose: args.has("--verbose"),
     overpassUrl,
+    bbox,
+    maxElements: maxElements ? Math.floor(maxElements) : null,
+    testMode,
   };
 }
 
@@ -110,8 +161,14 @@ class OverpassRequestError extends Error {
   }
 }
 
-async function fetchOverpass(region: TargetRegion, overpassUrl: string): Promise<unknown> {
-  const query = buildOverpassQuery(REGION_CONFIGS[region]);
+async function fetchOverpass(input: {
+  region: TargetRegion;
+  overpassUrl: string;
+  bbox: BoundingBox | null;
+  maxElements: number | null;
+}): Promise<unknown> {
+  const { region, overpassUrl, bbox, maxElements } = input;
+  const query = buildOverpassQuery(REGION_CONFIGS[region], { bbox });
   const endpoints = getOverpassEndpoints(overpassUrl);
   const failures: string[] = [];
 
@@ -155,7 +212,16 @@ async function fetchOverpass(region: TargetRegion, overpassUrl: string): Promise
         }
 
         const json = await response.json();
-        console.log(`${attemptPrefix} success`);
+        const fetchedElements = Array.isArray((json as { elements?: unknown }).elements)
+          ? (json as { elements: unknown[] }).elements.length
+          : 0;
+
+        if (maxElements && Array.isArray((json as { elements?: unknown }).elements) && fetchedElements > maxElements) {
+          (json as { elements: unknown[] }).elements = (json as { elements: unknown[] }).elements.slice(0, maxElements);
+          console.log(`${attemptPrefix} success elements=${fetchedElements} overpassCap=${maxElements} (truncated response)`);
+        } else {
+          console.log(`${attemptPrefix} success elements=${fetchedElements}`);
+        }
         return json;
       } catch (error: any) {
         const isAbort = error?.name === "AbortError";
@@ -211,11 +277,15 @@ async function runRegionImport(options: {
   force: boolean;
   verbose: boolean;
   overpassUrl: string;
+  bbox: BoundingBox | null;
+  maxElements: number | null;
 }): Promise<RegionSummary> {
-  const { prisma, region, dryRun, force, verbose, globalLimit, overpassUrl } = options;
+  const { prisma, region, dryRun, force, verbose, globalLimit, overpassUrl, bbox, maxElements } = options;
 
-  const payload = await fetchOverpass(region, overpassUrl);
+  const payload = await fetchOverpass({ region, overpassUrl, bbox, maxElements });
   const elements = parseOverpassElements(payload);
+
+  console.log(`[pipeline:${region}] overpass elements fetched=${elements.length}`);
 
   const normalized = elements
     .map((el) => normalizeCandidate(el, REGION_CONFIGS[region]))
@@ -229,6 +299,7 @@ async function runRegionImport(options: {
   }
 
   const distinctCandidates = Array.from(uniqueBySource.values());
+  console.log(`[pipeline:${region}] normalized candidates=${normalized.length} distinctBySource=${distinctCandidates.length}`);
 
   const existingRows = (await prisma.place.findMany({
     where: { type: "SEHENSWUERDIGKEIT" },
@@ -262,6 +333,13 @@ async function runRegionImport(options: {
   }
 
   const effectiveList = globalLimit ? accepted.slice(0, globalLimit) : accepted;
+  if (globalLimit) {
+    console.log(
+      `[pipeline:${region}] local processing limit active --limit=${globalLimit}: accepted=${accepted.length} -> processed=${effectiveList.length}`
+    );
+  } else {
+    console.log(`[pipeline:${region}] local processing without --limit: processed=${effectiveList.length}`);
+  }
 
   let created = 0;
   let skippedDuplicate = 0;
@@ -336,6 +414,13 @@ async function runRegionImport(options: {
   };
 }
 
+
+function getEffectiveBbox(region: TargetRegion, options: CliOptions): BoundingBox | null {
+  if (options.bbox) return options.bbox;
+  if (options.testMode) return TEST_MODE_BBOXES[region];
+  return null;
+}
+
 async function run() {
   const options = parseCliArgs(process.argv.slice(2));
 
@@ -354,12 +439,25 @@ async function run() {
     verbose: options.verbose,
     overpassUrl: options.overpassUrl,
     overpassFallbacks: overpassEndpoints.slice(1),
+    bbox: options.bbox,
+    maxElements: options.maxElements,
+    testMode: options.testMode,
   });
 
   try {
     for (const region of selectedRegions) {
       try {
         console.log(`\n--- region ${region} ---`);
+        const effectiveBbox = getEffectiveBbox(region, options);
+        if (effectiveBbox) {
+          console.log(
+            `[overpass] region=${region} query scope reduced via bbox=${effectiveBbox.minLon},${effectiveBbox.minLat},${effectiveBbox.maxLon},${effectiveBbox.maxLat}`
+          );
+        }
+        if (options.maxElements) {
+          console.log(`[overpass] region=${region} response capped by --max-elements=${options.maxElements}`);
+        }
+
         const summary = await runRegionImport({
           prisma,
           region,
@@ -368,6 +466,8 @@ async function run() {
           force: options.force,
           verbose: options.verbose,
           overpassUrl: options.overpassUrl,
+          bbox: effectiveBbox,
+          maxElements: options.maxElements,
         });
         summaries.push(summary);
       } catch (error: any) {

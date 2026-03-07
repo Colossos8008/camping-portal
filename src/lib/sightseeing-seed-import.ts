@@ -7,6 +7,13 @@ export type RegionConfig = {
   country: "France";
 };
 
+export type BoundingBox = {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+};
+
 export const REGION_CONFIGS: Record<TargetRegion, RegionConfig> = {
   normandie: {
     key: "normandie",
@@ -238,22 +245,26 @@ function roundCoord(v: number): number {
   return Math.round(v * 1_000_000) / 1_000_000;
 }
 
-export function buildOverpassQuery(region: RegionConfig): string {
+export function buildOverpassQuery(region: RegionConfig, options?: { bbox?: BoundingBox | null }): string {
+  const bboxClause = options?.bbox
+    ? `(${options.bbox.minLat},${options.bbox.minLon},${options.bbox.maxLat},${options.bbox.maxLon})`
+    : "(area.searchArea)";
+
   return `
 [out:json][timeout:120];
 area["ISO3166-2"="${region.iso3166_2}"]["admin_level"="4"]->.searchArea;
 (
-  nwr["tourism"="attraction"](area.searchArea);
-  nwr["tourism"="viewpoint"](area.searchArea);
-  nwr["historic"](area.searchArea);
-  nwr["heritage"](area.searchArea);
-  nwr["natural"](area.searchArea);
-  nwr["man_made"="lighthouse"](area.searchArea);
-  nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|archaeological_site",i](area.searchArea);
-  nwr["ruins"="yes"](area.searchArea);
-  nwr["building"~"abbey|cathedral|church|chapel|castle",i](area.searchArea);
-  nwr["site_type"~"megalith|dolmen|menhir|archaeological",i](area.searchArea);
-  nwr["megalith_type"](area.searchArea);
+  nwr["tourism"="attraction"]${bboxClause};
+  nwr["tourism"="viewpoint"]${bboxClause};
+  nwr["historic"]${bboxClause};
+  nwr["heritage"]${bboxClause};
+  nwr["natural"]${bboxClause};
+  nwr["man_made"="lighthouse"]${bboxClause};
+  nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|archaeological_site",i]${bboxClause};
+  nwr["ruins"="yes"]${bboxClause};
+  nwr["building"~"abbey|cathedral|church|chapel|castle",i]${bboxClause};
+  nwr["site_type"~"megalith|dolmen|menhir|archaeological",i]${bboxClause};
+  nwr["megalith_type"]${bboxClause};
 );
 out center tags;
 `.trim();

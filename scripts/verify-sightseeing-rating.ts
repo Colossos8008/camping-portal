@@ -34,6 +34,30 @@ async function run() {
   assert(iconicCrowded.crowdRiskScore >= 3.5, "iconic crowded place should preserve crowd risk");
   assert(iconicCrowded.sightVisitModePrimary === "SMART_WINDOW", "iconic crowded place should suggest smart window");
 
+
+  const lighthouseNameOnly = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Phare de la Pointe",
+  });
+  const lighthouseWithMetadata = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Phare de la Pointe",
+    category: "lighthouse",
+    description: "Historic coastal lighthouse viewpoint with memorial traces and fort remains",
+    tags: ["viewpoint", "coastal", "fort", "memorial", "megalithic"],
+    source: "OSM/Overpass",
+    region: "normandie",
+    country: "France",
+  });
+  assert(
+    lighthouseWithMetadata.sightseeingTotalScore > lighthouseNameOnly.sightseeingTotalScore,
+    "metadata-enriched lighthouse should score higher than name-only input"
+  );
+  assert(
+    lighthouseWithMetadata.sightRelevanceType !== "LOW_MATCH",
+    "metadata-enriched lighthouse should avoid LOW_MATCH"
+  );
+
   const entertainment = rateSightseeing({
     type: "SEHENSWUERDIGKEIT",
     name: "Mega Entertainment Mall Park",

@@ -35,6 +35,14 @@ Ausgabe enthält alle oben genannten Score-/Meta-Felder.
 - Ikonische Orte mit hohem Andrang erhalten typischerweise `SMART_WINDOW` + passenden Besuchshinweis.
 - Für Landmarken mit starker Außenwirkung kann zusätzlich `OUTSIDE_BEST` gesetzt werden.
 
+
+## Zusammenspiel mit Seed-Import
+
+Für importierte Sehenswürdigkeiten werden nun persistente Metadaten am `Place` gespeichert (`sightCategory`, `sightDescription`, `sightTags`, `sightSource`, `sightRegion`, `sightCountry` etc.).
+
+Das Autofill mappt diese Felder in `rateSightseeing(...)` und bewertet damit nicht mehr primär nur den Namen.
+So bekommen z. B. Lighthouse/Fort/Memorial/Viewpoint/Megalith-Orte bei vorhandenem Signal typischerweise robustere Scores und seltener `LOW_MATCH`.
+
 ## Backfill / Autofill auslösen
 
 Admin Endpoint:

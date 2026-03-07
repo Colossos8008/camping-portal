@@ -76,6 +76,14 @@ model Place {
   bestVisitHint    String?
   summaryWhyItMatches String?
 
+  sightSource      String?
+  sightExternalId  String?
+  sightCategory    String?
+  sightDescription String?
+  sightTags        String[]
+  sightRegion      String?
+  sightCountry     String?
+
   thumbnailImageId Int?
   thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)
 

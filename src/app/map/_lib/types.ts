@@ -73,6 +73,14 @@ export type Place = {
   bestVisitHint?: string | null;
   summaryWhyItMatches?: string | null;
 
+  sightSource?: string | null;
+  sightExternalId?: string | null;
+  sightCategory?: string | null;
+  sightDescription?: string | null;
+  sightTags?: string[] | null;
+  sightRegion?: string | null;
+  sightCountry?: string | null;
+
   // optional - wird in page.tsx berechnet wenn myPos gesetzt
   distanceKm?: number | null;
 };

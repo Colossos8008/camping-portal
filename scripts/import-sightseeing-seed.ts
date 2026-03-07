@@ -9,8 +9,10 @@ import {
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const REQUEST_TIMEOUT_MS = 45_000;
+const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const FALLBACK_OVERPASS_URLS = ["https://lz4.overpass-api.de/api/interpreter"];
+const MAX_RETRIES_PER_ENDPOINT = 2;
 
 type CliOptions = {
   region: TargetRegion | "all";
@@ -18,6 +20,7 @@ type CliOptions = {
   dryRun: boolean;
   force: boolean;
   verbose: boolean;
+  overpassUrl: string;
 };
 
 type ExistingPlace = {
@@ -59,39 +62,145 @@ function parseCliArgs(argv: string[]): CliOptions {
     throw new Error("Invalid --limit value. Must be a positive number.");
   }
 
+  const overpassUrlRaw = readValue("--overpass-url") ?? process.env.OVERPASS_URL ?? DEFAULT_OVERPASS_URL;
+  const overpassUrl = overpassUrlRaw.trim();
+  if (!overpassUrl) {
+    throw new Error("Invalid Overpass URL. Provide --overpass-url=<url> or OVERPASS_URL=<url>.");
+  }
+
+  try {
+    new URL(overpassUrl);
+  } catch {
+    throw new Error(`Invalid Overpass URL: ${overpassUrl}`);
+  }
+
   return {
     region: regionRaw as CliOptions["region"],
     limit: limit ? Math.floor(limit) : null,
     dryRun: args.has("--dry-run"),
     force: args.has("--force"),
     verbose: args.has("--verbose"),
+    overpassUrl,
   };
 }
 
-async function fetchOverpass(region: TargetRegion): Promise<unknown> {
+function getOverpassEndpoints(primaryUrl: string): string[] {
+  const urls = [primaryUrl, ...FALLBACK_OVERPASS_URLS].map((url) => url.trim()).filter(Boolean);
+  return Array.from(new Set(urls));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number): boolean {
+  return [429, 502, 503, 504].includes(status);
+}
+
+class OverpassRequestError extends Error {
+  endpoint: string;
+  status: number | null;
+  retryable: boolean;
+
+  constructor(input: { endpoint: string; status: number | null; retryable: boolean; message: string }) {
+    super(input.message);
+    this.endpoint = input.endpoint;
+    this.status = input.status;
+    this.retryable = input.retryable;
+  }
+}
+
+async function fetchOverpass(region: TargetRegion, overpassUrl: string): Promise<unknown> {
   const query = buildOverpassQuery(REGION_CONFIGS[region]);
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
+  const endpoints = getOverpassEndpoints(overpassUrl);
+  const failures: string[] = [];
 
-  try {
-    const response = await fetch(OVERPASS_URL, {
-      method: "POST",
-      body: query,
-      signal: abortController.signal,
-      headers: {
-        "content-type": "text/plain;charset=UTF-8",
-      },
-    });
+  for (const [endpointIndex, endpoint] of endpoints.entries()) {
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_ENDPOINT; attempt += 1) {
+      const attemptPrefix = `[overpass] region=${region} endpoint=${endpoint} attempt=${attempt}/${MAX_RETRIES_PER_ENDPOINT}`;
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
 
-    if (!response.ok) {
-      const payload = await response.text().catch(() => "");
-      throw new Error(`Overpass request failed (${response.status}): ${payload.slice(0, 300)}`);
+      try {
+        if (attempt === 1) {
+          console.log(`${attemptPrefix} start`);
+        }
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          body: query,
+          signal: abortController.signal,
+          headers: {
+            "content-type": "text/plain;charset=UTF-8",
+          },
+        });
+
+        if (!response.ok) {
+          const payload = await response.text().catch(() => "");
+          const retryable = isRetryableStatus(response.status);
+          const detail = payload.slice(0, 300);
+
+          if (response.status === 429) {
+            console.warn(`${attemptPrefix} received 429 Too Many Requests`);
+          } else {
+            console.warn(`${attemptPrefix} failed with status=${response.status}`);
+          }
+
+          throw new OverpassRequestError({
+            endpoint,
+            status: response.status,
+            retryable,
+            message: `Overpass request failed (${response.status}) at ${endpoint}: ${detail}`,
+          });
+        }
+
+        const json = await response.json();
+        console.log(`${attemptPrefix} success`);
+        return json;
+      } catch (error: any) {
+        const isAbort = error?.name === "AbortError";
+        const normalizedError =
+          error instanceof OverpassRequestError
+            ? error
+            : new OverpassRequestError({
+                endpoint,
+                status: null,
+                retryable: true,
+                message: isAbort
+                  ? `Overpass request timed out after ${REQUEST_TIMEOUT_MS}ms at ${endpoint}`
+                  : `Overpass request error at ${endpoint}: ${String(error?.message ?? error)}`,
+              });
+
+        failures.push(
+          `region=${region} endpoint=${normalizedError.endpoint} status=${normalizedError.status ?? "n/a"} message=${normalizedError.message}`
+        );
+
+        const isLastAttemptForEndpoint = attempt >= MAX_RETRIES_PER_ENDPOINT;
+        if (normalizedError.retryable && !isLastAttemptForEndpoint) {
+          const backoffMs = 1_000 * attempt;
+          console.warn(
+            `${attemptPrefix} temporary error. Retrying in ${backoffMs}ms (${normalizedError.message})`
+          );
+          await sleep(backoffMs);
+          continue;
+        }
+
+        console.warn(`${attemptPrefix} giving up on endpoint (${normalizedError.message})`);
+        break;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
-    return response.json();
-  } finally {
-    clearTimeout(timeout);
+    if (endpointIndex < endpoints.length - 1) {
+      const nextEndpoint = endpoints[endpointIndex + 1];
+      console.warn(`[overpass] region=${region} falling back to next endpoint: ${nextEndpoint}`);
+    }
   }
+
+  throw new Error(
+    `Overpass failed for region=${region}. Tried endpoints: ${endpoints.join(", ")}. Last errors: ${failures.slice(-4).join(" | ")}`
+  );
 }
 
 async function runRegionImport(options: {
@@ -101,10 +210,11 @@ async function runRegionImport(options: {
   dryRun: boolean;
   force: boolean;
   verbose: boolean;
+  overpassUrl: string;
 }): Promise<RegionSummary> {
-  const { prisma, region, dryRun, force, verbose, globalLimit } = options;
+  const { prisma, region, dryRun, force, verbose, globalLimit, overpassUrl } = options;
 
-  const payload = await fetchOverpass(region);
+  const payload = await fetchOverpass(region, overpassUrl);
   const elements = parseOverpassElements(payload);
 
   const normalized = elements
@@ -233,6 +343,8 @@ async function run() {
     options.region === "all" ? ["normandie", "bretagne"] : [options.region];
 
   const summaries: RegionSummary[] = [];
+  const failedRegions: string[] = [];
+  const overpassEndpoints = getOverpassEndpoints(options.overpassUrl);
 
   console.log("sightseeing-seed-import: start", {
     region: options.region,
@@ -240,6 +352,8 @@ async function run() {
     limit: options.limit,
     force: options.force,
     verbose: options.verbose,
+    overpassUrl: options.overpassUrl,
+    overpassFallbacks: overpassEndpoints.slice(1),
   });
 
   try {
@@ -253,9 +367,11 @@ async function run() {
           dryRun: options.dryRun,
           force: options.force,
           verbose: options.verbose,
+          overpassUrl: options.overpassUrl,
         });
         summaries.push(summary);
       } catch (error: any) {
+        failedRegions.push(region);
         console.error(`region ${region} failed: ${String(error?.message ?? error)}`);
       }
     }
@@ -264,7 +380,9 @@ async function run() {
   }
 
   if (summaries.length === 0) {
-    console.error("No region completed successfully.");
+    console.error(
+      `No region completed successfully. Failed regions: ${failedRegions.join(", ") || "unknown"}. Check Overpass endpoint or try --overpass-url=<url>.`
+    );
     process.exitCode = 1;
     return;
   }
@@ -295,6 +413,9 @@ async function run() {
     console.log(
       `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} duplicates=${item.skippedDuplicate} errors=${item.skippedError}`
     );
+  }
+  if (failedRegions.length > 0) {
+    console.warn(`FAILED REGIONS: ${failedRegions.join(", ")}`);
   }
   console.log(
     `TOTAL: fetched=${total.fetched} normalized=${total.normalized} afterDedupe=${total.afterDedupe} processed=${total.processed} created=${total.created} duplicates=${total.skippedDuplicate} errors=${total.skippedError}`

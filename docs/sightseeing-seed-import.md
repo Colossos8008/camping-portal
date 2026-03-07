@@ -35,6 +35,21 @@ Der Import ist bewusst region-begrenzt über Overpass Area Queries. Es wird **ni
 - `--dry-run` (keine DB Writes)
 - `--force` (ignoriert DB-Dublettenprüfung)
 - `--verbose`
+- `--overpass-url=<url>` (überschreibt `OVERPASS_URL`)
+
+## Overpass Endpoint (Standard + Fallback)
+
+- Standard-Endpoint: `https://overpass-api.de/api/interpreter`
+- Primärer Endpoint kann über Env `OVERPASS_URL` gesetzt werden.
+- Alternativ per CLI `--overpass-url=...` (hat Vorrang gegenüber Env).
+- Bei temporären Overpass-Fehlern (u. a. `429`) versucht der Importer kurze Retries und fällt danach auf `https://lz4.overpass-api.de/api/interpreter` zurück.
+
+Beispiele:
+
+- Env:
+  - `OVERPASS_URL=https://lz4.overpass-api.de/api/interpreter npm run import:sightseeing:seed -- --region=normandie --dry-run --limit=30`
+- CLI:
+  - `npm run import:sightseeing:seed -- --region=normandie --dry-run --limit=30 --overpass-url=https://lz4.overpass-api.de/api/interpreter`
 
 ## Ablaufempfehlung
 

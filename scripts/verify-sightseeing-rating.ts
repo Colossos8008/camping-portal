@@ -65,6 +65,46 @@ async function run() {
   });
   assert(entertainment.sightRelevanceType === "LOW_MATCH" || entertainment.sightRelevanceType === "OPTIONAL", "entertainment spot should rank low");
 
+  const megalithicArchaeology = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Allée couverte de Bretteville",
+    category: "archaeological_site",
+    description: "Prehistoric megalithic passage grave with archaeological significance",
+    tags: [
+      "archaeological_site:megalith",
+      "historic:archaeological_site",
+      "historic:civilization:prehistoric",
+      "megalith_type:passage_grave",
+      "wikidata:Q2838858",
+      "wikipedia:fr:Allee couverte de Bretteville",
+    ],
+  });
+  assert(megalithicArchaeology.historyScore >= 4, "megalithic archaeology should be clearly strong on history");
+  assert(megalithicArchaeology.uniquenessScore >= 3.5, "megalithic archaeology should not have low uniqueness");
+  assert(megalithicArchaeology.sightRelevanceType !== "LOW_MATCH", "megalithic archaeology should avoid LOW_MATCH");
+
+  const lighthousePhare = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Phare du Cap",
+    category: "lighthouse",
+    description: "Historic phare on coastal cliff with panoramic viewpoint",
+    tags: ["phare", "coastal", "viewpoint", "panorama", "wikidata:Q12345"],
+  });
+  assert(lighthousePhare.architectureScore >= 3.5, "lighthouse should be strong on architecture");
+  assert(lighthousePhare.natureScore >= 3.5, "lighthouse cliff setting should be strong on nature");
+  assert(lighthousePhare.sightVisitModePrimary !== "EASY_STOP", "lighthouse should get a more specific visit mode");
+
+  const fortMemorialViewpoint = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Fort de la Pointe Memorial",
+    category: "fortress",
+    description: "Coastal fortress ruins and memorial overlooking a dramatic bay viewpoint",
+    tags: ["fort", "ruins", "memorial", "bay", "viewpoint", "historic"],
+  });
+  assert(fortMemorialViewpoint.historyScore >= 3.5, "fort + memorial should score strong on history");
+  assert(fortMemorialViewpoint.uniquenessScore >= 3, "fort + memorial viewpoint should have meaningful uniqueness");
+  assert(fortMemorialViewpoint.sightRelevanceType !== "LOW_MATCH", "fort + memorial viewpoint should avoid LOW_MATCH");
+
   console.log("verify-sightseeing-rating: ok");
 }
 

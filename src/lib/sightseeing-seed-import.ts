@@ -1,10 +1,10 @@
 export type TargetRegion = "normandie" | "bretagne";
 
 export type RegionConfig = {
-  key: TargetRegion;
+  key: string;
   label: string;
-  iso3166_2: string;
-  country: "France";
+  iso3166_2?: string;
+  country: string;
 };
 
 export type BoundingBox = {
@@ -177,8 +177,8 @@ export type SightseeingCandidate = {
   category: string;
   tags: string[];
   source: "OSM/Overpass";
-  sourceRegion: TargetRegion;
-  country: "France";
+  sourceRegion: string;
+  country: string;
   reason: string;
 };
 
@@ -376,7 +376,7 @@ export function normalizeCandidate(
     tags: collectTags(tags),
     source: "OSM/Overpass",
     sourceRegion: region.key,
-    country: "France",
+    country: region.country,
     reason: `OSM match category=${category}`,
   };
 }
@@ -385,15 +385,25 @@ function roundCoord(v: number): number {
   return Math.round(v * 1_000_000) / 1_000_000;
 }
 
-export function buildOverpassQuery(region: RegionConfig, options?: { bbox?: BoundingBox | null }): string {
+export function buildOverpassQuery(
+  region: RegionConfig,
+  options?: { bbox?: BoundingBox | null; around?: { lat: number; lng: number; radiusKm: number } | null }
+): string {
+  const aroundClause = options?.around
+    ? `(around:${Math.round(options.around.radiusKm * 1_000)},${options.around.lat},${options.around.lng})`
+    : null;
+
   const bboxClause = options?.bbox
     ? `(${options.bbox.minLat},${options.bbox.minLon},${options.bbox.maxLat},${options.bbox.maxLon})`
-    : "(area.searchArea)";
+    : aroundClause ?? "(area.searchArea)";
+
+  const areaScope = options?.around
+    ? ""
+    : `area["ISO3166-2"="${region.iso3166_2}"]["admin_level"="4"]->.searchArea;\n`;
 
   return `
 [out:json][timeout:120];
-area["ISO3166-2"="${region.iso3166_2}"]["admin_level"="4"]->.searchArea;
-(
+${areaScope}(
   nwr["tourism"="attraction"]${bboxClause};
   nwr["tourism"="viewpoint"]${bboxClause};
   nwr["historic"]${bboxClause};

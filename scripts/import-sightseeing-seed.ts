@@ -7,6 +7,7 @@ import {
   parseOverpassElements,
   REGION_CONFIGS,
   type BoundingBox,
+  type RegionConfig,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
 
@@ -14,6 +15,14 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const FALLBACK_OVERPASS_URLS = ["https://lz4.overpass-api.de/api/interpreter"];
 const MAX_RETRIES_PER_ENDPOINT = 2;
+
+const NEAR_PRESETS = {
+  nievern: {
+    label: "Nievern (DE)",
+    center: { lat: 50.316, lng: 7.617 },
+    radiusKm: 35,
+  },
+} as const;
 
 type CliOptions = {
   region: TargetRegion | "all";
@@ -25,6 +34,9 @@ type CliOptions = {
   bbox: BoundingBox | null;
   maxElements: number | null;
   testMode: boolean;
+  center: { lat: number; lng: number } | null;
+  radiusKm: number | null;
+  nearPreset: keyof typeof NEAR_PRESETS | null;
 };
 
 type ExistingPlace = {
@@ -35,20 +47,9 @@ type ExistingPlace = {
   lng: number;
 };
 
-
 const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
-  normandie: {
-    minLon: -1.585,
-    minLat: 49.63,
-    maxLon: -1.42,
-    maxLat: 49.705,
-  },
-  bretagne: {
-    minLon: -4.495,
-    minLat: 48.36,
-    maxLon: -4.405,
-    maxLat: 48.41,
-  },
+  normandie: { minLon: -1.585, minLat: 49.63, maxLon: -1.42, maxLat: 49.705 },
+  bretagne: { minLon: -4.495, minLat: 48.36, maxLon: -4.405, maxLat: 48.41 },
 };
 
 type RegionSummary = {
@@ -63,14 +64,45 @@ type RegionSummary = {
   skippedError: number;
 };
 
+type QueryScope = {
+  regionConfig: RegionConfig;
+  bbox: BoundingBox | null;
+  around: { lat: number; lng: number; radiusKm: number } | null;
+  label: string;
+};
+
 function parseCliArgs(argv: string[]): CliOptions {
   const args = new Set(argv);
-
   const readValue = (prefix: string): string | null => {
     const hit = argv.find((x) => x.startsWith(`${prefix}=`));
     if (!hit) return null;
     return hit.slice(prefix.length + 1).trim() || null;
   };
+
+  const nearRaw = readValue("--near")?.toLowerCase() ?? null;
+  if (nearRaw && !(nearRaw in NEAR_PRESETS)) {
+    throw new Error(`Invalid --near value. Allowed: ${Object.keys(NEAR_PRESETS).join(" | ")}`);
+  }
+
+  const centerRaw = readValue("--center");
+  let center: { lat: number; lng: number } | null = null;
+  if (centerRaw) {
+    const parts = centerRaw.split(",").map((part) => Number(part.trim()));
+    if (parts.length !== 2 || parts.some((part) => !Number.isFinite(part))) {
+      throw new Error("Invalid --center value. Expected format: lat,lng");
+    }
+    const [lat, lng] = parts;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new Error("Invalid --center value. Coordinates outside valid lat/lng range.");
+    }
+    center = { lat, lng };
+  }
+
+  const radiusRaw = readValue("--radius-km");
+  const radiusKm = radiusRaw ? Number(radiusRaw) : null;
+  if (radiusRaw && (!Number.isFinite(radiusKm) || Number(radiusKm) <= 0)) {
+    throw new Error("Invalid --radius-km value. Must be a positive number.");
+  }
 
   const regionRaw = (readValue("--region") ?? "all").toLowerCase();
   if (!["all", "normandie", "bretagne"].includes(regionRaw)) {
@@ -90,16 +122,13 @@ function parseCliArgs(argv: string[]): CliOptions {
     if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
       throw new Error("Invalid --bbox value. Expected format: minLon,minLat,maxLon,maxLat");
     }
-
     const [minLon, minLat, maxLon, maxLat] = parts;
     if (minLon >= maxLon || minLat >= maxLat) {
       throw new Error("Invalid --bbox value. Must satisfy minLon < maxLon and minLat < maxLat.");
     }
-
     if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90) {
       throw new Error("Invalid --bbox value. Coordinates outside valid lon/lat range.");
     }
-
     bbox = { minLon, minLat, maxLon, maxLat };
   }
 
@@ -116,11 +145,28 @@ function parseCliArgs(argv: string[]): CliOptions {
   if (!overpassUrl) {
     throw new Error("Invalid Overpass URL. Provide --overpass-url=<url> or OVERPASS_URL=<url>.");
   }
-
   try {
     new URL(overpassUrl);
   } catch {
     throw new Error(`Invalid Overpass URL: ${overpassUrl}`);
+  }
+
+  const nearPreset = nearRaw ? (nearRaw as keyof typeof NEAR_PRESETS) : null;
+  if (nearPreset && !center) {
+    center = { ...NEAR_PRESETS[nearPreset].center };
+  }
+
+  const effectiveRadius = radiusKm ?? (nearPreset ? NEAR_PRESETS[nearPreset].radiusKm : null);
+  const hasNearby = Boolean(center || effectiveRadius);
+  if (hasNearby && (!center || !effectiveRadius)) {
+    throw new Error("Nearby mode requires both --center=<lat,lng> and --radius-km=<number> (or --near=<preset>). ");
+  }
+
+  if (hasNearby && bbox) {
+    throw new Error("Cannot combine nearby mode (--center/--radius-km) with --bbox.");
+  }
+  if (hasNearby && testMode) {
+    throw new Error("Cannot combine nearby mode (--center/--radius-km) with --test-mode.");
   }
 
   return {
@@ -133,6 +179,9 @@ function parseCliArgs(argv: string[]): CliOptions {
     bbox,
     maxElements: maxElements ? Math.floor(maxElements) : null,
     testMode,
+    center,
+    radiusKm: effectiveRadius,
+    nearPreset,
   };
 }
 
@@ -163,46 +212,36 @@ class OverpassRequestError extends Error {
 }
 
 async function fetchOverpass(input: {
-  region: TargetRegion;
+  scope: QueryScope;
   overpassUrl: string;
-  bbox: BoundingBox | null;
   maxElements: number | null;
 }): Promise<unknown> {
-  const { region, overpassUrl, bbox, maxElements } = input;
-  const query = buildOverpassQuery(REGION_CONFIGS[region], { bbox });
+  const { scope, overpassUrl, maxElements } = input;
+  const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around });
   const endpoints = getOverpassEndpoints(overpassUrl);
   const failures: string[] = [];
 
   for (const [endpointIndex, endpoint] of endpoints.entries()) {
     for (let attempt = 1; attempt <= MAX_RETRIES_PER_ENDPOINT; attempt += 1) {
-      const attemptPrefix = `[overpass] region=${region} endpoint=${endpoint} attempt=${attempt}/${MAX_RETRIES_PER_ENDPOINT}`;
+      const attemptPrefix = `[overpass] scope=${scope.label} endpoint=${endpoint} attempt=${attempt}/${MAX_RETRIES_PER_ENDPOINT}`;
       const abortController = new AbortController();
       const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
 
       try {
-        if (attempt === 1) {
-          console.log(`${attemptPrefix} start`);
-        }
-
+        if (attempt === 1) console.log(`${attemptPrefix} start`);
         const response = await fetch(endpoint, {
           method: "POST",
           body: query,
           signal: abortController.signal,
-          headers: {
-            "content-type": "text/plain;charset=UTF-8",
-          },
+          headers: { "content-type": "text/plain;charset=UTF-8" },
         });
 
         if (!response.ok) {
           const payload = await response.text().catch(() => "");
           const retryable = isRetryableStatus(response.status);
           const detail = payload.slice(0, 300);
-
-          if (response.status === 429) {
-            console.warn(`${attemptPrefix} received 429 Too Many Requests`);
-          } else {
-            console.warn(`${attemptPrefix} failed with status=${response.status}`);
-          }
+          if (response.status === 429) console.warn(`${attemptPrefix} received 429 Too Many Requests`);
+          else console.warn(`${attemptPrefix} failed with status=${response.status}`);
 
           throw new OverpassRequestError({
             endpoint,
@@ -239,15 +278,13 @@ async function fetchOverpass(input: {
               });
 
         failures.push(
-          `region=${region} endpoint=${normalizedError.endpoint} status=${normalizedError.status ?? "n/a"} message=${normalizedError.message}`
+          `scope=${scope.label} endpoint=${normalizedError.endpoint} status=${normalizedError.status ?? "n/a"} message=${normalizedError.message}`
         );
 
         const isLastAttemptForEndpoint = attempt >= MAX_RETRIES_PER_ENDPOINT;
         if (normalizedError.retryable && !isLastAttemptForEndpoint) {
           const backoffMs = 1_000 * attempt;
-          console.warn(
-            `${attemptPrefix} temporary error. Retrying in ${backoffMs}ms (${normalizedError.message})`
-          );
+          console.warn(`${attemptPrefix} temporary error. Retrying in ${backoffMs}ms (${normalizedError.message})`);
           await sleep(backoffMs);
           continue;
         }
@@ -261,41 +298,39 @@ async function fetchOverpass(input: {
 
     if (endpointIndex < endpoints.length - 1) {
       const nextEndpoint = endpoints[endpointIndex + 1];
-      console.warn(`[overpass] region=${region} falling back to next endpoint: ${nextEndpoint}`);
+      console.warn(`[overpass] scope=${scope.label} falling back to next endpoint: ${nextEndpoint}`);
     }
   }
 
   throw new Error(
-    `Overpass failed for region=${region}. Tried endpoints: ${endpoints.join(", ")}. Last errors: ${failures.slice(-4).join(" | ")}`
+    `Overpass failed for scope=${scope.label}. Tried endpoints: ${endpoints.join(", ")}. Last errors: ${failures.slice(-4).join(" | ")}`
   );
 }
 
 async function runRegionImport(options: {
   prisma: any;
-  region: TargetRegion;
+  scope: QueryScope;
   globalLimit: number | null;
   dryRun: boolean;
   force: boolean;
   verbose: boolean;
   overpassUrl: string;
-  bbox: BoundingBox | null;
   maxElements: number | null;
 }): Promise<RegionSummary> {
-  const { prisma, region, dryRun, force, verbose, globalLimit, overpassUrl, bbox, maxElements } = options;
+  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements } = options;
 
-  const payload = await fetchOverpass({ region, overpassUrl, bbox, maxElements });
+  const payload = await fetchOverpass({ scope, overpassUrl, maxElements });
   const elements = parseOverpassElements(payload);
 
-  console.log(`[pipeline:${region}] overpass elements fetched=${elements.length}`);
+  console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
 
   const normalized = elements
     .map((el) => {
       if (!verbose) {
-        return normalizeCandidate(el, REGION_CONFIGS[region]);
+        return normalizeCandidate(el, scope.regionConfig);
       }
-
       const rawName = String(el.tags?.name ?? "").trim() || `${el.type}/${el.id}`;
-      return normalizeCandidate(el, REGION_CONFIGS[region], {
+      return normalizeCandidate(el, scope.regionConfig, {
         onReject: (reason) => {
           console.log(`skip candidate: ${rawName} [${el.type}/${el.id}] -> ${reason}`);
         },
@@ -305,13 +340,11 @@ async function runRegionImport(options: {
 
   const uniqueBySource = new Map<string, (typeof normalized)[number]>();
   for (const candidate of normalized) {
-    if (!uniqueBySource.has(candidate.sourceId)) {
-      uniqueBySource.set(candidate.sourceId, candidate);
-    }
+    if (!uniqueBySource.has(candidate.sourceId)) uniqueBySource.set(candidate.sourceId, candidate);
   }
 
   const distinctCandidates = Array.from(uniqueBySource.values());
-  console.log(`[pipeline:${region}] normalized candidates=${normalized.length} distinctBySource=${distinctCandidates.length}`);
+  console.log(`[pipeline:${scope.label}] normalized candidates=${normalized.length} distinctBySource=${distinctCandidates.length}`);
 
   const existingRows = (await prisma.place.findMany({
     where: { type: "SEHENSWUERDIGKEIT" },
@@ -334,9 +367,7 @@ async function runRegionImport(options: {
     );
 
     if (duplicateInBatch) {
-      if (verbose) {
-        console.log(`skip batch-duplicate: ${candidate.name} ~ ${duplicateInBatch.name}`);
-      }
+      if (verbose) console.log(`skip batch-duplicate: ${candidate.name} ~ ${duplicateInBatch.name}`);
       continue;
     }
 
@@ -347,10 +378,10 @@ async function runRegionImport(options: {
   const effectiveList = globalLimit ? accepted.slice(0, globalLimit) : accepted;
   if (globalLimit) {
     console.log(
-      `[pipeline:${region}] local processing limit active --limit=${globalLimit}: accepted=${accepted.length} -> processed=${effectiveList.length}`
+      `[pipeline:${scope.label}] local processing limit active --limit=${globalLimit}: accepted=${accepted.length} -> processed=${effectiveList.length}`
     );
   } else {
-    console.log(`[pipeline:${region}] local processing without --limit: processed=${effectiveList.length}`);
+    console.log(`[pipeline:${scope.label}] local processing without --limit: processed=${effectiveList.length}`);
   }
 
   let created = 0;
@@ -373,9 +404,7 @@ async function runRegionImport(options: {
 
       if (duplicateInDb && !force) {
         skippedDuplicate += 1;
-        if (verbose) {
-          console.log(`skip db-duplicate: ${candidate.name} -> #${duplicateInDb.id} ${duplicateInDb.name}`);
-        }
+        if (verbose) console.log(`skip db-duplicate: ${candidate.name} -> #${duplicateInDb.id} ${duplicateInDb.name}`);
         continue;
       }
 
@@ -405,19 +434,13 @@ async function runRegionImport(options: {
         });
 
         updated += 1;
-        if (verbose) {
-          console.log(
-            `updated #${duplicateInDb.id}: ${duplicateInDb.name} (${candidate.category}) [${candidate.sourceId}]`
-          );
-        }
+        if (verbose) console.log(`updated #${duplicateInDb.id}: ${duplicateInDb.name} (${candidate.category}) [${candidate.sourceId}]`);
         continue;
       }
 
       if (dryRun) {
         created += 1;
-        if (verbose) {
-          console.log(`[dry-run] would create: ${candidate.name} (${candidate.lat}, ${candidate.lng}) ${candidate.category}`);
-        }
+        if (verbose) console.log(`[dry-run] would create: ${candidate.name} (${candidate.lat}, ${candidate.lng}) ${candidate.category}`);
         continue;
       }
 
@@ -447,9 +470,7 @@ async function runRegionImport(options: {
       });
 
       created += 1;
-      if (verbose) {
-        console.log(`created #${createdPlace.id}: ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`);
-      }
+      if (verbose) console.log(`created #${createdPlace.id}: ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`);
     } catch (error: any) {
       skippedError += 1;
       console.error(`failed candidate ${candidate.sourceId} (${candidate.name}): ${String(error?.message ?? error)}`);
@@ -457,7 +478,7 @@ async function runRegionImport(options: {
   }
 
   return {
-    region,
+    region: scope.label,
     fetched: elements.length,
     normalized: normalized.length,
     afterDedupe: accepted.length,
@@ -469,22 +490,39 @@ async function runRegionImport(options: {
   };
 }
 
+function getScopes(options: CliOptions): QueryScope[] {
+  if (options.center && options.radiusKm) {
+    const nearLabel = options.nearPreset ? `near:${options.nearPreset}` : "nearby";
+    return [
+      {
+        regionConfig: {
+          key: nearLabel,
+          label: nearLabel,
+          country: "Germany",
+        },
+        bbox: null,
+        around: { lat: options.center.lat, lng: options.center.lng, radiusKm: options.radiusKm },
+        label: `${nearLabel}(${options.center.lat},${options.center.lng},${options.radiusKm}km)`,
+      },
+    ];
+  }
 
-function getEffectiveBbox(region: TargetRegion, options: CliOptions): BoundingBox | null {
-  if (options.bbox) return options.bbox;
-  if (options.testMode) return TEST_MODE_BBOXES[region];
-  return null;
+  const selectedRegions: TargetRegion[] = options.region === "all" ? ["normandie", "bretagne"] : [options.region];
+  return selectedRegions.map((region) => ({
+    regionConfig: REGION_CONFIGS[region],
+    bbox: options.bbox ?? (options.testMode ? TEST_MODE_BBOXES[region] : null),
+    around: null,
+    label: region,
+  }));
 }
 
 async function run() {
   const options = parseCliArgs(process.argv.slice(2));
 
-  const selectedRegions: TargetRegion[] =
-    options.region === "all" ? ["normandie", "bretagne"] : [options.region];
-
   const summaries: RegionSummary[] = [];
-  const failedRegions: string[] = [];
+  const failedScopes: string[] = [];
   const overpassEndpoints = getOverpassEndpoints(options.overpassUrl);
+  const scopes = getScopes(options);
 
   console.log("sightseeing-seed-import: start", {
     region: options.region,
@@ -495,39 +533,45 @@ async function run() {
     overpassUrl: options.overpassUrl,
     overpassFallbacks: overpassEndpoints.slice(1),
     bbox: options.bbox,
+    center: options.center,
+    radiusKm: options.radiusKm,
+    near: options.nearPreset,
     maxElements: options.maxElements,
     testMode: options.testMode,
   });
 
   try {
-    for (const region of selectedRegions) {
+    for (const scope of scopes) {
       try {
-        console.log(`\n--- region ${region} ---`);
-        const effectiveBbox = getEffectiveBbox(region, options);
-        if (effectiveBbox) {
+        console.log(`\n--- scope ${scope.label} ---`);
+        if (scope.bbox) {
           console.log(
-            `[overpass] region=${region} query scope reduced via bbox=${effectiveBbox.minLon},${effectiveBbox.minLat},${effectiveBbox.maxLon},${effectiveBbox.maxLat}`
+            `[overpass] scope=${scope.label} query scope reduced via bbox=${scope.bbox.minLon},${scope.bbox.minLat},${scope.bbox.maxLon},${scope.bbox.maxLat}`
+          );
+        }
+        if (scope.around) {
+          console.log(
+            `[overpass] scope=${scope.label} query scope reduced via around=${scope.around.lat},${scope.around.lng} radiusKm=${scope.around.radiusKm}`
           );
         }
         if (options.maxElements) {
-          console.log(`[overpass] region=${region} response capped by --max-elements=${options.maxElements}`);
+          console.log(`[overpass] scope=${scope.label} response capped by --max-elements=${options.maxElements}`);
         }
 
         const summary = await runRegionImport({
           prisma,
-          region,
+          scope,
           globalLimit: options.limit,
           dryRun: options.dryRun,
           force: options.force,
           verbose: options.verbose,
           overpassUrl: options.overpassUrl,
-          bbox: effectiveBbox,
           maxElements: options.maxElements,
         });
         summaries.push(summary);
       } catch (error: any) {
-        failedRegions.push(region);
-        console.error(`region ${region} failed: ${String(error?.message ?? error)}`);
+        failedScopes.push(scope.label);
+        console.error(`scope ${scope.label} failed: ${String(error?.message ?? error)}`);
       }
     }
   } finally {
@@ -535,9 +579,7 @@ async function run() {
   }
 
   if (summaries.length === 0) {
-    console.error(
-      `No region completed successfully. Failed regions: ${failedRegions.join(", ") || "unknown"}. Check Overpass endpoint or try --overpass-url=<url>.`
-    );
+    console.error(`No scope completed successfully. Failed scopes: ${failedScopes.join(", ") || "unknown"}.`);
     process.exitCode = 1;
     return;
   }
@@ -553,16 +595,7 @@ async function run() {
       skippedDuplicate: acc.skippedDuplicate + item.skippedDuplicate,
       skippedError: acc.skippedError + item.skippedError,
     }),
-    {
-      fetched: 0,
-      normalized: 0,
-      afterDedupe: 0,
-      processed: 0,
-      created: 0,
-      updated: 0,
-      skippedDuplicate: 0,
-      skippedError: 0,
-    }
+    { fetched: 0, normalized: 0, afterDedupe: 0, processed: 0, created: 0, updated: 0, skippedDuplicate: 0, skippedError: 0 }
   );
 
   console.log("\n=== sightseeing-seed-import summary ===");
@@ -571,8 +604,8 @@ async function run() {
       `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError}`
     );
   }
-  if (failedRegions.length > 0) {
-    console.warn(`FAILED REGIONS: ${failedRegions.join(", ")}`);
+  if (failedScopes.length > 0) {
+    console.warn(`FAILED SCOPES: ${failedScopes.join(", ")}`);
   }
   console.log(
     `TOTAL: fetched=${total.fetched} normalized=${total.normalized} afterDedupe=${total.afterDedupe} processed=${total.processed} created=${total.created} updated=${total.updated} duplicates=${total.skippedDuplicate} errors=${total.skippedError}`

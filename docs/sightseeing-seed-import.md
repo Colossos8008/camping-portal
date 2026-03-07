@@ -1,6 +1,11 @@
-# Sightseeing Seed Import (Normandie + Bretagne)
+# Sightseeing Seed Import (Region + Nearby Radius)
 
-Dieses Seed-Script importiert echte Sehenswürdigkeiten (OSM/Overpass) gezielt für **Normandie** und **Bretagne** in `Place` mit `type=SEHENSWUERDIGKEIT`.
+Dieses Seed-Script importiert echte Sehenswürdigkeiten (OSM/Overpass) in `Place` mit `type=SEHENSWUERDIGKEIT`.
+
+Unterstützte Modi:
+
+- **Region-Modus** (bestehend): Normandie / Bretagne über Overpass Area Query
+- **Nearby-Modus** (neu): Radius um expliziten Mittelpunkt (`--center` + `--radius-km`) oder Preset (`--near=nievern`)
 
 ## Was importiert wird
 
@@ -17,97 +22,77 @@ Der Import zieht nur kuratierte OSM-Kandidaten, u. a.:
 
 Zusätzlich wird hart gefiltert:
 
-- Positiv: Natur-/Küstenorte, Landmarken, Aussichtspunkte, historische/architektonische Orte.
-- Negativ: Freizeit-/Entertainment-/Shopping-/Indoor-POIs wie Theme Parks, Aquarien, Malls, Family-Park-Formate etc.
+- Positiv: Landmarken, Aussichtspunkte, historische/architektonische Orte, markante Naturpunkte.
+- Negativ: Freizeit-/Entertainment-/Shopping-/Indoor-POIs (Theme Parks, Aquarien, Malls etc.), Spielplätze, Utility-Kram.
 
-## Regionen
+## Regionen (bestehend)
 
 - `normandie` (`FR-NOR`)
 - `bretagne` (`FR-BRE`)
 - `all` (beide Regionen)
 
-Der Import ist bewusst region-begrenzt über Overpass Area Queries. Es wird **nicht** ganz Frankreich importiert.
+Der Import ist bewusst lokal begrenzt (Area Query oder Nearby Radius), es wird **nicht** ein ganzes Land blind importiert.
 
 ## CLI Optionen
 
-- `--region=normandie|bretagne|all`
+Allgemein:
+
 - `--limit=<n>` (begrenzt nur die lokale Weiterverarbeitung nach Normalisierung/Dedupe)
-- `--bbox=minLon,minLat,maxLon,maxLat` (verkleinert die Overpass-Abfrage wirklich auf eine kleine Box)
-- `--test-mode` (nutzt pro Region eine kleine, feste BBox für schnelle lokale Tests)
 - `--max-elements=<n>` (kürzt die Overpass-Response auf n Elemente direkt nach dem Fetch)
 - `--dry-run` (keine DB Writes)
 - `--force` (ignoriert DB-Dublettenprüfung)
 - `--verbose`
 - `--overpass-url=<url>` (überschreibt `OVERPASS_URL`)
 
+Region-Modus:
 
-## Kleiner Testmodus (echte Overpass-Reduktion)
+- `--region=normandie|bretagne|all`
+- `--bbox=minLon,minLat,maxLon,maxLat` (verkleinert die Overpass-Abfrage auf eine kleine Box)
+- `--test-mode` (nutzt pro Region eine kleine feste BBox)
 
-Für lokale Tests gibt es jetzt zwei Wege, die **Overpass-Last selbst** zu verkleinern:
+Nearby-Modus (neu):
 
-1. `--bbox=...`
-   - Schränkt die Query direkt auf eine Bounding Box ein.
-   - Das reduziert Request-Volumen/Antwortgröße schon auf Overpass-Seite.
-2. `--test-mode`
-   - Nutzt eine kleine vordefinierte Test-BBox je Region (Normandie/Bretagne).
-   - Gut für schnelle, reproduzierbare Dry-Runs ohne manuelle Koordinaten.
+- `--center=<lat,lng>`
+- `--radius-km=<number>`
+- optional: `--near=nievern` (Preset für lokalen Testfall)
 
-Optional zusätzlich:
+Hinweise zu Kombinationen:
 
-- `--max-elements=<n>` kappt die Overpass-Elementliste direkt nach der API-Antwort (vor Normalisierung/Filterung).
+- Nearby kann **nicht** mit `--bbox` oder `--test-mode` kombiniert werden.
+- Bei `--near=nievern` werden Center und Standardradius vorbelegt (können über `--center/--radius-km` überschrieben werden).
 
-Wichtig zur Abgrenzung:
+## Nearby Beispiele (Nievern / Lahntal / Koblenz)
 
-- `--limit=<n>` wirkt **nur lokal** nach Normalisierung + Dedupe auf die Anzahl der weiterverarbeiteten Kandidaten.
-- `--limit` macht die eigentliche Overpass-Abfrage **nicht** kleiner.
+Dry-run mit explizitem Center:
+
+- `npm run import:sightseeing:seed -- --center=50.316,7.617 --radius-km=35 --limit=30 --dry-run --verbose`
+
+Dry-run mit Preset:
+
+- `npm run import:sightseeing:seed:nievern -- --dry-run --limit=30 --verbose`
+
+Echter Import:
+
+- `npm run import:sightseeing:seed -- --center=50.316,7.617 --radius-km=35 --limit=30 --verbose`
+
+Mit diesem Radius sollten realistische Sehenswürdigkeiten aus Nievern/Lahntal/Koblenz/Mittelrhein in sinnvoller Größe testbar sein.
 
 ## Overpass Endpoint (Standard + Fallback)
 
 - Standard-Endpoint: `https://overpass-api.de/api/interpreter`
-- Primärer Endpoint kann über Env `OVERPASS_URL` gesetzt werden.
-- Alternativ per CLI `--overpass-url=...` (hat Vorrang gegenüber Env).
-- Bei temporären Overpass-Fehlern (u. a. `429`) versucht der Importer kurze Retries und fällt danach auf `https://lz4.overpass-api.de/api/interpreter` zurück.
+- Primärer Endpoint via Env `OVERPASS_URL`
+- Alternativ per CLI `--overpass-url=...` (hat Vorrang gegenüber Env)
+- Bei temporären Fehlern (u. a. `429`) versucht der Importer Retries und fällt auf `https://lz4.overpass-api.de/api/interpreter` zurück.
 
-Beispiele:
+## Dublettenlogik (unverändert)
 
-- Env:
-  - `OVERPASS_URL=https://lz4.overpass-api.de/api/interpreter npm run import:sightseeing:seed -- --region=normandie --dry-run --limit=30`
-- CLI:
-  - `npm run import:sightseeing:seed -- --region=normandie --dry-run --limit=30 --overpass-url=https://lz4.overpass-api.de/api/interpreter`
+- Batch-intern: nahe Koordinaten + ähnliche Namen werden zusammengeführt.
+- Gegen DB: bestehende `SEHENSWUERDIGKEIT`-Datensätze werden via Name+Distanz-Heuristik geprüft.
+- Standard: Dubletten werden übersprungen; mit `--force` werden vorhandene Datensätze aktualisiert.
 
-## Praktische lokale Testläufe
+## Persistierte Sightseeing-Metadaten
 
-Kleine echte Overpass-Abfrage per vordefiniertem Testmodus:
-
-- `npm run import:sightseeing:seed:normandie -- --dry-run --test-mode --limit=30`
-- `npm run import:sightseeing:seed:bretagne -- --dry-run --test-mode --limit=30`
-
-Kleine echte Overpass-Abfrage per expliziter BBox:
-
-- `npm run import:sightseeing:seed:normandie -- --dry-run --bbox=-1.585,49.63,-1.42,49.705 --limit=30`
-- `npm run import:sightseeing:seed:bretagne -- --dry-run --bbox=-4.495,48.36,-4.405,48.41 --limit=30`
-
-Zusätzlich optional für besonders kleine Runs:
-
-- `npm run import:sightseeing:seed:normandie -- --dry-run --test-mode --max-elements=50 --limit=30`
-
-Danach regulär:
-
-1. Echten Import starten (ohne `--dry-run`, ohne Test-BBox falls Vollimport gewünscht).
-2. Danach TS-Sehenswürdigkeiten anreichern:
-   - `POST /api/admin/sightseeing-autofill`
-
-## Dublettenlogik (v1)
-
-Konservativ und nachvollziehbar:
-
-- Batch-intern: nahe Koordinaten + sehr ähnliche Namen werden zusammengeführt.
-- Gegen DB: bestehende `SEHENSWUERDIGKEIT`-Datensätze werden über Name+Distanz-Heuristik geprüft.
-- Bei Treffer wird standardmäßig übersprungen (kein aggressives Merge-Update).
-
-## Hinweise
-
-Der Import persistiert nun additiv neben den Kernfeldern auch Sightseeing-Metadaten in `Place`:
+Der Import persistiert additiv neben Kernfeldern:
 
 - `sightSource`
 - `sightExternalId`
@@ -117,4 +102,10 @@ Der Import persistiert nun additiv neben den Kernfeldern auch Sightseeing-Metada
 - `sightRegion`
 - `sightCountry`
 
-Diese Felder bleiben optional/nullable und sind bewusst auf `SEHENSWUERDIGKEIT` ausgerichtet. Dadurch kann das nachgelagerte TS-Sehenswürdigkeiten-Autofill deutlich mehr Textsignale nutzen statt fast nur den Namen.
+Diese Felder bleiben optional/nullable und sind für `SEHENSWUERDIGKEIT` optimiert.
+
+## Anschluss: TS-Sehenswürdigkeiten-Autofill
+
+Nach echtem Seed-Import:
+
+- `POST /api/admin/sightseeing-autofill`

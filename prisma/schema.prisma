@@ -31,6 +31,22 @@ enum TS21Source {
   USER
 }
 
+enum SightRelevanceType {
+  ICON
+  STRONG_MATCH
+  GOOD_MATCH
+  OPTIONAL
+  LOW_MATCH
+}
+
+enum SightVisitMode {
+  EASY_STOP
+  SMART_WINDOW
+  OUTSIDE_BEST
+  MAIN_DESTINATION
+  WEATHER_WINDOW
+}
+
 model Place {
   id               Int       @id @default(autoincrement())
   name             String
@@ -46,6 +62,19 @@ model Place {
   heroImageUrl     String?
   heroScore        Int?
   heroReason       String?
+  natureScore      Float?
+  architectureScore Float?
+  historyScore     Float?
+  uniquenessScore  Float?
+  spontaneityScore Float?
+  calmScore        Float?
+  sightseeingTotalScore Float?
+  sightRelevanceType SightRelevanceType?
+  sightVisitModePrimary SightVisitMode?
+  sightVisitModeSecondary SightVisitMode?
+  crowdRiskScore   Float?
+  bestVisitHint    String?
+  summaryWhyItMatches String?
 
   thumbnailImageId Int?
   thumbnailImage   Image?    @relation("PlaceThumbnail", fields: [thumbnailImageId], references: [id], onDelete: SetNull)

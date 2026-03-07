@@ -68,6 +68,17 @@ function ts21Total(p: Place): number | null {
   return sum;
 }
 
+
+function sightInfo(p: Place) {
+  if ((p as any)?.type !== "SEHENSWUERDIGKEIT") return null;
+
+  const total = typeof (p as any)?.sightseeingTotalScore === "number" ? (p as any).sightseeingTotalScore : null;
+  const relevance = typeof (p as any)?.sightRelevanceType === "string" ? (p as any).sightRelevanceType : null;
+  const modePrimary = typeof (p as any)?.sightVisitModePrimary === "string" ? (p as any).sightVisitModePrimary : null;
+
+  return { total, relevance, modePrimary };
+}
+
 function displayScore(p: Place) {
   if (!isTsRelevantType((p as any)?.type)) return null;
 
@@ -176,6 +187,18 @@ export default function PlacesList(props: {
                       {sc.value}/{sc.max}
                     </div>
                   ) : null}
+
+                  {(() => {
+                    const si = sightInfo(p);
+                    if (!si) return null;
+                    return (
+                      <div className="mt-1 space-y-1">
+                        <div className="text-[10px]" title="TS Sehenswürdigkeiten Score">🧭 {si.total != null ? `${si.total}/100` : "—"}</div>
+                        {si.relevance ? <div className="text-[10px] opacity-80">{si.relevance}</div> : null}
+                        {si.modePrimary ? <div className="text-[10px] opacity-80">{si.modePrimary}</div> : null}
+                      </div>
+                    );
+                  })()}
 
                   {ts21HaltungBadge(p)}
 

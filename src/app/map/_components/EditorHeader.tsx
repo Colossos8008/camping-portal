@@ -1,7 +1,7 @@
 // src/app/map/_components/EditorHeader.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
@@ -43,20 +43,31 @@ export default function EditorHeader(props: {
       : getSupabasePublicUrl(heroFilename, { placeId: props.placeId })
     : "";
 
-  const [heroFailed, setHeroFailed] = useState(false);
+  const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");
+
+  const canRenderHero = useMemo(() => {
+    if (!heroSrc.length) return false;
+    if (!heroFailedSrc.length) return true;
+    return heroFailedSrc !== heroSrc;
+  }, [heroFailedSrc, heroSrc]);
 
   useEffect(() => {
-    setHeroFailed(false);
+    setHeroFailedSrc("");
   }, [heroSrc]);
-
-  const canRenderHero = heroSrc.length > 0 && !heroFailed;
 
   return (
     <div className="shrink-0 border-b border-white/10">
       <div className="relative overflow-hidden">
         {canRenderHero ? (
           <button type="button" onClick={() => props.onOpenLightbox(0)} className="block w-full" title="Bild öffnen">
-            <img src={heroSrc} alt="" className="h-36 w-full object-cover" loading="lazy" onError={() => setHeroFailed(true)} />
+            <img
+              key={heroSrc}
+              src={heroSrc}
+              alt=""
+              className="h-36 w-full object-cover"
+              loading="lazy"
+              onError={() => setHeroFailedSrc(heroSrc)}
+            />
           </button>
         ) : (
           <div className="h-36 w-full bg-black/30" />

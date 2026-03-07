@@ -1,5 +1,5 @@
 import "dotenv/config";
-import prismaPkg from "@prisma/client";
+import { prisma } from "../src/lib/prisma.ts";
 import {
   areLikelySamePlace,
   buildOverpassQuery,
@@ -8,8 +8,6 @@ import {
   REGION_CONFIGS,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
-
-const { PrismaClient } = prismaPkg as unknown as { PrismaClient: new () => any };
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -234,7 +232,6 @@ async function run() {
   const selectedRegions: TargetRegion[] =
     options.region === "all" ? ["normandie", "bretagne"] : [options.region];
 
-  const prisma = new PrismaClient();
   const summaries: RegionSummary[] = [];
 
   console.log("sightseeing-seed-import: start", {

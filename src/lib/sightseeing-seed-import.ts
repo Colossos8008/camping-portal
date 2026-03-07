@@ -176,7 +176,7 @@ export type SightseeingCandidate = {
   lng: number;
   category: string;
   tags: string[];
-  source: "OSM/Overpass";
+  source: "OSM/Overpass" | "curated-preset";
   sourceRegion: string;
   country: string;
   reason: string;

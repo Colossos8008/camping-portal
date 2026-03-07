@@ -546,16 +546,23 @@ async function runRegionImport(options: {
   const seenInBatch: SightseeingCandidate[] = [];
 
   for (const candidate of distinctCandidates) {
-    const duplicateInBatch = seenInBatch.find((x) =>
-      areLikelySamePlace({
+    const isCuratedCandidate = candidate.source === "curated-preset";
+    const duplicateInBatch = seenInBatch.find((x) => {
+      const bothCurated = isCuratedCandidate && x.source === "curated-preset";
+      if (bothCurated) {
+        if (x.sourceId !== candidate.sourceId) return false;
+        return true;
+      }
+
+      return areLikelySamePlace({
         nameA: x.name,
         latA: x.lat,
         lngA: x.lng,
         nameB: candidate.name,
         latB: candidate.lat,
         lngB: candidate.lng,
-      })
-    );
+      });
+    });
 
     if (duplicateInBatch) {
       if (verbose) console.log(`skip batch-duplicate: ${candidate.name} ~ ${duplicateInBatch.name}`);

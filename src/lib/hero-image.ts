@@ -1,5 +1,6 @@
 const GOOGLE_PLACES_HOST = "places.googleapis.com";
 const GOOGLE_PHOTO_RESOURCE_PATTERN = /^(places\/[\w-]+\/photos\/[\w-]+)$/;
+const WIKIMEDIA_SPECIAL_FILEPATH_HOST = "commons.wikimedia.org";
 
 function safeUrl(input: string): URL | null {
   try {
@@ -65,6 +66,14 @@ export function buildPlaceHeroProxyPath(placeId: number | string | null | undefi
   return `/api/places/${Math.trunc(idNum)}/hero`;
 }
 
+export function isWikimediaSpecialFilePathUrl(input: string | null | undefined): boolean {
+  const parsed = safeUrl(String(input ?? "").trim());
+  if (!parsed) return false;
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (parsed.hostname.toLowerCase() !== WIKIMEDIA_SPECIAL_FILEPATH_HOST) return false;
+  return parsed.pathname.toLowerCase().startsWith("/wiki/special:filepath/");
+}
+
 export function normalizePlaceHeroImageUrlForPublic(
   placeId: number | string | null | undefined,
   heroImageUrl: string | null | undefined
@@ -73,6 +82,11 @@ export function normalizePlaceHeroImageUrlForPublic(
   if (!raw) return null;
 
   if (isGooglePhotoReference(raw)) {
+    const proxyPath = buildPlaceHeroProxyPath(placeId);
+    if (proxyPath) return proxyPath;
+  }
+
+  if (isWikimediaSpecialFilePathUrl(raw)) {
     const proxyPath = buildPlaceHeroProxyPath(placeId);
     if (proxyPath) return proxyPath;
   }

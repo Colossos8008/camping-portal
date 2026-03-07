@@ -1,6 +1,7 @@
 // src/app/map/_components/EditorHeader.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
@@ -40,14 +41,22 @@ export default function EditorHeader(props: {
     ? isGooglePhotoReference(heroFilename) && props.placeId
       ? `/api/places/${props.placeId}/hero`
       : getSupabasePublicUrl(heroFilename, { placeId: props.placeId })
-    : "/hero-placeholder.jpg";
+    : "";
+
+  const [heroFailed, setHeroFailed] = useState(false);
+
+  useEffect(() => {
+    setHeroFailed(false);
+  }, [heroSrc]);
+
+  const canRenderHero = heroSrc.length > 0 && !heroFailed;
 
   return (
     <div className="shrink-0 border-b border-white/10">
       <div className="relative overflow-hidden">
-        {heroSrc ? (
+        {canRenderHero ? (
           <button type="button" onClick={() => props.onOpenLightbox(0)} className="block w-full" title="Bild öffnen">
-            <img src={heroSrc} alt="" className="h-36 w-full object-cover" loading="lazy" />
+            <img src={heroSrc} alt="" className="h-36 w-full object-cover" loading="lazy" onError={() => setHeroFailed(true)} />
           </button>
         ) : (
           <div className="h-36 w-full bg-black/30" />

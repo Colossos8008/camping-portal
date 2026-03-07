@@ -29,6 +29,12 @@ function cacheControl(maxAgeSeconds: number): string {
   return `public, max-age=${Math.max(60, maxAgeSeconds)}, s-maxage=${Math.max(300, maxAgeSeconds)}, stale-while-revalidate=86400`;
 }
 
+function getDebugFlag(req: NextRequest): boolean {
+  const value = req.nextUrl.searchParams.get("debug");
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "true";
+}
+
 async function streamGooglePhoto(photoResourceName: string, apiKey: string): Promise<Response | null> {
   const googleUrl = buildGooglePhotoMediaUrl(photoResourceName, GOOGLE_PHOTO_MAX_WIDTH);
   const upstream = await fetch(googleUrl, {
@@ -45,9 +51,13 @@ async function streamGooglePhoto(photoResourceName: string, apiKey: string): Pro
     return null;
   }
 
+  const contentType = upstream.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("image/")) {
+    return null;
+  }
+
   const headers = new Headers();
-  const contentType = upstream.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
-  headers.set("Content-Type", contentType);
+  headers.set("Content-Type", contentType.split(";")[0]?.trim() || "image/jpeg");
   headers.set("Cache-Control", cacheControl(3600 * 24 * 7));
 
   return new Response(upstream.body, { status: 200, headers });
@@ -58,6 +68,7 @@ async function streamRemoteImage(url: string): Promise<Response | null> {
     method: "GET",
     headers: {
       Accept: "image/*,*/*;q=0.8",
+      "User-Agent": "camping-portal/hero-proxy",
     },
     cache: "no-store",
     redirect: "follow",
@@ -100,6 +111,50 @@ export async function GET(req: NextRequest) {
   const heroImageUrl = String(place.heroImageUrl ?? "").trim();
   const googlePhotoResource = extractGooglePhotoResourceName(heroImageUrl);
   const googleApiKey = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
+  const debug = getDebugFlag(req);
+
+  if (debug) {
+    const checks: { target: string; ok: boolean; status?: number; contentType?: string | null; error?: string }[] = [];
+
+    const probe = async (target: string) => {
+      try {
+        const r = await fetch(target, {
+          method: "GET",
+          headers: {
+            Accept: "image/*,*/*;q=0.8",
+            "User-Agent": "camping-portal/hero-proxy-diagnose",
+          },
+          cache: "no-store",
+          redirect: "follow",
+        });
+        const type = r.headers.get("content-type");
+        checks.push({
+          target,
+          ok: r.ok && String(type ?? "").toLowerCase().startsWith("image/"),
+          status: r.status,
+          contentType: type,
+        });
+      } catch (err: any) {
+        checks.push({ target, ok: false, error: err?.message ?? "fetch failed" });
+      }
+    };
+
+    if (googlePhotoResource && googleApiKey) {
+      await probe(buildGooglePhotoMediaUrl(googlePhotoResource, GOOGLE_PHOTO_MAX_WIDTH));
+    }
+    if (heroImageUrl && isHttpUrl(heroImageUrl)) {
+      await probe(heroImageUrl);
+    }
+
+    return NextResponse.json({
+      placeId,
+      heroImageUrl: heroImageUrl || null,
+      googlePhotoResource,
+      hasGoogleApiKey: Boolean(googleApiKey),
+      placeholder: String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER,
+      checks,
+    });
+  }
 
   if (googlePhotoResource && googleApiKey) {
     try {
@@ -111,7 +166,9 @@ export async function GET(req: NextRequest) {
   }
 
   if (heroImageUrl) {
-    if (isWikimediaSpecialFilePathUrl(heroImageUrl)) {
+    if (heroImageUrl.startsWith("/")) return redirectTo(req, heroImageUrl, 3600 * 24);
+
+    if (isWikimediaSpecialFilePathUrl(heroImageUrl) || isHttpUrl(heroImageUrl)) {
       try {
         const response = await streamRemoteImage(heroImageUrl);
         if (response) return response;
@@ -119,9 +176,6 @@ export async function GET(req: NextRequest) {
         // keep existing fallback behavior
       }
     }
-
-    if (heroImageUrl.startsWith("/")) return redirectTo(req, heroImageUrl, 3600 * 24);
-    if (isHttpUrl(heroImageUrl)) return redirectTo(req, heroImageUrl, 3600 * 24);
   }
 
   const placeholder = String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER;

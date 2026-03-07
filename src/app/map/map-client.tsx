@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { isGooglePhotoReference } from "@/lib/hero-image";
+import { getSupabasePublicUrl } from "./_lib/image-url";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 type TSHaltung = "DNA" | "EXPLORER";
@@ -85,34 +86,6 @@ function escapeHtml(s: string) {
     .replaceAll("'", "&#39;");
 }
 
-// Supabase Public URL (Bucket: place-images)
-// - Fallback: /uploads/<filename> (falls Env nicht verfügbar)
-function publicUrlForObjectKey(filename: string | null | undefined) {
-  const key = String(filename ?? "").trim();
-  if (!key) return null;
-
-  if (key.startsWith("http://") || key.startsWith("https://")) return key;
-  if (key.startsWith("/")) return key;
-
-  const supabaseUrl =
-    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
-    (process.env.SUPABASE_URL as string | undefined) ||
-    "";
-
-  const bucket =
-    (process.env.NEXT_PUBLIC_SUPABASE_BUCKET as string | undefined) ||
-    (process.env.SUPABASE_BUCKET as string | undefined) ||
-    "place-images";
-
-  if (supabaseUrl) {
-    const base = supabaseUrl.replace(/\/+$/, "");
-    const encodedKey = encodeURIComponent(key).replaceAll("%2F", "/");
-    return `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodedKey}`;
-  }
-
-  return `/uploads/${encodeURIComponent(key)}`;
-}
-
 function heroFilename(p: Place): string | null {
   const heroImageUrl = String(p.heroImageUrl ?? "").trim();
   if (heroImageUrl) {
@@ -180,7 +153,7 @@ function markerHtml(p: Place, v: MarkerVariant) {
 
 function hoverTooltipHtml(p: Place) {
   const hero = heroFilename(p);
-  const heroUrl = hero ? publicUrlForObjectKey(hero) : null;
+  const heroUrl = hero ? getSupabasePublicUrl(hero, { placeId: p.id }) : null;
 
   const isSightseeing = p.type === "SEHENSWUERDIGKEIT";
   const score = isSightseeing
@@ -204,7 +177,7 @@ function hoverTooltipHtml(p: Place) {
   const hEmoji = hasTS2 ? haltungEmoji((p.ts2?.haltung ?? "DNA") as any) : null;
 
   const imgHtml = heroUrl
-    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" />`
+    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div style=&quot;width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);&quot;></div>');" />`
     : `<div style="width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);"></div>`;
 
   return `

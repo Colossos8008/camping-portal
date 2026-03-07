@@ -22,7 +22,8 @@
     "import:sightseeing:seed": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/import-sightseeing-seed.ts",
     "import:sightseeing:seed:normandie": "npm run import:sightseeing:seed -- --region=normandie",
     "import:sightseeing:seed:bretagne": "npm run import:sightseeing:seed -- --region=bretagne",
-    "import:sightseeing:seed:nievern": "npm run import:sightseeing:seed -- --near=nievern"
+    "import:sightseeing:seed:nievern": "npm run import:sightseeing:seed -- --near=nievern",
+    "import:sightseeing:seed:nievern:highlights": "npm run import:sightseeing:seed -- --near=nievern --highlight-mode --limit=10"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

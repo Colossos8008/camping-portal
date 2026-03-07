@@ -55,6 +55,7 @@ type ExistingPlace = {
   type: "SEHENSWUERDIGKEIT";
   lat: number;
   lng: number;
+  sightExternalId: string | null;
 };
 
 const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
@@ -538,7 +539,7 @@ async function runRegionImport(options: {
 
   const existingRows = (await prisma.place.findMany({
     where: { type: "SEHENSWUERDIGKEIT" },
-    select: { id: true, name: true, lat: true, lng: true, type: true },
+    select: { id: true, name: true, lat: true, lng: true, type: true, sightExternalId: true },
   })) as ExistingPlace[];
 
   const accepted: RankedCandidate[] = [];
@@ -600,6 +601,52 @@ async function runRegionImport(options: {
   for (const ranked of effectiveList) {
     const candidate = ranked.candidate;
     try {
+      const matchByExternalId = existingRows.find(
+        (existing) => existing.sightExternalId && existing.sightExternalId === candidate.sourceId
+      );
+
+      if (matchByExternalId) {
+        if (dryRun) {
+          updated += 1;
+          if (verbose) {
+            console.log(
+              `[dry-run] would upsert by sightExternalId #${matchByExternalId.id}: ${matchByExternalId.name} <- ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
+            );
+          }
+          continue;
+        }
+
+        await prisma.place.update({
+          where: { id: matchByExternalId.id },
+          data: {
+            name: candidate.name,
+            lat: candidate.lat,
+            lng: candidate.lng,
+            sightSource: candidate.source,
+            sightExternalId: candidate.sourceId,
+            sightCategory: candidate.category,
+            sightDescription: candidate.reason,
+            sightTags: candidate.tags,
+            sightRegion: candidate.sourceRegion,
+            sightCountry: candidate.country,
+            ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+          },
+          select: { id: true },
+        });
+
+        matchByExternalId.name = candidate.name;
+        matchByExternalId.lat = candidate.lat;
+        matchByExternalId.lng = candidate.lng;
+
+        updated += 1;
+        if (verbose) {
+          console.log(
+            `updated by sightExternalId #${matchByExternalId.id}: ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
+          );
+        }
+        continue;
+      }
+
       const duplicateInDb = existingRows.find((existing) =>
         areLikelySamePlace({
           nameA: existing.name,
@@ -678,6 +725,7 @@ async function runRegionImport(options: {
         type: "SEHENSWUERDIGKEIT",
         lat: candidate.lat,
         lng: candidate.lng,
+        sightExternalId: candidate.sourceId,
       });
 
       created += 1;

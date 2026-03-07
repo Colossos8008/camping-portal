@@ -92,7 +92,9 @@ async function run() {
   });
   assert(lighthousePhare.architectureScore >= 3.5, "lighthouse should be strong on architecture");
   assert(lighthousePhare.natureScore >= 3.5, "lighthouse cliff setting should be strong on nature");
-  assert(lighthousePhare.sightVisitModePrimary !== "EASY_STOP", "lighthouse should get a more specific visit mode");
+  assert(lighthousePhare.uniquenessScore >= 3, "lighthouse should have meaningful uniqueness");
+  assert(lighthousePhare.sightVisitModePrimary === "OUTSIDE_BEST", "coastal lighthouse should prefer OUTSIDE_BEST");
+  assert(lighthousePhare.sightRelevanceType !== "LOW_MATCH", "lighthouse should avoid LOW_MATCH");
 
   const fortMemorialViewpoint = rateSightseeing({
     type: "SEHENSWUERDIGKEIT",
@@ -101,9 +103,25 @@ async function run() {
     description: "Coastal fortress ruins and memorial overlooking a dramatic bay viewpoint",
     tags: ["fort", "ruins", "memorial", "bay", "viewpoint", "historic"],
   });
+  assert(fortMemorialViewpoint.architectureScore >= 3.2, "fort + ruins should be strong on architecture");
   assert(fortMemorialViewpoint.historyScore >= 3.5, "fort + memorial should score strong on history");
   assert(fortMemorialViewpoint.uniquenessScore >= 3, "fort + memorial viewpoint should have meaningful uniqueness");
+  assert(fortMemorialViewpoint.sightVisitModePrimary === "OUTSIDE_BEST", "coastal fortification should prefer OUTSIDE_BEST");
   assert(fortMemorialViewpoint.sightRelevanceType !== "LOW_MATCH", "fort + memorial viewpoint should avoid LOW_MATCH");
+
+  const deportationMemorial = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Mémorial de la déportation",
+    category: "memorial",
+    description: "Major deportation remembrance site tied to resistance and occupation history",
+    tags: ["memorial", "deportation", "remembrance", "resistance", "occupation", "historic"],
+  });
+  assert(deportationMemorial.historyScore >= 4, "deportation remembrance memorial should be strong on history");
+  assert(deportationMemorial.uniquenessScore >= 3, "deportation remembrance memorial should not stay low uniqueness");
+  assert(
+    deportationMemorial.sightRelevanceType === "OPTIONAL" || deportationMemorial.sightRelevanceType === "GOOD_MATCH" || deportationMemorial.sightRelevanceType === "ICON",
+    "deportation remembrance memorial should reach at least OPTIONAL"
+  );
 
   console.log("verify-sightseeing-rating: ok");
 }

@@ -45,6 +45,10 @@ type SignalBucket = {
   strongCoastView: number;
   strongBuiltLandmark: number;
   uniquenessStrong: number;
+  fortification: number;
+  heavyMemorial: number;
+  genericMemorial: number;
+  lighthouse: number;
   hasKnowledgeRefs: boolean;
 };
 
@@ -93,6 +97,22 @@ const STRONG_BUILT_LANDMARK_SIGNAL_WORDS = [
 
 const UNIQUENESS_STRONG_SIGNAL_WORDS = [
   "archaeological_site", "archaeological site", "megalith", "dolmen", "menhir", "passage_grave", "passage grave", "lighthouse", "phare", "fort", "fortress", "citadel", "ruins", "emblematic", "iconic", "remarkable",
+];
+
+const FORTIFICATION_SIGNAL_WORDS = [
+  "fort", "fortress", "citadel", "bastion", "battery", "ruins", "ramparts", "casemate", "military fortification", "defensive structure",
+];
+
+const GENERIC_MEMORIAL_SIGNAL_WORDS = [
+  "memorial", "monument", "commemoration", "war memorial",
+];
+
+const HEAVY_MEMORIAL_SIGNAL_WORDS = [
+  "deportation", "remembrance", "resistance", "holocaust", "occupation",
+];
+
+const LIGHTHOUSE_SIGNAL_WORDS = [
+  "lighthouse", "phare", "beacon", "seamark", "coastal lighthouse",
 ];
 
 function escapeRegex(value: string): string {
@@ -159,25 +179,52 @@ function signalsFromText(text: string): SignalBucket {
     strongCoastView: countSignals(text, STRONG_COAST_VIEW_SIGNAL_WORDS),
     strongBuiltLandmark: countSignals(text, STRONG_BUILT_LANDMARK_SIGNAL_WORDS),
     uniquenessStrong: countSignals(text, UNIQUENESS_STRONG_SIGNAL_WORDS),
+    fortification: countSignals(text, FORTIFICATION_SIGNAL_WORDS),
+    heavyMemorial: countSignals(text, HEAVY_MEMORIAL_SIGNAL_WORDS),
+    genericMemorial: countSignals(text, GENERIC_MEMORIAL_SIGNAL_WORDS),
+    lighthouse: countSignals(text, LIGHTHOUSE_SIGNAL_WORDS),
     hasKnowledgeRefs: hasSignalMatch(normalizedText, "wikidata") || hasSignalMatch(normalizedText, "wikipedia"),
   };
 }
 
 function calculateCoreScores(sig: SignalBucket): Omit<SightseeingRatingResult, "sightseeingTotalScore" | "sightRelevanceType" | "sightVisitModePrimary" | "sightVisitModeSecondary" | "bestVisitHint" | "summaryWhyItMatches"> {
   const natureScore = toFiveScale(
-    sig.nature * 1.1 + sig.strongCoastView * 0.8 - sig.negative * 0.6 + (sig.weather > 0 ? 0.4 : 0) + (sig.strongCoastView >= 2 ? 0.4 : 0)
+    sig.nature * 1.1 + sig.strongCoastView * 0.8 + sig.lighthouse * 0.25 - sig.negative * 0.6 + (sig.weather > 0 ? 0.4 : 0) + (sig.strongCoastView >= 2 ? 0.4 : 0)
   );
   const architectureScore = toFiveScale(
-    sig.architecture * 1.2 + sig.strongBuiltLandmark * 0.9 - sig.negative * 0.8 + (sig.outside > 0 ? 0.3 : 0) + (sig.strongBuiltLandmark >= 2 ? 0.5 : 0)
+    sig.architecture * 1.2 +
+      sig.strongBuiltLandmark * 0.9 +
+      sig.fortification * 1.1 +
+      sig.lighthouse * 0.9 -
+      sig.negative * 0.8 +
+      (sig.outside > 0 ? 0.3 : 0) +
+      (sig.strongBuiltLandmark >= 2 ? 0.5 : 0) +
+      (sig.fortification >= 2 ? 0.7 : 0)
   );
   const historyScore = toFiveScale(
-    sig.history * 1.2 + sig.archaeoMegalith * 1.3 + sig.strongBuiltLandmark * 0.4 - sig.negative * 0.7 + (sig.archaeoMegalith >= 2 ? 0.7 : 0)
+    sig.history * 1.2 +
+      sig.archaeoMegalith * 1.3 +
+      sig.strongBuiltLandmark * 0.4 +
+      sig.fortification * 1.05 +
+      sig.genericMemorial * 0.45 +
+      sig.heavyMemorial * 1.35 +
+      (sig.lighthouse > 0 && sig.history > 0 ? 0.4 : 0) -
+      sig.negative * 0.7 +
+      (sig.archaeoMegalith >= 2 ? 0.7 : 0) +
+      (sig.heavyMemorial >= 2 ? 0.8 : 0)
   );
   const uniquenessScore = toFiveScale(
     sig.uniqueness * 1.6 +
       sig.uniquenessStrong * 1.0 +
       sig.archaeoMegalith * 1.2 +
+      sig.fortification * 0.85 +
+      sig.lighthouse * 0.75 +
+      sig.heavyMemorial * 1.1 +
+      sig.genericMemorial * 0.15 +
       (sig.architecture + sig.history >= 3 ? 0.8 : 0) +
+      (sig.fortification > 0 && sig.strongCoastView > 0 ? 0.8 : 0) +
+      (sig.lighthouse > 0 && sig.strongCoastView > 0 ? 0.9 : 0) +
+      (sig.heavyMemorial > 0 && sig.history >= 2 ? 0.8 : 0) +
       (sig.uniqueness >= 2 ? 1.2 : 0) +
       (sig.hasKnowledgeRefs && (sig.archaeoMegalith > 0 || sig.uniquenessStrong > 0) ? 0.9 : 0) -
       sig.negative * 0.6
@@ -223,9 +270,12 @@ function buildTotalScore(core: Pick<SightseeingRatingResult, "natureScore" | "ar
 function pickRelevanceType(total: number, uniquenessScore: number, architectureScore: number, historyScore: number): SightRelevanceType {
   const iconCandidate = uniquenessScore >= 4.2 && (architectureScore + historyScore >= 2.4 || total >= 70);
   if (iconCandidate) return "ICON";
+  if (uniquenessScore >= 3.3 && architectureScore >= 2.8 && historyScore >= 2.2) return "GOOD_MATCH";
+  if (historyScore >= 3.5 && uniquenessScore >= 2.8) return "GOOD_MATCH";
   if (uniquenessScore >= 3.8 && historyScore >= 3.4) return "GOOD_MATCH";
   if (architectureScore >= 3.6 && uniquenessScore >= 3.2) return "GOOD_MATCH";
   if (historyScore >= 4.0 && total >= 46) return "GOOD_MATCH";
+  if (architectureScore >= 2.8 && historyScore >= 2.4 && uniquenessScore >= 2.2) return "OPTIONAL";
   if (uniquenessScore >= 3.2 && (architectureScore >= 2.6 || historyScore >= 2.8)) return "OPTIONAL";
   if (total >= 74) return "STRONG_MATCH";
   if (total >= 58) return "GOOD_MATCH";
@@ -246,14 +296,15 @@ function pickVisitModes(input: {
   const mainDestinationCandidate = input.uniquenessScore >= 3.8 && (input.architectureScore + input.historyScore >= 7 || input.relevanceType === "ICON");
   const strongHistoricCandidate = input.signal.archaeoMegalith > 0 && input.historyScore >= 3.8 && input.uniquenessScore >= 3.2;
   const strongViewpointCandidate = input.signal.strongCoastView > 0 && input.natureScore >= 3.6;
-  const lighthouseCandidate = input.signal.strongBuiltLandmark > 0 && input.signal.strongCoastView > 0;
+  const lighthouseCandidate = input.signal.lighthouse > 0 && input.signal.strongCoastView > 0;
+  const coastalFortCandidate = input.signal.fortification > 0 && input.signal.strongCoastView > 0;
 
   let primary: SightVisitMode = "EASY_STOP";
 
   if (input.crowdRiskScore >= 3.5 || input.signal.crowd > 0) primary = "SMART_WINDOW";
+  else if ((lighthouseCandidate || coastalFortCandidate) && input.uniquenessScore >= 2.8 && input.architectureScore >= 3) primary = "OUTSIDE_BEST";
   else if (mainDestinationCandidate || strongHistoricCandidate) primary = "MAIN_DESTINATION";
   else if (strongViewpointCandidate || (input.natureScore >= 3.5 && input.signal.weather > 0)) primary = "WEATHER_WINDOW";
-  else if (lighthouseCandidate && input.uniquenessScore >= 3) primary = "OUTSIDE_BEST";
   else if (input.spontaneityScore >= 3.6) primary = "EASY_STOP";
 
   let secondary: SightVisitMode | null = null;

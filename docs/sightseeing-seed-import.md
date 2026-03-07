@@ -107,5 +107,14 @@ Konservativ und nachvollziehbar:
 
 ## Hinweise
 
-- Persistiert werden aktuell nur sichere Kernfelder (`name`, `type`, `lat`, `lng`).
-- Quell-Metadaten (Kategorie/Tags/Source/Region/Country) werden intern normalisiert und für spätere Schema-Erweiterung vorbereitet, aber aktuell nicht in `Place` gespeichert.
+Der Import persistiert nun additiv neben den Kernfeldern auch Sightseeing-Metadaten in `Place`:
+
+- `sightSource`
+- `sightExternalId`
+- `sightCategory`
+- `sightDescription`
+- `sightTags`
+- `sightRegion`
+- `sightCountry`
+
+Diese Felder bleiben optional/nullable und sind bewusst auf `SEHENSWUERDIGKEIT` ausgerichtet. Dadurch kann das nachgelagerte TS-Sehenswürdigkeiten-Autofill deutlich mehr Textsignale nutzen statt fast nur den Namen.

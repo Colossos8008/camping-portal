@@ -8,6 +8,12 @@ type PlaceLike = {
   type: PlaceType;
   heroReason?: string | null;
   ratingDetail?: { note?: string | null } | null;
+  sightSource?: string | null;
+  sightCategory?: string | null;
+  sightDescription?: string | null;
+  sightTags?: string[] | null;
+  sightRegion?: string | null;
+  sightCountry?: string | null;
   natureScore?: number | null;
   architectureScore?: number | null;
   historyScore?: number | null;
@@ -27,7 +33,12 @@ export function placeToSightseeingInput(place: PlaceLike): SightseeingPlaceLikeI
   return {
     name: place.name,
     type: place.type,
-    description: [place.heroReason, place.ratingDetail?.note].filter((x) => typeof x === "string" && x.trim().length > 0).join(" "),
+    description: [place.sightDescription, place.heroReason, place.ratingDetail?.note].filter((x) => typeof x === "string" && x.trim().length > 0).join(" "),
+    category: place.sightCategory ?? undefined,
+    tags: Array.isArray(place.sightTags) ? place.sightTags : undefined,
+    source: place.sightSource ?? undefined,
+    region: place.sightRegion ?? undefined,
+    country: place.sightCountry ?? undefined,
   };
 }
 

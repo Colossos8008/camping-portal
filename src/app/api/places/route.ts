@@ -112,6 +112,16 @@ function asOptionalNumber(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function normalizeOptionalStringArray(v: any): string[] | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (!Array.isArray(v)) return undefined;
+  return v
+    .map((item) => asString(item).trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 80);
+}
+
 function normalizePlaceType(v: any): PlaceType {
   if (v === "STELLPLATZ" || v === "CAMPINGPLATZ" || v === "SEHENSWUERDIGKEIT" || v === "HVO_TANKSTELLE") return v;
   return "CAMPINGPLATZ";
@@ -283,13 +293,17 @@ function autoSightseeingData(body: any, resolvedType: PlaceType, fallbackName: s
   const rating = rateSightseeing({
     type: "SEHENSWUERDIGKEIT",
     name: asString(body?.name ?? fallbackName),
-    description: asString(body?.description),
-    category: asString(body?.category),
-    source: asString(body?.source),
-    tags: Array.isArray(body?.tags) ? body.tags.map((x: any) => asString(x)).filter((x: string) => x.length > 0) : [],
+    description: asString(body?.sightDescription ?? body?.description),
+    category: asString(body?.sightCategory ?? body?.category),
+    source: asString(body?.sightSource ?? body?.source),
+    tags: Array.isArray(body?.sightTags)
+      ? body.sightTags.map((x: any) => asString(x)).filter((x: string) => x.length > 0)
+      : Array.isArray(body?.tags)
+      ? body.tags.map((x: any) => asString(x)).filter((x: string) => x.length > 0)
+      : [],
     address: asString(body?.address),
-    region: asString(body?.region),
-    country: asString(body?.country),
+    region: asString(body?.sightRegion ?? body?.region),
+    country: asString(body?.sightCountry ?? body?.country),
   });
 
   return {
@@ -439,6 +453,13 @@ export async function POST(req: NextRequest) {
     crowdRiskScore: normalizeScore0to5(body?.crowdRiskScore),
     bestVisitHint: asOptionalString(body?.bestVisitHint) ?? null,
     summaryWhyItMatches: asOptionalString(body?.summaryWhyItMatches) ?? null,
+    sightSource: asOptionalString(body?.sightSource) ?? null,
+    sightExternalId: asOptionalString(body?.sightExternalId) ?? null,
+    sightCategory: asOptionalString(body?.sightCategory) ?? null,
+    sightDescription: asOptionalString(body?.sightDescription) ?? null,
+    sightTags: normalizeOptionalStringArray(body?.sightTags) ?? [],
+    sightRegion: asOptionalString(body?.sightRegion) ?? null,
+    sightCountry: asOptionalString(body?.sightCountry) ?? null,
     ...autoSight,
 
     ratingDetail: { create: { ...rd } },
@@ -534,6 +555,17 @@ export async function PUT(req: NextRequest) {
   if (body?.crowdRiskScore !== undefined) data.crowdRiskScore = normalizeScore0to5(body?.crowdRiskScore);
   if (body?.bestVisitHint !== undefined) data.bestVisitHint = asOptionalString(body?.bestVisitHint) ?? null;
   if (body?.summaryWhyItMatches !== undefined) data.summaryWhyItMatches = asOptionalString(body?.summaryWhyItMatches) ?? null;
+  if (body?.sightSource !== undefined) data.sightSource = asOptionalString(body?.sightSource) ?? null;
+  if (body?.sightExternalId !== undefined) data.sightExternalId = asOptionalString(body?.sightExternalId) ?? null;
+  if (body?.sightCategory !== undefined) data.sightCategory = asOptionalString(body?.sightCategory) ?? null;
+  if (body?.sightDescription !== undefined) data.sightDescription = asOptionalString(body?.sightDescription) ?? null;
+  if (body?.sightTags !== undefined) {
+    const tags = normalizeOptionalStringArray(body?.sightTags);
+    if (tags === undefined) return NextResponse.json({ error: "sightTags ungültig" }, { status: 400 });
+    data.sightTags = tags ?? [];
+  }
+  if (body?.sightRegion !== undefined) data.sightRegion = asOptionalString(body?.sightRegion) ?? null;
+  if (body?.sightCountry !== undefined) data.sightCountry = asOptionalString(body?.sightCountry) ?? null;
 
   if (body?.ratingDetail !== undefined) {
     const rd = normalizeRatingDetail(body?.ratingDetail);

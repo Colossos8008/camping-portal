@@ -391,6 +391,13 @@ async function runRegionImport(options: {
           type: "SEHENSWUERDIGKEIT",
           lat: candidate.lat,
           lng: candidate.lng,
+          sightSource: candidate.source,
+          sightExternalId: candidate.sourceId,
+          sightCategory: candidate.category,
+          sightDescription: candidate.reason,
+          sightTags: candidate.tags,
+          sightRegion: candidate.sourceRegion,
+          sightCountry: candidate.country,
         },
         select: { id: true },
       });

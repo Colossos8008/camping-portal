@@ -169,6 +169,13 @@ export function safePlacesFromApi(input: any): Place[] {
         crowdRiskScore: asNullableNumber(p.crowdRiskScore),
         bestVisitHint: typeof p.bestVisitHint === "string" && p.bestVisitHint.trim() ? p.bestVisitHint.trim() : null,
         summaryWhyItMatches: typeof p.summaryWhyItMatches === "string" && p.summaryWhyItMatches.trim() ? p.summaryWhyItMatches.trim() : null,
+        sightSource: typeof p.sightSource === "string" && p.sightSource.trim() ? p.sightSource.trim() : null,
+        sightExternalId: typeof p.sightExternalId === "string" && p.sightExternalId.trim() ? p.sightExternalId.trim() : null,
+        sightCategory: typeof p.sightCategory === "string" && p.sightCategory.trim() ? p.sightCategory.trim() : null,
+        sightDescription: typeof p.sightDescription === "string" && p.sightDescription.trim() ? p.sightDescription.trim() : null,
+        sightTags: Array.isArray(p.sightTags) ? p.sightTags.map((x: any) => String(x)).filter((x: string) => x.trim().length > 0) : [],
+        sightRegion: typeof p.sightRegion === "string" && p.sightRegion.trim() ? p.sightRegion.trim() : null,
+        sightCountry: typeof p.sightCountry === "string" && p.sightCountry.trim() ? p.sightCountry.trim() : null,
       } as Place;
     })
     .filter(Boolean) as Place[];

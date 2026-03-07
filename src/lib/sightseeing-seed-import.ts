@@ -49,6 +49,83 @@ const NEGATIVE_TERMS = [
   "playground",
   "zoo",
   "animal park",
+  "aire de jeu",
+  "captage eau",
+  "water intake",
+  "water catchment",
+  "utility",
+  "pump station",
+  "poste captage",
+];
+
+const HARD_EXCLUDE_TERMS = [
+  "playground",
+  "aire de jeu",
+  "captage eau",
+  "poste captage",
+  "water intake",
+  "water catchment",
+  "station de pompage",
+  "pump station",
+  "reservoir technique",
+];
+
+const HARD_EXCLUDE_TAG_PAIRS = [
+  "leisure=playground",
+  "playground=yes",
+  "man_made=water_works",
+  "man_made=water_tower",
+  "man_made=utility_pole",
+  "waterway=water_point",
+  "waterway=pumping_station",
+  "utility=*",
+  "building=service",
+  "building=utility",
+];
+
+const WEAK_GENERIC_NAME_PATTERNS = [
+  /^(croix|cross|wayside cross)$/,
+  /^croix\b/,
+  /^(calvaire)$/,
+  /^(statue|statue de .+)$/,
+  /^(clocher)$/,
+  /^(villa)$/,
+  /^(manoir)$/,
+  /^(monument aux morts)$/,
+];
+
+const STRONG_CONTEXT_TERMS = [
+  "viewpoint",
+  "point de vue",
+  "panorama",
+  "scenic",
+  "cliff",
+  "cape",
+  "cap ",
+  "headland",
+  "coast",
+  "coastal",
+  "baie",
+  "bay",
+  "anse",
+  "pointe",
+  "fort",
+  "castle",
+  "fortress",
+  "citadel",
+  "ruins",
+  "dolmen",
+  "menhir",
+  "megalith",
+  "archaeological",
+  "landmark",
+  "lighthouse",
+  "debarquement",
+  "d day",
+  "resistance",
+  "necropole",
+  "ossuary",
+  "bataille",
 ];
 
 const POSITIVE_TERMS = [
@@ -159,6 +236,39 @@ function isLikelyNegative(tags: Record<string, string>, searchableText: string):
   return NEGATIVE_TERMS.some((term) => searchableText.includes(term) || tagPairs.some((pair) => pair.includes(term)));
 }
 
+function isHardExcluded(tags: Record<string, string>, searchableText: string): boolean {
+  const tagPairs = Object.entries(tags).map(([k, v]) => `${k}=${v}`.toLowerCase());
+  if (HARD_EXCLUDE_TERMS.some((term) => searchableText.includes(term))) return true;
+
+  return HARD_EXCLUDE_TAG_PAIRS.some((pair) => {
+    if (pair.endsWith("=*")) {
+      const key = pair.slice(0, -2);
+      return tagPairs.some((tagPair) => tagPair.startsWith(`${key}=`));
+    }
+    return tagPairs.includes(pair);
+  });
+}
+
+function hasStrongContext(tags: Record<string, string>, searchableText: string): boolean {
+  if (tags.tourism === "viewpoint") return true;
+  if (["castle", "fort", "fortress", "ruins", "archaeological_site"].includes(tags.historic ?? "")) return true;
+  if ((tags.site_type ?? "").includes("megalith") || (tags.site_type ?? "").includes("archaeological")) return true;
+  if (tags.megalith_type) return true;
+  if (tags.man_made === "lighthouse") return true;
+
+  return STRONG_CONTEXT_TERMS.some((term) => searchableText.includes(term));
+}
+
+function isWeakGenericCandidate(name: string, tags: Record<string, string>, searchableText: string): boolean {
+  const normalizedName = normalizeText(name);
+  const isWeakName = WEAK_GENERIC_NAME_PATTERNS.some((pattern) => pattern.test(normalizedName));
+
+  if (!isWeakName) return false;
+  if (hasStrongContext(tags, searchableText)) return false;
+
+  return true;
+}
+
 function classifyCategory(tags: Record<string, string>, searchableText: string): string {
   if (tags.man_made === "lighthouse") return "lighthouse";
   if (["castle", "fort", "fortress"].includes(tags.historic ?? "")) return "castle_fortress";
@@ -187,20 +297,36 @@ function collectTags(tags: Record<string, string>): string[] {
 }
 
 function hasPositiveSignal(tags: Record<string, string>, searchableText: string): boolean {
-  if (tags.tourism === "attraction" || tags.tourism === "viewpoint") return true;
-  if (tags.historic || tags.heritage || tags.natural) return true;
-  if (tags.man_made === "lighthouse") return true;
+  if (hasStrongContext(tags, searchableText)) return true;
 
-  return POSITIVE_TERMS.some((term) => searchableText.includes(term));
+  let supportingSignals = 0;
+  if (tags.tourism === "attraction") supportingSignals += 1;
+  if (tags.historic) supportingSignals += 1;
+  if (tags.heritage) supportingSignals += 1;
+  if (tags.natural) supportingSignals += 1;
+
+  if (POSITIVE_TERMS.some((term) => searchableText.includes(term))) supportingSignals += 1;
+
+  return supportingSignals >= 2;
 }
 
-export function normalizeCandidate(element: OverpassElement, region: RegionConfig): SightseeingCandidate | null {
+export function normalizeCandidate(
+  element: OverpassElement,
+  region: RegionConfig,
+  options?: { onReject?: (reason: string) => void }
+): SightseeingCandidate | null {
   const tags = element.tags ?? {};
   const name = String(tags.name ?? "").trim();
-  if (!name) return null;
+  if (!name) {
+    options?.onReject?.("missing name");
+    return null;
+  }
 
   const coords = getCoordinates(element);
-  if (!coords) return null;
+  if (!coords) {
+    options?.onReject?.("missing coordinates");
+    return null;
+  }
 
   const searchableText = normalizeText(
     [
@@ -222,8 +348,22 @@ export function normalizeCandidate(element: OverpassElement, region: RegionConfi
       .join(" ")
   );
 
-  if (isLikelyNegative(tags, searchableText)) return null;
-  if (!hasPositiveSignal(tags, searchableText)) return null;
+  if (isHardExcluded(tags, searchableText)) {
+    options?.onReject?.("hard negative filter");
+    return null;
+  }
+  if (isLikelyNegative(tags, searchableText)) {
+    options?.onReject?.("negative filter");
+    return null;
+  }
+  if (isWeakGenericCandidate(name, tags, searchableText)) {
+    options?.onReject?.("generic weak candidate without strong context");
+    return null;
+  }
+  if (!hasPositiveSignal(tags, searchableText)) {
+    options?.onReject?.("insufficient positive signal");
+    return null;
+  }
 
   const category = classifyCategory(tags, searchableText);
 

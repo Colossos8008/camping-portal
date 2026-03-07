@@ -288,7 +288,18 @@ async function runRegionImport(options: {
   console.log(`[pipeline:${region}] overpass elements fetched=${elements.length}`);
 
   const normalized = elements
-    .map((el) => normalizeCandidate(el, REGION_CONFIGS[region]))
+    .map((el) => {
+      if (!verbose) {
+        return normalizeCandidate(el, REGION_CONFIGS[region]);
+      }
+
+      const rawName = String(el.tags?.name ?? "").trim() || `${el.type}/${el.id}`;
+      return normalizeCandidate(el, REGION_CONFIGS[region], {
+        onReject: (reason) => {
+          console.log(`skip candidate: ${rawName} [${el.type}/${el.id}] -> ${reason}`);
+        },
+      });
+    })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
   const uniqueBySource = new Map<string, (typeof normalized)[number]>();

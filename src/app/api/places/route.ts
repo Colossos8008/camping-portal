@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
 import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { rateSightseeing } from "@/lib/sightseeing-rating";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,8 @@ type TSValue = "STIMMIG" | "OKAY" | "PASST_NICHT";
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 type TSHaltung = "DNA" | "EXPLORER";
 type TS21Source = "AI" | "USER";
+type SightRelevanceType = "ICON" | "STRONG_MATCH" | "GOOD_MATCH" | "OPTIONAL" | "LOW_MATCH";
+type SightVisitMode = "EASY_STOP" | "SMART_WINDOW" | "OUTSIDE_BEST" | "MAIN_DESTINATION" | "WEATHER_WINDOW";
 
 // TS 2.1 Einzelwertung
 type TS21Value = "S" | "O" | "X";
@@ -201,6 +204,36 @@ function normalizeHeroImageUrl(v: any): string | null | undefined {
   }
 }
 
+function normalizeSightRelevanceType(v: any): SightRelevanceType | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || String(v).trim() === "") return null;
+  if (v === "ICON" || v === "STRONG_MATCH" || v === "GOOD_MATCH" || v === "OPTIONAL" || v === "LOW_MATCH") return v;
+  return null;
+}
+
+function normalizeSightVisitMode(v: any): SightVisitMode | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || String(v).trim() === "") return null;
+  if (v === "EASY_STOP" || v === "SMART_WINDOW" || v === "OUTSIDE_BEST" || v === "MAIN_DESTINATION" || v === "WEATHER_WINDOW") return v;
+  return null;
+}
+
+function normalizeScore0to5(v: any): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || String(v).trim() === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(5, Math.round(n * 10) / 10));
+}
+
+function normalizeScore0to100(v: any): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || String(v).trim() === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n * 10) / 10));
+}
+
 function normalizeTS21Detail(input: any): TS21Detail {
   const src = extractDetail(input) ?? {};
 
@@ -221,6 +254,58 @@ function normalizeTS21Detail(input: any): TS21Detail {
     dnaExplorerNote: asString(src.dnaExplorerNote),
 
     note: asString(src.note),
+  };
+}
+
+function hasExplicitSightseeingInput(body: any): boolean {
+  const keys = [
+    "natureScore",
+    "architectureScore",
+    "historyScore",
+    "uniquenessScore",
+    "spontaneityScore",
+    "calmScore",
+    "sightseeingTotalScore",
+    "sightRelevanceType",
+    "sightVisitModePrimary",
+    "sightVisitModeSecondary",
+    "crowdRiskScore",
+    "bestVisitHint",
+    "summaryWhyItMatches",
+  ];
+  return keys.some((k) => body && Object.prototype.hasOwnProperty.call(body, k));
+}
+
+function autoSightseeingData(body: any, resolvedType: PlaceType, fallbackName: string) {
+  if (resolvedType !== "SEHENSWUERDIGKEIT") return {};
+  if (hasExplicitSightseeingInput(body)) return {};
+
+  const rating = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: asString(body?.name ?? fallbackName),
+    description: asString(body?.description),
+    category: asString(body?.category),
+    source: asString(body?.source),
+    tags: Array.isArray(body?.tags) ? body.tags.map((x: any) => asString(x)).filter((x: string) => x.length > 0) : [],
+    address: asString(body?.address),
+    region: asString(body?.region),
+    country: asString(body?.country),
+  });
+
+  return {
+    natureScore: rating.natureScore,
+    architectureScore: rating.architectureScore,
+    historyScore: rating.historyScore,
+    uniquenessScore: rating.uniquenessScore,
+    spontaneityScore: rating.spontaneityScore,
+    calmScore: rating.calmScore,
+    sightseeingTotalScore: rating.sightseeingTotalScore,
+    sightRelevanceType: rating.sightRelevanceType,
+    sightVisitModePrimary: rating.sightVisitModePrimary,
+    sightVisitModeSecondary: rating.sightVisitModeSecondary,
+    crowdRiskScore: rating.crowdRiskScore,
+    bestVisitHint: rating.bestVisitHint,
+    summaryWhyItMatches: rating.summaryWhyItMatches,
   };
 }
 
@@ -327,6 +412,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
   }
 
+  const autoSight = autoSightseeingData(body, type, name);
+
   const data: any = {
     name,
     type,
@@ -339,6 +426,20 @@ export async function POST(req: NextRequest) {
     gastronomy: !!body?.gastronomy,
     heroImageUrl: normalizeHeroImageUrl(body?.heroImageUrl),
     thumbnailImageId: body?.thumbnailImageId ?? null,
+    natureScore: normalizeScore0to5(body?.natureScore),
+    architectureScore: normalizeScore0to5(body?.architectureScore),
+    historyScore: normalizeScore0to5(body?.historyScore),
+    uniquenessScore: normalizeScore0to5(body?.uniquenessScore),
+    spontaneityScore: normalizeScore0to5(body?.spontaneityScore),
+    calmScore: normalizeScore0to5(body?.calmScore),
+    sightseeingTotalScore: normalizeScore0to100(body?.sightseeingTotalScore),
+    sightRelevanceType: normalizeSightRelevanceType(body?.sightRelevanceType),
+    sightVisitModePrimary: normalizeSightVisitMode(body?.sightVisitModePrimary),
+    sightVisitModeSecondary: normalizeSightVisitMode(body?.sightVisitModeSecondary),
+    crowdRiskScore: normalizeScore0to5(body?.crowdRiskScore),
+    bestVisitHint: asOptionalString(body?.bestVisitHint) ?? null,
+    summaryWhyItMatches: asOptionalString(body?.summaryWhyItMatches) ?? null,
+    ...autoSight,
 
     ratingDetail: { create: { ...rd } },
     ...(shouldHaveTS ? { ts2: { create: { ...(ts2 ?? blankTS2()) } } } : {}),
@@ -420,6 +521,20 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  if (body?.natureScore !== undefined) data.natureScore = normalizeScore0to5(body?.natureScore);
+  if (body?.architectureScore !== undefined) data.architectureScore = normalizeScore0to5(body?.architectureScore);
+  if (body?.historyScore !== undefined) data.historyScore = normalizeScore0to5(body?.historyScore);
+  if (body?.uniquenessScore !== undefined) data.uniquenessScore = normalizeScore0to5(body?.uniquenessScore);
+  if (body?.spontaneityScore !== undefined) data.spontaneityScore = normalizeScore0to5(body?.spontaneityScore);
+  if (body?.calmScore !== undefined) data.calmScore = normalizeScore0to5(body?.calmScore);
+  if (body?.sightseeingTotalScore !== undefined) data.sightseeingTotalScore = normalizeScore0to100(body?.sightseeingTotalScore);
+  if (body?.sightRelevanceType !== undefined) data.sightRelevanceType = normalizeSightRelevanceType(body?.sightRelevanceType);
+  if (body?.sightVisitModePrimary !== undefined) data.sightVisitModePrimary = normalizeSightVisitMode(body?.sightVisitModePrimary);
+  if (body?.sightVisitModeSecondary !== undefined) data.sightVisitModeSecondary = normalizeSightVisitMode(body?.sightVisitModeSecondary);
+  if (body?.crowdRiskScore !== undefined) data.crowdRiskScore = normalizeScore0to5(body?.crowdRiskScore);
+  if (body?.bestVisitHint !== undefined) data.bestVisitHint = asOptionalString(body?.bestVisitHint) ?? null;
+  if (body?.summaryWhyItMatches !== undefined) data.summaryWhyItMatches = asOptionalString(body?.summaryWhyItMatches) ?? null;
+
   if (body?.ratingDetail !== undefined) {
     const rd = normalizeRatingDetail(body?.ratingDetail);
     data.ratingDetail = {
@@ -437,6 +552,10 @@ export async function PUT(req: NextRequest) {
     finalType = existing?.type ?? null;
   }
   const shouldHaveTS = finalType === "CAMPINGPLATZ" || finalType === "STELLPLATZ";
+
+  if (finalType === "SEHENSWUERDIGKEIT" && !hasExplicitSightseeingInput(body)) {
+    Object.assign(data, autoSightseeingData(body, finalType, data.name ?? ""));
+  }
 
   if (body?.ts2 !== undefined && shouldHaveTS) {
     const ts2 = normalizeTS2Detail(body?.ts2);

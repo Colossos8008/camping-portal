@@ -406,6 +406,12 @@ export default function MapPage() {
       images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
       heroImageUrl: (selectedPlace as any).heroImageUrl ?? null,
       thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
+      sightseeingTotalScore: selectedAny?.sightseeingTotalScore ?? null,
+      sightRelevanceType: selectedAny?.sightRelevanceType ?? null,
+      sightVisitModePrimary: selectedAny?.sightVisitModePrimary ?? null,
+      sightVisitModeSecondary: selectedAny?.sightVisitModeSecondary ?? null,
+      bestVisitHint: selectedAny?.bestVisitHint ?? null,
+      summaryWhyItMatches: selectedAny?.summaryWhyItMatches ?? null,
     });
   }, [selectedPlace]);
 
@@ -476,6 +482,12 @@ export default function MapPage() {
       images: [],
       heroImageUrl: null,
       thumbnailImageId: null,
+      sightseeingTotalScore: null,
+      sightRelevanceType: null,
+      sightVisitModePrimary: null,
+      sightVisitModeSecondary: null,
+      bestVisitHint: null,
+      summaryWhyItMatches: null,
     });
   }
 
@@ -865,6 +877,7 @@ export default function MapPage() {
   );
 
   const shouldShowTS = form.type === "CAMPINGPLATZ" || form.type === "STELLPLATZ";
+  const shouldShowSightseeing = form.type === "SEHENSWUERDIGKEIT";
 
   // WICHTIG: stabiler JSX-Block (kein inneres Component), damit kein Remount pro Keystroke
   const editorBody = useMemo(() => {
@@ -967,6 +980,21 @@ export default function MapPage() {
           )}
         </Section>
 
+        {shouldShowSightseeing ? (
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            <div className="px-3 py-2.5 text-sm font-semibold">🧭 TS Sehenswürdigkeiten v1</div>
+            <div className="space-y-2 px-3 pb-3 text-xs">
+              <div className="flex flex-wrap gap-3">
+                <span>Score: {typeof (form as any).sightseeingTotalScore === "number" ? `${(form as any).sightseeingTotalScore}/100` : "—"}</span>
+                <span>Relevance: {(form as any).sightRelevanceType ?? "—"}</span>
+                <span>Visit: {(form as any).sightVisitModePrimary ?? "—"}{(form as any).sightVisitModeSecondary ? ` + ${(form as any).sightVisitModeSecondary}` : ""}</span>
+              </div>
+              <div className="opacity-85">{(form as any).bestVisitHint ?? "Kein Visit-Hinweis vorhanden."}</div>
+              <div className="opacity-85">{(form as any).summaryWhyItMatches ?? "Noch keine Zusammenfassung vorhanden."}</div>
+            </div>
+          </div>
+        ) : null}
+
         <Section
           id="IMAGES"
           title="Bilder"
@@ -1010,6 +1038,7 @@ export default function MapPage() {
     pickMode,
     saving,
     shouldShowTS,
+    shouldShowSightseeing,
     uploading,
     uploadMsg,
     pickedFiles.length,

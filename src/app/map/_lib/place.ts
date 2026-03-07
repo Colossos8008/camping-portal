@@ -1,5 +1,16 @@
 // src/app/map/_lib/place.ts
-import { Place, PlaceType, PlaceTS2, PlaceTS21, TSHaltung, TS21Source, TS21Scores, TS21Value } from "./types";
+import {
+  Place,
+  PlaceType,
+  PlaceTS2,
+  PlaceTS21,
+  SightRelevanceType,
+  SightVisitMode,
+  TSHaltung,
+  TS21Source,
+  TS21Scores,
+  TS21Value,
+} from "./types";
 
 export const PLACE_TYPE_LABEL: Record<PlaceType, string> = {
   CAMPINGPLATZ: "Campingplatz",
@@ -33,6 +44,22 @@ function normTS21Value(v: any): TS21Value {
   if (s === "OKAY") return "O";
   if (s === "PASST_NICHT") return "X";
   return "O";
+}
+
+
+function asNullableNumber(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeSightRelevanceType(v: any): SightRelevanceType | null {
+  if (v === "ICON" || v === "STRONG_MATCH" || v === "GOOD_MATCH" || v === "OPTIONAL" || v === "LOW_MATCH") return v;
+  return null;
+}
+
+function normalizeSightVisitMode(v: any): SightVisitMode | null {
+  if (v === "EASY_STOP" || v === "SMART_WINDOW" || v === "OUTSIDE_BEST" || v === "MAIN_DESTINATION" || v === "WEATHER_WINDOW") return v;
+  return null;
 }
 
 function normalizeTS21Scores(raw: any): TS21Scores {
@@ -128,6 +155,20 @@ export function safePlacesFromApi(input: any): Place[] {
         images: Array.isArray(p.images) ? p.images : [],
         heroImageUrl: typeof p.heroImageUrl === "string" && p.heroImageUrl.trim() ? p.heroImageUrl.trim() : null,
         thumbnailImageId: typeof p.thumbnailImageId === "number" ? p.thumbnailImageId : null,
+
+        natureScore: asNullableNumber(p.natureScore),
+        architectureScore: asNullableNumber(p.architectureScore),
+        historyScore: asNullableNumber(p.historyScore),
+        uniquenessScore: asNullableNumber(p.uniquenessScore),
+        spontaneityScore: asNullableNumber(p.spontaneityScore),
+        calmScore: asNullableNumber(p.calmScore),
+        sightseeingTotalScore: asNullableNumber(p.sightseeingTotalScore),
+        sightRelevanceType: normalizeSightRelevanceType(p.sightRelevanceType),
+        sightVisitModePrimary: normalizeSightVisitMode(p.sightVisitModePrimary),
+        sightVisitModeSecondary: normalizeSightVisitMode(p.sightVisitModeSecondary),
+        crowdRiskScore: asNullableNumber(p.crowdRiskScore),
+        bestVisitHint: typeof p.bestVisitHint === "string" && p.bestVisitHint.trim() ? p.bestVisitHint.trim() : null,
+        summaryWhyItMatches: typeof p.summaryWhyItMatches === "string" && p.summaryWhyItMatches.trim() ? p.summaryWhyItMatches.trim() : null,
       } as Place;
     })
     .filter(Boolean) as Place[];

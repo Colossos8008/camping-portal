@@ -7,47 +7,109 @@ export const dynamic = "force-dynamic";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
+function parsePositiveInt(value: unknown): number | undefined {
+  const raw = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return parsed;
+}
+
+function parseBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1 ? true : value === 0 ? false : undefined;
+  if (typeof value !== "string") return undefined;
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseType(value: unknown): PlaceType | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "SEHENSWUERDIGKEIT" || normalized === "CAMPINGPLATZ" || normalized === "STELLPLATZ" || normalized === "HVO_TANKSTELLE") {
+    return normalized as PlaceType;
+  }
+  return undefined;
+}
+
+function parseIds(value: unknown): number[] | undefined {
+  const candidates: unknown[] =
+    typeof value === "string"
+      ? value
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : Array.isArray(value)
+      ? value
+      : [];
+
+  const parsed = candidates
+    .map((x) => parsePositiveInt(x))
+    .filter((x): x is number => typeof x === "number" && x > 0)
+    .map((x) => Math.floor(x));
+
+  if (!parsed.length) return undefined;
+  return Array.from(new Set(parsed));
+}
+
 function parseBody(raw: unknown): {
-  limit: number;
-  offset: number;
+  limit?: number;
+  offset?: number;
   cursor?: number;
   ids?: number[];
   type?: PlaceType;
-  dryRun: boolean;
-  force: boolean;
+  dryRun?: boolean;
+  force?: boolean;
 } {
   const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const limit = typeof body.limit === "number" ? Math.floor(body.limit) : 100;
-  const offset = typeof body.offset === "number" ? Math.max(0, Math.floor(body.offset)) : 0;
-  const cursorRaw = typeof body.cursor === "number" ? Math.floor(body.cursor) : typeof body.cursor === "string" ? Number.parseInt(body.cursor, 10) : undefined;
-
-  const ids = Array.isArray(body.ids)
-    ? body.ids
-        .map((x) => Number(x))
-        .filter((x) => Number.isFinite(x) && x > 0)
-        .map((x) => Math.floor(x))
-    : undefined;
-
-  const typeRaw = typeof body.type === "string" ? body.type.trim().toUpperCase() : "";
-  const type =
-    typeRaw === "SEHENSWUERDIGKEIT" || typeRaw === "CAMPINGPLATZ" || typeRaw === "STELLPLATZ" || typeRaw === "HVO_TANKSTELLE"
-      ? (typeRaw as PlaceType)
-      : undefined;
-
   return {
-    limit: Math.min(500, Math.max(1, Number.isFinite(limit) ? limit : 100)),
-    offset,
-    cursor: Number.isFinite(cursorRaw as number) ? (cursorRaw as number) : undefined,
-    ids: ids && ids.length > 0 ? Array.from(new Set(ids)) : undefined,
-    type,
-    dryRun: body.dryRun === true,
-    force: body.force === true,
+    limit: parsePositiveInt(body.limit),
+    offset: parsePositiveInt(body.offset),
+    cursor: parsePositiveInt(body.cursor),
+    ids: parseIds(body.ids),
+    type: parseType(body.type),
+    dryRun: parseBoolean(body.dryRun),
+    force: parseBoolean(body.force),
+  };
+}
+
+function parseQuery(searchParams: URLSearchParams): {
+  limit?: number;
+  offset?: number;
+  cursor?: number;
+  ids?: number[];
+  type?: PlaceType;
+  dryRun?: boolean;
+  force?: boolean;
+} {
+  return {
+    limit: parsePositiveInt(searchParams.get("limit")),
+    offset: parsePositiveInt(searchParams.get("offset")),
+    cursor: parsePositiveInt(searchParams.get("cursor")),
+    ids: parseIds(searchParams.get("ids")),
+    type: parseType(searchParams.get("type")),
+    dryRun: parseBoolean(searchParams.get("dryRun")),
+    force: parseBoolean(searchParams.get("force")),
   };
 }
 
 export async function POST(req: Request) {
   try {
-    const parsed = parseBody(await req.json().catch(() => ({})));
+    const body = parseBody(await req.json().catch(() => ({})));
+    const query = parseQuery(new URL(req.url).searchParams);
+
+    const parsed = {
+      limit: Math.min(500, Math.max(1, query.limit ?? body.limit ?? 100)),
+      offset: Math.max(0, query.offset ?? body.offset ?? 0),
+      cursor: query.cursor ?? body.cursor,
+      ids: query.ids ?? body.ids,
+      type: query.type ?? body.type,
+      dryRun: query.dryRun ?? body.dryRun ?? false,
+      force: query.force ?? body.force ?? false,
+    };
 
     const where: any = {
       type: parsed.type ?? "SEHENSWUERDIGKEIT",

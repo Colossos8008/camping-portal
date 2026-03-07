@@ -74,10 +74,34 @@ const CALM_SIGNAL_WORDS = [
 const WEATHER_SIGNAL_WORDS = ["viewpoint", "panorama", "panoramic", "coast", "coastal", "dune", "cliff", "waterfall"];
 const OUTSIDE_SIGNAL_WORDS = ["landmark", "lighthouse", "ramparts", "fortress", "citadel", "castle", "old town", "medieval town", "coast", "headland"];
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeForSignalMatching(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function hasSignalMatch(haystack: string, signal: string): boolean {
+  const normalizedSignal = normalizeForSignalMatching(signal).trim();
+  if (!normalizedSignal) return false;
+
+  const parts = normalizedSignal.split(/\s+/).map(escapeRegex).filter(Boolean);
+  if (parts.length === 0) return false;
+
+  const corePattern = parts.length === 1 ? parts[0] : parts.join("[^\\p{L}\\p{N}]+");
+  const regex = new RegExp(`(?:^|[^\\p{L}\\p{N}])${corePattern}(?:$|[^\\p{L}\\p{N}])`, "u");
+  return regex.test(haystack);
+}
+
 function countSignals(haystack: string, words: string[]): number {
+  const normalizedHaystack = normalizeForSignalMatching(haystack);
   let hits = 0;
   for (const word of words) {
-    if (haystack.includes(word)) hits += 1;
+    if (hasSignalMatch(normalizedHaystack, word)) hits += 1;
   }
   return hits;
 }
@@ -197,17 +221,35 @@ function pickVisitModes(input: {
   return { primary, secondary };
 }
 
-function buildVisitHint(relevance: SightRelevanceType, visitPrimary: SightVisitMode, crowdRiskScore: number, calmScore: number): string {
+function buildVisitHint(
+  relevance: SightRelevanceType,
+  visitPrimary: SightVisitMode,
+  visitSecondary: SightVisitMode | null,
+  crowdRiskScore: number,
+  calmScore: number
+): string {
   if (visitPrimary === "SMART_WINDOW") {
+    if (relevance === "ICON" && visitSecondary === "OUTSIDE_BEST") {
+      return "Ikonischer Spot trotz Andrang: früh/spät besuchen; Außenwirkung und Silhouette sind oft stärker als der Kernbesuch.";
+    }
     return relevance === "ICON"
       ? "Ikonischer Spot trotz Andrang: früh/spät besuchen und Wartezeiten gezielt umgehen."
       : "Zeitfenster planen: früh morgens oder am späten Nachmittag ist meist deutlich entspannter.";
   }
   if (visitPrimary === "WEATHER_WINDOW") {
+    if (visitSecondary === "OUTSIDE_BEST") {
+      return "Sichtfenster nutzen: bei klaren Bedingungen wirken Außenperspektive und Silhouette am stärksten.";
+    }
     return "Wetter und Sicht prüfen: bei klaren Bedingungen ist der Ort deutlich eindrucksvoller.";
   }
   if (visitPrimary === "MAIN_DESTINATION") {
+    if (visitSecondary === "OUTSIDE_BEST") {
+      return "Als Hauptstopp einplanen und Außenperspektiven mitnehmen: Silhouette/Distanz wirken oft am stärksten.";
+    }
     return "Als Hauptstopp einplanen: der Ort lohnt mehr als nur einen kurzen Fotostopp.";
+  }
+  if (visitSecondary === "OUTSIDE_BEST") {
+    return "Kurzstopp gut möglich; Außenwirkung und Distanzperspektive sind oft stärker als der Kernbesuch.";
   }
   if (calmScore >= 3.5 && crowdRiskScore <= 2) {
     return "Gut für einen spontanen, ruhigen Zwischenstopp ohne großen Planungsaufwand.";
@@ -281,7 +323,7 @@ export function rateSightseeing(input: SightseeingPlaceLikeInput): SightseeingRa
     sightRelevanceType,
     sightVisitModePrimary: visitModes.primary,
     sightVisitModeSecondary: visitModes.secondary,
-    bestVisitHint: buildVisitHint(sightRelevanceType, visitModes.primary, core.crowdRiskScore, core.calmScore),
+    bestVisitHint: buildVisitHint(sightRelevanceType, visitModes.primary, visitModes.secondary, core.crowdRiskScore, core.calmScore),
     summaryWhyItMatches: buildSummary({
       relevance: sightRelevanceType,
       natureScore: core.natureScore,

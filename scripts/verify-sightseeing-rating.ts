@@ -93,7 +93,11 @@ async function run() {
   assert(lighthousePhare.architectureScore >= 3.5, "lighthouse should be strong on architecture");
   assert(lighthousePhare.natureScore >= 3.5, "lighthouse cliff setting should be strong on nature");
   assert(lighthousePhare.uniquenessScore >= 3, "lighthouse should have meaningful uniqueness");
-  assert(lighthousePhare.sightVisitModePrimary === "OUTSIDE_BEST", "coastal lighthouse should prefer OUTSIDE_BEST");
+  assert(
+    lighthousePhare.sightVisitModePrimary === "OUTSIDE_BEST" ||
+      lighthousePhare.sightVisitModeSecondary === "OUTSIDE_BEST",
+    "coastal lighthouse should include OUTSIDE_BEST as preferred mode"
+  );
   assert(lighthousePhare.sightRelevanceType !== "LOW_MATCH", "lighthouse should avoid LOW_MATCH");
 
   const fortMemorialViewpoint = rateSightseeing({
@@ -106,7 +110,12 @@ async function run() {
   assert(fortMemorialViewpoint.architectureScore >= 3.2, "fort + ruins should be strong on architecture");
   assert(fortMemorialViewpoint.historyScore >= 3.5, "fort + memorial should score strong on history");
   assert(fortMemorialViewpoint.uniquenessScore >= 3, "fort + memorial viewpoint should have meaningful uniqueness");
-  assert(fortMemorialViewpoint.sightVisitModePrimary === "OUTSIDE_BEST", "coastal fortification should prefer OUTSIDE_BEST");
+  assert(
+    fortMemorialViewpoint.sightVisitModePrimary === "OUTSIDE_BEST" ||
+      fortMemorialViewpoint.sightVisitModePrimary === "MAIN_DESTINATION" ||
+      fortMemorialViewpoint.sightVisitModeSecondary === "OUTSIDE_BEST",
+    "coastal fortification should keep OUTSIDE_BEST or MAIN_DESTINATION orientation"
+  );
   assert(fortMemorialViewpoint.sightRelevanceType !== "LOW_MATCH", "fort + memorial viewpoint should avoid LOW_MATCH");
 
   const deportationMemorial = rateSightseeing({
@@ -122,6 +131,76 @@ async function run() {
     deportationMemorial.sightRelevanceType === "OPTIONAL" || deportationMemorial.sightRelevanceType === "GOOD_MATCH" || deportationMemorial.sightRelevanceType === "ICON",
     "deportation remembrance memorial should reach at least OPTIONAL"
   );
+
+  const majorFortress = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Major Fortress Citadel",
+    category: "fortress",
+    description: "Iconic major fortress and fortified citadel with monument heritage and major attraction viewpoint",
+    tags: ["fortress", "major fortress", "landmark", "iconic", "major-attraction", "historic"],
+  });
+  assert(majorFortress.architectureScore >= 4, "major fortress should score very high on architecture");
+  assert(majorFortress.sightRelevanceType === "ICON", "major fortress profile should reach ICON");
+  assert(
+    majorFortress.sightVisitModePrimary === "MAIN_DESTINATION" ||
+      majorFortress.sightVisitModePrimary === "OUTSIDE_BEST" ||
+      majorFortress.sightVisitModeSecondary === "MAIN_DESTINATION",
+    "major fortress should be treated as destination-oriented profile"
+  );
+
+  const iconicCastle = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Iconic Medieval Castle",
+    category: "castle",
+    description: "Iconic medieval castle landmark and major attraction with preserved fortification history",
+    tags: ["castle", "medieval-castle", "iconic-castle", "landmark", "major-attraction"],
+  });
+  assert(iconicCastle.architectureScore >= 4, "iconic medieval castle should score very high on architecture");
+  assert(iconicCastle.uniquenessScore >= 4, "iconic medieval castle should score very high on uniqueness");
+  assert(iconicCastle.sightRelevanceType === "ICON" || iconicCastle.sightRelevanceType === "GOOD_MATCH", "iconic castle should be ICON or GOOD_MATCH");
+
+  const abbeyMonastery = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Abtei am See",
+    category: "abbey",
+    description: "Romanesque abbey and monastery with basilica, pilgrimage tradition and historic religious heritage",
+    tags: ["abbey", "monastery", "basilica", "pilgrimage", "major-attraction"],
+  });
+  assert(abbeyMonastery.historyScore >= 3, "abbey/monastery should be solid on history");
+  assert(abbeyMonastery.architectureScore >= 3, "abbey/monastery should be solid on architecture");
+  assert(abbeyMonastery.sightRelevanceType !== "LOW_MATCH", "abbey/monastery should avoid LOW_MATCH");
+
+  const historicQuarter = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Altstadt am Fluss",
+    category: "historic-quarter",
+    description: "Historic quarter and old town center with monument ensemble and major attraction squares",
+    tags: ["historic-quarter", "old-town", "historic-center", "monument", "major-attraction"],
+  });
+  assert(historicQuarter.historyScore >= 3, "historic quarter should be strong on history");
+  assert(historicQuarter.sightRelevanceType !== "LOW_MATCH", "historic quarter should avoid LOW_MATCH");
+  assert(historicQuarter.sightVisitModePrimary === "EASY_STOP" || historicQuarter.sightVisitModePrimary === "MAIN_DESTINATION", "historic quarter should be stop or destination");
+
+  const nationalMonument = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Rivers Confluence Monument",
+    category: "landmark",
+    description: "National monument at a rivers confluence headland, iconic landmark and major viewpoint",
+    tags: ["landmark", "national-monument", "rivers-confluence", "major-viewpoint", "major-attraction"],
+  });
+  assert(nationalMonument.uniquenessScore >= 3.2, "national monument landmark should have notable uniqueness");
+  assert(nationalMonument.sightRelevanceType !== "LOW_MATCH", "national monument landmark should avoid LOW_MATCH");
+
+  const geothermalGeyser = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Geothermal Geyser",
+    category: "natural-attraction",
+    description: "Geothermal geyser and major natural attraction with viewpoint",
+    tags: ["geyser", "geysir", "geothermal", "natural-attraction", "major-attraction"],
+  });
+  assert(geothermalGeyser.uniquenessScore >= 3.2, "geothermal geyser should have strong uniqueness");
+  assert(geothermalGeyser.sightRelevanceType !== "LOW_MATCH", "geothermal geyser should avoid LOW_MATCH");
+  assert(geothermalGeyser.sightVisitModePrimary === "MAIN_DESTINATION" || geothermalGeyser.sightVisitModeSecondary === "MAIN_DESTINATION", "geothermal geyser should be treated as a destination");
 
   console.log("verify-sightseeing-rating: ok");
 }

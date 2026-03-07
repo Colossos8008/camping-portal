@@ -1,10 +1,14 @@
-import { rateSightseeing } from "../src/lib/sightseeing-rating.ts";
+async function loadRatingModule() {
+  return import(new URL("../src/lib/sightseeing-rating.ts", import.meta.url).href);
+}
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
 
-function run() {
+async function run() {
+  const { rateSightseeing } = await loadRatingModule();
+
   const nature = rateSightseeing({
     type: "SEHENSWUERDIGKEIT",
     name: "Wild Atlantic Cliffs Viewpoint",

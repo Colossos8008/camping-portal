@@ -1,29 +1,41 @@
-# Sightseeing Seed Import (Region + Nearby Radius)
+# Sightseeing Seed Import (Region + Nearby Radius + Highlight-Modus)
 
 Dieses Seed-Script importiert echte Sehenswürdigkeiten (OSM/Overpass) in `Place` mit `type=SEHENSWUERDIGKEIT`.
 
 Unterstützte Modi:
 
 - **Region-Modus** (bestehend): Normandie / Bretagne über Overpass Area Query
-- **Nearby-Modus** (neu): Radius um expliziten Mittelpunkt (`--center` + `--radius-km`) oder Preset (`--near=nievern`)
+- **Nearby-Modus** (bestehend): Radius um expliziten Mittelpunkt (`--center` + `--radius-km`) oder Preset (`--near=nievern`)
+- **Highlight-Modus** (neu): fokussiert auf wenige Haupt-Sehenswürdigkeiten (`--highlight-mode` oder `--top-sights`)
 
-## Was importiert wird
+## Unterschied Nearby vs Highlight
 
-Der Import zieht nur kuratierte OSM-Kandidaten, u. a.:
+### Normaler Nearby-Modus
 
-- `tourism=attraction`
-- `tourism=viewpoint`
-- `historic=*` (z. B. Burg/Festung/Ruinen/Memorial/Monument/archäologische Orte)
-- `heritage=*`
-- `natural=*`
-- `man_made=lighthouse`
-- megalithische Hinweise (`site_type`, `megalith_type`, Dolmen/Menhir)
-- relevante historische Architektur (`building=abbey|cathedral|church|chapel|castle`)
+- Breiteres Kandidatenfeld (`historic`, `natural`, `viewpoint`, `heritage` etc.)
+- Gut für explorative, eher vollständige Suche
+- Mehr Rauschen in dichten Regionen möglich
 
-Zusätzlich wird hart gefiltert:
+### Highlight-Modus
 
-- Positiv: Landmarken, Aussichtspunkte, historische/architektonische Orte, markante Naturpunkte.
-- Negativ: Freizeit-/Entertainment-/Shopping-/Indoor-POIs (Theme Parks, Aquarien, Malls etc.), Spielplätze, Utility-Kram.
+- Früh harte Reduktion auf starke Landmark-Klassen
+- Nearby-Subqueries sind enger und touristisch fokussiert
+- Regelbasiertes Ranking **vor** DB-Import
+- `--limit=10` liefert Top-Rangliste (nicht bloß „erste 10 Rohdaten“)
+
+Im Highlight-Modus werden bevorzugt:
+
+- Burg/Festung/Zitadelle/Schloss (`castle`, `fortress`, `citadel`, `palace`, `schloss`, `burg`)
+- Abtei/Kloster/Kathedrale/Dom (`abbey`, `monastery`, `cathedral`)
+- Altstadt / Historic Centre
+- Bedeutende Ruinen und große Memorials/Landmarks
+- Tourist. Seilbahn/Funicular nur mit klaren Relevanzsignalen
+
+Deutlich abgewertet/ausgeschlossen werden u. a.:
+
+- generische Viewpoints ohne Landmark-Signal
+- kleine Kreuze/Calvaires/Bench-POIs
+- technische/utility-nahe Objekte
 
 ## Regionen (bestehend)
 
@@ -37,12 +49,16 @@ Der Import ist bewusst lokal begrenzt (Area Query oder Nearby Radius), es wird *
 
 Allgemein:
 
-- `--limit=<n>` (begrenzt nur die lokale Weiterverarbeitung nach Normalisierung/Dedupe)
-- `--max-elements=<n>` (begrenzt die Fetch-Menge: im Nearby-Modus nach lokalem Merge der Teilabfragen)
+- `--limit=<n>` (begrenzt Verarbeitung; im Highlight-Modus nach Ranking als harte Top-Grenze)
+- `--max-elements=<n>` (begrenzt Fetch-Menge)
 - `--dry-run` (keine DB Writes)
 - `--force` (ignoriert DB-Dublettenprüfung)
 - `--verbose`
 - `--overpass-url=<url>` (überschreibt `OVERPASS_URL`)
+
+Highlight:
+
+- `--highlight-mode` (Alias: `--top-sights`)
 
 Region-Modus:
 
@@ -50,37 +66,39 @@ Region-Modus:
 - `--bbox=minLon,minLat,maxLon,maxLat` (verkleinert die Overpass-Abfrage auf eine kleine Box)
 - `--test-mode` (nutzt pro Region eine kleine feste BBox)
 
-Nearby-Modus (neu):
+Nearby-Modus:
 
 - `--center=<lat,lng>`
 - `--radius-km=<number>`
 - optional: `--near=nievern` (Preset für lokalen Testfall)
-- optional: `--subqueries=<key1,key2,...>` (Alias: `--include-subqueries=...`, nur diese Nearby-Teilabfragen ausführen)
+- optional: `--subqueries=<key1,key2,...>` (Alias: `--include-subqueries=...`, nur diese Nearby-Teilabfragen)
 
 Hinweise zu Kombinationen:
 
 - Nearby kann **nicht** mit `--bbox` oder `--test-mode` kombiniert werden.
 - Bei `--near=nievern` werden Center und Standardradius vorbelegt (können über `--center/--radius-km` überschrieben werden).
-- Nearby nutzt mehrere kleinere thematische Overpass-Teilabfragen (statt einer großen Sammelabfrage), merged die Ergebnisse lokal und dedupliziert nach OSM-ID.
-- Nearby-Teilabfragen dürfen teilweise fehlschlagen (z. B. 429/504/Timeout): erfolgreiche Teilabfragen werden trotzdem gemerged und weiterverarbeitet.
+- Nearby nutzt mehrere kleinere thematische Overpass-Teilabfragen, merged lokal und dedupliziert nach OSM-ID.
+- Nearby-Teilabfragen dürfen teilweise fehlschlagen (z. B. 429/504/Timeout): erfolgreiche Teilabfragen werden trotzdem weiterverarbeitet.
 - Nur wenn **alle** ausgewählten Nearby-Teilabfragen fehlschlagen, gilt der Scope als fehlgeschlagen.
-- Ziel davon ist eine robustere Radius-Suche in dichten Regionen (z. B. rund um Koblenz/Lahntal/Nievern).
 
-## Nearby Beispiele (Nievern / Lahntal / Koblenz)
+## Beispiel Koblenz/Nievern
 
-Dry-run mit explizitem Center:
+Mit Highlight-Modus + `--limit=10` werden wenige Hauptziele priorisiert (z. B. Deutsches Eck, Festungen/Burgen/Schlösser, Altstadt-Signale, touristisch starke Landmarken) statt vieler kleinteiliger OSM-Treffer.
 
-- `npm run import:sightseeing:seed -- --center=50.316,7.617 --radius-km=35 --limit=30 --dry-run --verbose`
+## Lokale Befehle
 
-Dry-run mit Preset:
+Koblenz Highlight Dry-Run:
 
-- `npm run import:sightseeing:seed:nievern -- --dry-run --limit=30 --verbose`
+- `npm run import:sightseeing:seed -- --center=50.3569,7.5889 --radius-km=35 --highlight-mode --limit=10 --dry-run --verbose`
 
-Echter Import:
+Nievern Highlight Dry-Run:
 
-- `npm run import:sightseeing:seed -- --center=50.316,7.617 --radius-km=35 --limit=30 --verbose`
+- `npm run import:sightseeing:seed -- --near=nievern --highlight-mode --limit=10 --dry-run --verbose`
+- Shortcut: `npm run import:sightseeing:seed:nievern:highlights -- --dry-run --verbose`
 
-Mit diesem Radius sollten realistische Sehenswürdigkeiten aus Nievern/Lahntal/Koblenz/Mittelrhein in sinnvoller Größe testbar sein.
+Echter Highlight-Import:
+
+- `npm run import:sightseeing:seed -- --near=nievern --highlight-mode --limit=10 --verbose`
 
 ## Overpass Endpoint (Standard + Fallback)
 

@@ -8,9 +8,12 @@ import {
   normalizeCandidate,
   parseOverpassElements,
   REGION_CONFIGS,
+  scoreHighlightCandidate,
   type BoundingBox,
+  type ImportMode,
   type OverpassElement,
   type RegionConfig,
+  type SightseeingCandidate,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
 
@@ -41,6 +44,7 @@ type CliOptions = {
   radiusKm: number | null;
   nearPreset: keyof typeof NEAR_PRESETS | null;
   subqueries: string[] | null;
+  importMode: ImportMode;
 };
 
 type ExistingPlace = {
@@ -54,6 +58,11 @@ type ExistingPlace = {
 const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
   normandie: { minLon: -1.585, minLat: 49.63, maxLon: -1.42, maxLat: 49.705 },
   bretagne: { minLon: -4.495, minLat: 48.36, maxLon: -4.405, maxLat: 48.41 },
+};
+
+type RankedCandidate = {
+  candidate: SightseeingCandidate;
+  highlightScore: number | null;
 };
 
 type RegionSummary = {
@@ -190,7 +199,9 @@ function parseCliArgs(argv: string[]): CliOptions {
     throw new Error("Cannot combine nearby mode (--center/--radius-km) with --test-mode.");
   }
 
-  const availableNearbySubqueryKeys = new Set(getNearbyQueryParts().map((part) => part.key));
+  const highlightMode = args.has("--highlight-mode") || args.has("--top-sights");
+
+  const availableNearbySubqueryKeys = new Set(getNearbyQueryParts(highlightMode ? "highlight" : "default").map((part) => part.key));
   const subqueries = subqueriesRaw
     ? Array.from(new Set(subqueriesRaw.split(",").map((item) => item.trim()).filter(Boolean)))
     : null;
@@ -223,6 +234,7 @@ function parseCliArgs(argv: string[]): CliOptions {
     radiusKm: effectiveRadius,
     nearPreset,
     subqueries,
+    importMode: highlightMode ? "highlight" : "default",
   };
 }
 
@@ -361,11 +373,12 @@ async function fetchScopeElements(input: {
   maxElements: number | null;
   verbose: boolean;
   selectedSubqueries: string[] | null;
+  importMode: ImportMode;
 }): Promise<FetchScopeResult> {
-  const { scope, overpassUrl, maxElements, verbose, selectedSubqueries } = input;
+  const { scope, overpassUrl, maxElements, verbose, selectedSubqueries, importMode } = input;
 
   if (!scope.around) {
-    const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around });
+    const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around, mode: importMode });
     const payload = await fetchOverpass({ scope, overpassUrl, query });
     const elements = parseOverpassElements(payload);
     if (maxElements && elements.length > maxElements) {
@@ -376,7 +389,7 @@ async function fetchScopeElements(input: {
   }
 
   const mergedElements: OverpassElement[] = [];
-  const allParts = getNearbyQueryParts();
+  const allParts = getNearbyQueryParts(importMode);
   const parts = selectedSubqueries ? allParts.filter((part) => selectedSubqueries.includes(part.key)) : allParts;
   const statusRows: NearbySubqueryStatus[] = [];
 
@@ -460,9 +473,10 @@ async function runRegionImport(options: {
   overpassUrl: string;
   maxElements: number | null;
   selectedSubqueries: string[] | null;
+  importMode: ImportMode;
 }): Promise<RegionSummary> {
-  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries } = options;
-  const fetchedResult = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries });
+  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries, importMode } = options;
+  const fetchedResult = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries, importMode });
   const { elements, successfulSubqueries, failedSubqueries } = fetchedResult;
 
   console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
@@ -494,8 +508,8 @@ async function runRegionImport(options: {
     select: { id: true, name: true, lat: true, lng: true, type: true },
   })) as ExistingPlace[];
 
-  const accepted: typeof distinctCandidates = [];
-  const seenInBatch: typeof distinctCandidates = [];
+  const accepted: RankedCandidate[] = [];
+  const seenInBatch: SightseeingCandidate[] = [];
 
   for (const candidate of distinctCandidates) {
     const duplicateInBatch = seenInBatch.find((x) =>
@@ -515,16 +529,34 @@ async function runRegionImport(options: {
     }
 
     seenInBatch.push(candidate);
-    accepted.push(candidate);
+    const highlightScore = importMode === "highlight" ? scoreHighlightCandidate(candidate) : null;
+    if (importMode === "highlight" && (highlightScore ?? 0) < 0) {
+      if (verbose) console.log(`skip highlight-negative: ${candidate.name} score=${highlightScore}`);
+      continue;
+    }
+    accepted.push({ candidate, highlightScore });
   }
 
-  const effectiveList = globalLimit ? accepted.slice(0, globalLimit) : accepted;
+  const rankedAccepted =
+    importMode === "highlight"
+      ? [...accepted].sort((a, b) => (b.highlightScore ?? 0) - (a.highlightScore ?? 0))
+      : accepted;
+
+  const effectiveList = globalLimit ? rankedAccepted.slice(0, globalLimit) : rankedAccepted;
   if (globalLimit) {
     console.log(
-      `[pipeline:${scope.label}] local processing limit active --limit=${globalLimit}: accepted=${accepted.length} -> processed=${effectiveList.length}`
+      `[pipeline:${scope.label}] local processing limit active --limit=${globalLimit}: accepted=${rankedAccepted.length} -> processed=${effectiveList.length}`
     );
   } else {
     console.log(`[pipeline:${scope.label}] local processing without --limit: processed=${effectiveList.length}`);
+  }
+
+  if (importMode === "highlight") {
+    const topLog = effectiveList
+      .slice(0, Math.min(10, effectiveList.length))
+      .map((entry, idx) => `#${idx + 1} ${entry.candidate.name} (score=${entry.highlightScore ?? 0}, category=${entry.candidate.category})`)
+      .join(" | ");
+    if (topLog) console.log(`[highlight] scope=${scope.label} top=${topLog}`);
   }
 
   let created = 0;
@@ -532,7 +564,8 @@ async function runRegionImport(options: {
   let skippedDuplicate = 0;
   let skippedError = 0;
 
-  for (const candidate of effectiveList) {
+  for (const ranked of effectiveList) {
+    const candidate = ranked.candidate;
     try {
       const duplicateInDb = existingRows.find((existing) =>
         areLikelySamePlace({
@@ -624,7 +657,7 @@ async function runRegionImport(options: {
     region: scope.label,
     fetched: elements.length,
     normalized: normalized.length,
-    afterDedupe: accepted.length,
+    afterDedupe: rankedAccepted.length,
     processed: effectiveList.length,
     created,
     updated,
@@ -684,6 +717,7 @@ async function run() {
     maxElements: options.maxElements,
     testMode: options.testMode,
     subqueries: options.subqueries,
+    importMode: options.importMode,
   });
 
   try {
@@ -715,6 +749,7 @@ async function run() {
           overpassUrl: options.overpassUrl,
           maxElements: options.maxElements,
           selectedSubqueries: options.subqueries,
+          importMode: options.importMode,
         });
         summaries.push(summary);
       } catch (error: any) {

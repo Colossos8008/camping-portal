@@ -188,6 +188,8 @@ export type NearbyQueryPart = {
   clauses: string[];
 };
 
+export type ImportMode = "default" | "highlight";
+
 function normalizeText(input: string): string {
   return input
     .normalize("NFKD")
@@ -393,7 +395,7 @@ function roundCoord(v: number): number {
 
 export function buildOverpassQuery(
   region: RegionConfig,
-  options?: { bbox?: BoundingBox | null; around?: { lat: number; lng: number; radiusKm: number } | null }
+  options?: { bbox?: BoundingBox | null; around?: { lat: number; lng: number; radiusKm: number } | null; mode?: ImportMode }
 ): string {
   const aroundClause = options?.around
     ? `(around:${Math.round(options.around.radiusKm * 1_000)},${options.around.lat},${options.around.lng})`
@@ -407,20 +409,43 @@ export function buildOverpassQuery(
     ? ""
     : `area["ISO3166-2"="${region.iso3166_2}"]["admin_level"="4"]->.searchArea;\n`;
 
+  const mode = options?.mode ?? "default";
+
+  const clauses =
+    mode === "highlight"
+      ? [
+          'nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|city_gate",i]',
+          'nwr["historic"="castle"]',
+          'nwr["historic"="manor"]',
+          'nwr["ruins"="yes"]',
+          'nwr["building"~"abbey|monastery|cathedral|castle|palace",i]',
+          'nwr["amenity"="place_of_worship"]["building"~"cathedral|abbey|monastery",i]',
+          'nwr["tourism"="attraction"]["name"~"castle|fort|fortress|citadel|abbey|monastery|cathedral|dom|palace|schloss|burg|old town|historic (center|centre)|altstadt|deutsches eck|landmark|icon",i]',
+          'nwr["tourism"="viewpoint"]["name"~"castle|fort|fortress|citadel|abbey|cathedral|dom|palace|schloss|burg|landmark|deutsches eck",i]',
+          'nwr["aerialway"~"cable_car|gondola",i]["tourism"="attraction"]',
+          'nwr["railway"="funicular"]["tourism"="attraction"]',
+          'nwr["name"~"old town|historic (center|centre)|altstadt",i]',
+        ]
+      : [
+          'nwr["tourism"="attraction"]',
+          'nwr["tourism"="viewpoint"]',
+          'nwr["historic"]',
+          'nwr["heritage"]',
+          'nwr["natural"]',
+          'nwr["man_made"="lighthouse"]',
+          'nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|archaeological_site",i]',
+          'nwr["ruins"="yes"]',
+          'nwr["building"~"abbey|cathedral|church|chapel|castle",i]',
+          'nwr["site_type"~"megalith|dolmen|menhir|archaeological",i]',
+          'nwr["megalith_type"]',
+        ];
+
+  const body = clauses.map((clause) => `  ${clause}${bboxClause};`).join("\n");
+
   return `
 [out:json][timeout:120];
 ${areaScope}(
-  nwr["tourism"="attraction"]${bboxClause};
-  nwr["tourism"="viewpoint"]${bboxClause};
-  nwr["historic"]${bboxClause};
-  nwr["heritage"]${bboxClause};
-  nwr["natural"]${bboxClause};
-  nwr["man_made"="lighthouse"]${bboxClause};
-  nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|archaeological_site",i]${bboxClause};
-  nwr["ruins"="yes"]${bboxClause};
-  nwr["building"~"abbey|cathedral|church|chapel|castle",i]${bboxClause};
-  nwr["site_type"~"megalith|dolmen|menhir|archaeological",i]${bboxClause};
-  nwr["megalith_type"]${bboxClause};
+${body}
 );
 out center tags;
 `.trim();
@@ -479,8 +504,122 @@ const NEARBY_QUERY_PARTS: NearbyQueryPart[] = [
   },
 ];
 
-export function getNearbyQueryParts(): NearbyQueryPart[] {
-  return NEARBY_QUERY_PARTS;
+const HIGHLIGHT_NEARBY_QUERY_PARTS: NearbyQueryPart[] = [
+  {
+    key: "fortress_castle_palace",
+    label: "Burg/Festung/Schloss/Zitadelle",
+    clauses: [
+      'nwr["historic"~"castle|fort|fortress|city_gate",i]',
+      'nwr["building"~"castle|palace",i]',
+      'nwr["name"~"castle|fort|fortress|citadel|palace|schloss|burg|festung",i]',
+      'nwr["tourism"="attraction"]["name"~"schloss|burg|citadel|fortress|festung",i]',
+    ],
+  },
+  {
+    key: "abbey_cathedral_monastery",
+    label: "Abtei/Kloster/Dom/Kathedrale",
+    clauses: [
+      'nwr["building"~"abbey|monastery|cathedral",i]',
+      'nwr["amenity"="place_of_worship"]["name"~"abbey|abtei|monastery|kloster|cathedral|dom",i]',
+      'nwr["tourism"="attraction"]["name"~"abbey|abtei|kloster|cathedral|dom",i]',
+    ],
+  },
+  {
+    key: "historic_center_landmark",
+    label: "Altstadt/Landmarken/Hauptziele",
+    clauses: [
+      'nwr["name"~"old town|historic (center|centre)|altstadt|deutsches eck|landmark|icon",i]',
+      'nwr["tourism"="attraction"]["name"~"old town|altstadt|deutsches eck|landmark",i]',
+      'nwr["historic"~"memorial|monument",i]["name"~"national|major|deutsches eck|denkmal",i]',
+    ],
+  },
+  {
+    key: "major_ruins_memorial",
+    label: "Bedeutende Ruinen/Gedenkorte",
+    clauses: [
+      'nwr["historic"="ruins"]["name"~"castle|fort|abbey|monastery|palace|schloss|burg",i]',
+      'nwr["ruins"="yes"]["name"~"castle|fort|abbey|monastery|palace|schloss|burg",i]',
+      'nwr["historic"~"memorial|monument",i]["wikipedia"]',
+      'nwr["historic"~"memorial|monument",i]["wikidata"]',
+    ],
+  },
+  {
+    key: "touristic_cable_car",
+    label: "Touristische Seilbahn/Funicular",
+    clauses: [
+      'nwr["aerialway"~"cable_car|gondola",i]["name"]',
+      'nwr["railway"="funicular"]["name"]',
+      'nwr["aerialway"]["tourism"="attraction"]',
+    ],
+  },
+];
+
+export function getNearbyQueryParts(mode: ImportMode = "default"): NearbyQueryPart[] {
+  return mode === "highlight" ? HIGHLIGHT_NEARBY_QUERY_PARTS : NEARBY_QUERY_PARTS;
+}
+
+const HIGHLIGHT_NAME_SIGNALS = [
+  { pattern: /\b(deutsches\s+eck|deutsche\s+eck)\b/, score: 10 },
+  { pattern: /\b(citadel|zitadelle|fortress|festung)\b/, score: 9 },
+  { pattern: /\b(castle|schloss|burg|palace)\b/, score: 8 },
+  { pattern: /\b(abbey|abtei|monastery|kloster|cathedral|dom)\b/, score: 8 },
+  { pattern: /\b(old\s+town|historic\s+(centre|center)|altstadt)\b/, score: 8 },
+  { pattern: /\b(landmark|icon|seilbahn|cable\s+car)\b/, score: 5 },
+];
+
+const HIGHLIGHT_CATEGORY_SCORES: Record<string, number> = {
+  castle_fortress: 14,
+  historic_old_town: 13,
+  historic_architecture: 11,
+  ruins: 9,
+  memorial_monument: 7,
+  lighthouse: 6,
+  landmark: 6,
+  viewpoint: 3,
+  nature_landmark: 2,
+  archaeological_site: 2,
+  megalithic_site: 1,
+};
+
+const HIGHLIGHT_HARD_EXCLUDES = [/\b(cross|croix|wayside\s+cross|calvaire)\b/, /\b(bench|liege|ruhebank)\b/, /\b(technik|technical|water\s+works|pump\s+station|mast|tower\s+base)\b/];
+
+export function scoreHighlightCandidate(candidate: SightseeingCandidate): number {
+  const tagMap = new Map(
+    candidate.tags
+      .map((entry) => {
+        const idx = entry.indexOf(":");
+        if (idx === -1) return null;
+        return [entry.slice(0, idx), entry.slice(idx + 1)] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+  );
+
+  const searchable = normalizeText(
+    [candidate.name, candidate.category, ...candidate.tags.map((tag) => tag.replace(":", " "))].join(" ")
+  );
+
+  if (HIGHLIGHT_HARD_EXCLUDES.some((pattern) => pattern.test(searchable))) return -999;
+
+  let score = HIGHLIGHT_CATEGORY_SCORES[candidate.category] ?? 0;
+
+  for (const signal of HIGHLIGHT_NAME_SIGNALS) {
+    if (signal.pattern.test(searchable)) score += signal.score;
+  }
+
+  if (tagMap.has("wikipedia")) score += 7;
+  if (tagMap.has("wikidata")) score += 6;
+  if (tagMap.get("tourism") === "attraction") score += 2;
+  if (tagMap.get("historic") === "ruins") score += 1;
+
+  if (tagMap.get("tourism") === "viewpoint" && !/\b(landmark|castle|fort|citadel|schloss|burg|deutsches\s+eck)\b/.test(searchable)) {
+    score -= 7;
+  }
+
+  if ((tagMap.get("aerialway") || tagMap.get("railway") === "funicular") && !/(seilbahn|cable\s+car|gondola|funicular|koblenz)/.test(searchable)) {
+    score -= 6;
+  }
+
+  return score;
 }
 
 export function buildOverpassQueryFromClauses(input: {

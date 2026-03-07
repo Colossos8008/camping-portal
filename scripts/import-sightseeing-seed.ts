@@ -3,10 +3,13 @@ import { prisma } from "../src/lib/prisma.ts";
 import {
   areLikelySamePlace,
   buildOverpassQuery,
+  buildOverpassQueryFromClauses,
+  getNearbyQueryParts,
   normalizeCandidate,
   parseOverpassElements,
   REGION_CONFIGS,
   type BoundingBox,
+  type OverpassElement,
   type RegionConfig,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
@@ -214,16 +217,17 @@ class OverpassRequestError extends Error {
 async function fetchOverpass(input: {
   scope: QueryScope;
   overpassUrl: string;
-  maxElements: number | null;
+  query: string;
+  queryLabel?: string;
 }): Promise<unknown> {
-  const { scope, overpassUrl, maxElements } = input;
-  const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around });
+  const { scope, overpassUrl, query, queryLabel } = input;
   const endpoints = getOverpassEndpoints(overpassUrl);
   const failures: string[] = [];
+  const queryLabelSuffix = queryLabel ? ` query=${queryLabel}` : "";
 
   for (const [endpointIndex, endpoint] of endpoints.entries()) {
     for (let attempt = 1; attempt <= MAX_RETRIES_PER_ENDPOINT; attempt += 1) {
-      const attemptPrefix = `[overpass] scope=${scope.label} endpoint=${endpoint} attempt=${attempt}/${MAX_RETRIES_PER_ENDPOINT}`;
+      const attemptPrefix = `[overpass] scope=${scope.label}${queryLabelSuffix} endpoint=${endpoint} attempt=${attempt}/${MAX_RETRIES_PER_ENDPOINT}`;
       const abortController = new AbortController();
       const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
 
@@ -256,12 +260,7 @@ async function fetchOverpass(input: {
           ? (json as { elements: unknown[] }).elements.length
           : 0;
 
-        if (maxElements && Array.isArray((json as { elements?: unknown }).elements) && fetchedElements > maxElements) {
-          (json as { elements: unknown[] }).elements = (json as { elements: unknown[] }).elements.slice(0, maxElements);
-          console.log(`${attemptPrefix} success elements=${fetchedElements} overpassCap=${maxElements} (truncated response)`);
-        } else {
-          console.log(`${attemptPrefix} success elements=${fetchedElements}`);
-        }
+        console.log(`${attemptPrefix} success elements=${fetchedElements}`);
         return json;
       } catch (error: any) {
         const isAbort = error?.name === "AbortError";
@@ -278,7 +277,7 @@ async function fetchOverpass(input: {
               });
 
         failures.push(
-          `scope=${scope.label} endpoint=${normalizedError.endpoint} status=${normalizedError.status ?? "n/a"} message=${normalizedError.message}`
+          `scope=${scope.label}${queryLabelSuffix} endpoint=${normalizedError.endpoint} status=${normalizedError.status ?? "n/a"} message=${normalizedError.message}`
         );
 
         const isLastAttemptForEndpoint = attempt >= MAX_RETRIES_PER_ENDPOINT;
@@ -298,13 +297,74 @@ async function fetchOverpass(input: {
 
     if (endpointIndex < endpoints.length - 1) {
       const nextEndpoint = endpoints[endpointIndex + 1];
-      console.warn(`[overpass] scope=${scope.label} falling back to next endpoint: ${nextEndpoint}`);
+      console.warn(`[overpass] scope=${scope.label}${queryLabelSuffix} falling back to next endpoint: ${nextEndpoint}`);
     }
   }
 
   throw new Error(
-    `Overpass failed for scope=${scope.label}. Tried endpoints: ${endpoints.join(", ")}. Last errors: ${failures.slice(-4).join(" | ")}`
+    `Overpass failed for scope=${scope.label}${queryLabelSuffix}. Tried endpoints: ${endpoints.join(", ")}. Last errors: ${failures
+      .slice(-4)
+      .join(" | ")}`
   );
+}
+
+function dedupeElementsByOverpassIdentity(elements: OverpassElement[]): OverpassElement[] {
+  const byId = new Map<string, OverpassElement>();
+  for (const element of elements) {
+    const key = `${element.type}/${element.id}`;
+    if (!byId.has(key)) byId.set(key, element);
+  }
+  return Array.from(byId.values());
+}
+
+async function fetchScopeElements(input: {
+  scope: QueryScope;
+  overpassUrl: string;
+  maxElements: number | null;
+  verbose: boolean;
+}): Promise<OverpassElement[]> {
+  const { scope, overpassUrl, maxElements, verbose } = input;
+
+  if (!scope.around) {
+    const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around });
+    const payload = await fetchOverpass({ scope, overpassUrl, query });
+    const elements = parseOverpassElements(payload);
+    if (maxElements && elements.length > maxElements) {
+      console.log(`[overpass] scope=${scope.label} applying --max-elements=${maxElements} to fetched=${elements.length}`);
+      return elements.slice(0, maxElements);
+    }
+    return elements;
+  }
+
+  const mergedElements: OverpassElement[] = [];
+  const parts = getNearbyQueryParts();
+  for (const [index, part] of parts.entries()) {
+    const query = buildOverpassQueryFromClauses({
+      region: scope.regionConfig,
+      clauses: part.clauses,
+      options: { around: scope.around, bbox: null },
+    });
+    const queryLabel = `part=${index + 1}/${parts.length}:${part.key}`;
+    if (verbose) {
+      console.log(`[overpass] scope=${scope.label} running nearby subquery ${index + 1}/${parts.length} (${part.label})`);
+    }
+    const payload = await fetchOverpass({ scope, overpassUrl, query, queryLabel });
+    const partElements = parseOverpassElements(payload);
+    console.log(`[overpass] scope=${scope.label} subquery=${part.key} fetched=${partElements.length}`);
+    mergedElements.push(...partElements);
+  }
+
+  const deduped = dedupeElementsByOverpassIdentity(mergedElements);
+  console.log(
+    `[overpass] scope=${scope.label} nearby merged elements=${mergedElements.length} dedupedByOverpassId=${deduped.length}`
+  );
+
+  if (maxElements && deduped.length > maxElements) {
+    console.log(`[overpass] scope=${scope.label} applying --max-elements=${maxElements} to merged=${deduped.length}`);
+    return deduped.slice(0, maxElements);
+  }
+
+  return deduped;
 }
 
 async function runRegionImport(options: {
@@ -318,9 +378,7 @@ async function runRegionImport(options: {
   maxElements: number | null;
 }): Promise<RegionSummary> {
   const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements } = options;
-
-  const payload = await fetchOverpass({ scope, overpassUrl, maxElements });
-  const elements = parseOverpassElements(payload);
+  const elements = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose });
 
   console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
 
@@ -553,6 +611,7 @@ async function run() {
           console.log(
             `[overpass] scope=${scope.label} query scope reduced via around=${scope.around.lat},${scope.around.lng} radiusKm=${scope.around.radiusKm}`
           );
+          console.log(`[overpass] scope=${scope.label} using split nearby query strategy (multiple smaller Overpass requests)`);
         }
         if (options.maxElements) {
           console.log(`[overpass] scope=${scope.label} response capped by --max-elements=${options.maxElements}`);

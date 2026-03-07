@@ -38,7 +38,7 @@ Der Import ist bewusst lokal begrenzt (Area Query oder Nearby Radius), es wird *
 Allgemein:
 
 - `--limit=<n>` (begrenzt nur die lokale Weiterverarbeitung nach Normalisierung/Dedupe)
-- `--max-elements=<n>` (kürzt die Overpass-Response auf n Elemente direkt nach dem Fetch)
+- `--max-elements=<n>` (begrenzt die Fetch-Menge: im Nearby-Modus nach lokalem Merge der Teilabfragen)
 - `--dry-run` (keine DB Writes)
 - `--force` (ignoriert DB-Dublettenprüfung)
 - `--verbose`
@@ -60,6 +60,8 @@ Hinweise zu Kombinationen:
 
 - Nearby kann **nicht** mit `--bbox` oder `--test-mode` kombiniert werden.
 - Bei `--near=nievern` werden Center und Standardradius vorbelegt (können über `--center/--radius-km` überschrieben werden).
+- Nearby nutzt mehrere kleinere thematische Overpass-Teilabfragen (statt einer großen Sammelabfrage), merged die Ergebnisse lokal und dedupliziert nach OSM-ID.
+- Ziel davon ist eine robustere Radius-Suche in dichten Regionen (z. B. rund um Koblenz/Lahntal/Nievern).
 
 ## Nearby Beispiele (Nievern / Lahntal / Koblenz)
 

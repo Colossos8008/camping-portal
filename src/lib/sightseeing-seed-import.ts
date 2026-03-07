@@ -182,6 +182,12 @@ export type SightseeingCandidate = {
   reason: string;
 };
 
+export type NearbyQueryPart = {
+  key: string;
+  label: string;
+  clauses: string[];
+};
+
 function normalizeText(input: string): string {
   return input
     .normalize("NFKD")
@@ -415,6 +421,91 @@ ${areaScope}(
   nwr["building"~"abbey|cathedral|church|chapel|castle",i]${bboxClause};
   nwr["site_type"~"megalith|dolmen|menhir|archaeological",i]${bboxClause};
   nwr["megalith_type"]${bboxClause};
+);
+out center tags;
+`.trim();
+}
+
+const NEARBY_QUERY_PARTS: NearbyQueryPart[] = [
+  {
+    key: "nature_viewpoint",
+    label: "Natur/Aussicht/Küste/Viewpoint",
+    clauses: [
+      'nwr["tourism"="viewpoint"]',
+      'nwr["natural"]',
+      'nwr["tourism"="attraction"]["natural"]',
+      'nwr["tourism"="attraction"]["name"~"viewpoint|panorama|scenic|coast|cliff|cape|headland",i]',
+    ],
+  },
+  {
+    key: "fortress_ruins_castle",
+    label: "Fort/Fortress/Ruins/Castle/Ramparts",
+    clauses: [
+      'nwr["historic"~"castle|fort|fortress|ruins",i]',
+      'nwr["historic"="castle"]',
+      'nwr["ruins"="yes"]',
+      'nwr["building"~"castle",i]',
+      'nwr["name"~"ramparts",i]',
+    ],
+  },
+  {
+    key: "lighthouse_landmark",
+    label: "Lighthouse/Phare/Landmark",
+    clauses: [
+      'nwr["man_made"="lighthouse"]',
+      'nwr["tourism"="attraction"]["name"~"lighthouse|phare|landmark",i]',
+      'nwr["historic"]["name"~"lighthouse|phare|landmark",i]',
+    ],
+  },
+  {
+    key: "archaeological_megalithic",
+    label: "Archaeological/Megalithic/Prehistoric",
+    clauses: [
+      'nwr["historic"~"archaeological_site",i]',
+      'nwr["site_type"~"megalith|dolmen|menhir|archaeological|prehistoric",i]',
+      'nwr["megalith_type"]',
+      'nwr["name"~"dolmen|menhir|megalith|prehistoric",i]',
+    ],
+  },
+  {
+    key: "memorial_monument",
+    label: "Memorial/Historic/Monument",
+    clauses: [
+      'nwr["historic"~"memorial|monument",i]',
+      'nwr["heritage"]',
+      'nwr["tourism"="attraction"]["historic"]',
+      'nwr["name"~"memorial|monument",i]',
+    ],
+  },
+];
+
+export function getNearbyQueryParts(): NearbyQueryPart[] {
+  return NEARBY_QUERY_PARTS;
+}
+
+export function buildOverpassQueryFromClauses(input: {
+  region: RegionConfig;
+  clauses: string[];
+  options?: { bbox?: BoundingBox | null; around?: { lat: number; lng: number; radiusKm: number } | null };
+}): string {
+  const aroundClause = input.options?.around
+    ? `(around:${Math.round(input.options.around.radiusKm * 1_000)},${input.options.around.lat},${input.options.around.lng})`
+    : null;
+
+  const bboxClause = input.options?.bbox
+    ? `(${input.options.bbox.minLat},${input.options.bbox.minLon},${input.options.bbox.maxLat},${input.options.bbox.maxLon})`
+    : aroundClause ?? "(area.searchArea)";
+
+  const areaScope = input.options?.around
+    ? ""
+    : `area["ISO3166-2"="${input.region.iso3166_2}"]["admin_level"="4"]->.searchArea;\n`;
+
+  const body = input.clauses.map((clause) => `  ${clause}${bboxClause};`).join("\n");
+
+  return `
+[out:json][timeout:120];
+${areaScope}(
+${body}
 );
 out center tags;
 `.trim();

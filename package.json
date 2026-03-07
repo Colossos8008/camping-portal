@@ -18,7 +18,10 @@
     "verify:hero-type-scoring": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-type-scoring.ts",
     "verify:hero-candidate-selection": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-candidate-selection.ts",
     "verify:hero-autofill-ids-mode": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-hero-autofill-ids-mode.ts",
-    "verify:sightseeing-rating": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-sightseeing-rating.ts"
+    "verify:sightseeing-rating": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-sightseeing-rating.ts",
+    "import:sightseeing:seed": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/import-sightseeing-seed.ts",
+    "import:sightseeing:seed:normandie": "npm run import:sightseeing:seed -- --region=normandie",
+    "import:sightseeing:seed:bretagne": "npm run import:sightseeing:seed -- --region=bretagne"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

@@ -1,0 +1,293 @@
+export type TargetRegion = "normandie" | "bretagne";
+
+export type RegionConfig = {
+  key: TargetRegion;
+  label: string;
+  iso3166_2: string;
+  country: "France";
+};
+
+export const REGION_CONFIGS: Record<TargetRegion, RegionConfig> = {
+  normandie: {
+    key: "normandie",
+    label: "Normandie",
+    iso3166_2: "FR-NOR",
+    country: "France",
+  },
+  bretagne: {
+    key: "bretagne",
+    label: "Bretagne",
+    iso3166_2: "FR-BRE",
+    country: "France",
+  },
+};
+
+const NEGATIVE_TERMS = [
+  "amusement",
+  "theme_park",
+  "theme park",
+  "aquarium",
+  "shopping",
+  "mall",
+  "commercial",
+  "entertainment",
+  "indoor",
+  "family park",
+  "water_park",
+  "water park",
+  "gaming",
+  "cinema",
+  "escape game",
+  "laser game",
+  "playground",
+  "zoo",
+  "animal park",
+];
+
+const POSITIVE_TERMS = [
+  "abbey",
+  "archaeological",
+  "castle",
+  "cathedral",
+  "citadel",
+  "cliff",
+  "coast",
+  "coastal",
+  "dolmen",
+  "dune",
+  "fort",
+  "fortress",
+  "headland",
+  "heritage",
+  "historic",
+  "history",
+  "landmark",
+  "lighthouse",
+  "megalith",
+  "memorial",
+  "menhir",
+  "monument",
+  "old town",
+  "panorama",
+  "panoramic",
+  "ramparts",
+  "ruins",
+  "scenic",
+  "viewpoint",
+];
+
+export type OverpassElement = {
+  type: "node" | "way" | "relation";
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+};
+
+export type SightseeingCandidate = {
+  sourceId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string;
+  tags: string[];
+  source: "OSM/Overpass";
+  sourceRegion: TargetRegion;
+  country: "France";
+  reason: string;
+};
+
+function normalizeText(input: string): string {
+  return input
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeName(input: string): string {
+  return normalizeText(input);
+}
+
+export function parseOverpassElements(payload: unknown): OverpassElement[] {
+  if (!payload || typeof payload !== "object") return [];
+  const elements = (payload as { elements?: unknown }).elements;
+  if (!Array.isArray(elements)) return [];
+
+  const safe: OverpassElement[] = [];
+  for (const element of elements) {
+    if (!element || typeof element !== "object") continue;
+    const candidate = element as OverpassElement;
+    if (!["node", "way", "relation"].includes(String(candidate.type))) continue;
+    if (typeof candidate.id !== "number") continue;
+    safe.push(candidate);
+  }
+  return safe;
+}
+
+function getCoordinates(element: OverpassElement): { lat: number; lng: number } | null {
+  if (typeof element.lat === "number" && typeof element.lon === "number") {
+    return { lat: element.lat, lng: element.lon };
+  }
+  if (element.center && typeof element.center.lat === "number" && typeof element.center.lon === "number") {
+    return { lat: element.center.lat, lng: element.center.lon };
+  }
+  return null;
+}
+
+function isLikelyNegative(tags: Record<string, string>, searchableText: string): boolean {
+  const tagPairs = Object.entries(tags).map(([k, v]) => `${k}=${v}`.toLowerCase());
+
+  if (tags.tourism === "theme_park" || tags.tourism === "aquarium" || tags.leisure === "amusement_arcade") {
+    return true;
+  }
+
+  if (tags.shop || tags.commercial || tags.mall === "yes") {
+    return true;
+  }
+
+  return NEGATIVE_TERMS.some((term) => searchableText.includes(term) || tagPairs.some((pair) => pair.includes(term)));
+}
+
+function classifyCategory(tags: Record<string, string>, searchableText: string): string {
+  if (tags.man_made === "lighthouse") return "lighthouse";
+  if (["castle", "fort", "fortress"].includes(tags.historic ?? "")) return "castle_fortress";
+  if (tags.historic === "ruins" || tags.ruins === "yes") return "ruins";
+  if (["memorial", "monument"].includes(tags.historic ?? "")) return "memorial_monument";
+  if ((tags.historic ?? "").includes("archaeological") || (tags.site_type ?? "").includes("archaeological")) return "archaeological_site";
+  if ((tags.site_type ?? "").includes("megalith") || tags.megalith_type || searchableText.includes("dolmen") || searchableText.includes("menhir")) {
+    return "megalithic_site";
+  }
+  if (tags.tourism === "viewpoint" || searchableText.includes("viewpoint") || searchableText.includes("panorama")) return "viewpoint";
+  if (tags.natural || searchableText.includes("cliff") || searchableText.includes("coast")) return "nature_landmark";
+  if (["cathedral", "abbey", "church"].includes(tags.building ?? "") || searchableText.includes("cathedral") || searchableText.includes("abbey")) {
+    return "historic_architecture";
+  }
+  if (searchableText.includes("old town") || searchableText.includes("historic center") || searchableText.includes("historic centre")) {
+    return "historic_old_town";
+  }
+  return "landmark";
+}
+
+function collectTags(tags: Record<string, string>): string[] {
+  return Object.entries(tags)
+    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .map(([key, value]) => `${key}:${value}`)
+    .slice(0, 40);
+}
+
+function hasPositiveSignal(tags: Record<string, string>, searchableText: string): boolean {
+  if (tags.tourism === "attraction" || tags.tourism === "viewpoint") return true;
+  if (tags.historic || tags.heritage || tags.natural) return true;
+  if (tags.man_made === "lighthouse") return true;
+
+  return POSITIVE_TERMS.some((term) => searchableText.includes(term));
+}
+
+export function normalizeCandidate(element: OverpassElement, region: RegionConfig): SightseeingCandidate | null {
+  const tags = element.tags ?? {};
+  const name = String(tags.name ?? "").trim();
+  if (!name) return null;
+
+  const coords = getCoordinates(element);
+  if (!coords) return null;
+
+  const searchableText = normalizeText(
+    [
+      name,
+      tags.description,
+      tags.historic,
+      tags.natural,
+      tags.tourism,
+      tags.site_type,
+      tags.man_made,
+      tags.building,
+      tags["heritage:operator"],
+      tags.wikipedia,
+      tags.wikidata,
+      tags.place,
+      tags.seamark_type,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  if (isLikelyNegative(tags, searchableText)) return null;
+  if (!hasPositiveSignal(tags, searchableText)) return null;
+
+  const category = classifyCategory(tags, searchableText);
+
+  return {
+    sourceId: `osm:${element.type}/${element.id}`,
+    name,
+    lat: roundCoord(coords.lat),
+    lng: roundCoord(coords.lng),
+    category,
+    tags: collectTags(tags),
+    source: "OSM/Overpass",
+    sourceRegion: region.key,
+    country: "France",
+    reason: `OSM match category=${category}`,
+  };
+}
+
+function roundCoord(v: number): number {
+  return Math.round(v * 1_000_000) / 1_000_000;
+}
+
+export function buildOverpassQuery(region: RegionConfig): string {
+  return `
+[out:json][timeout:120];
+area["ISO3166-2"="${region.iso3166_2}"]["admin_level"="4"]->.searchArea;
+(
+  nwr["tourism"="attraction"](area.searchArea);
+  nwr["tourism"="viewpoint"](area.searchArea);
+  nwr["historic"](area.searchArea);
+  nwr["heritage"](area.searchArea);
+  nwr["natural"](area.searchArea);
+  nwr["man_made"="lighthouse"](area.searchArea);
+  nwr["historic"~"castle|fort|fortress|ruins|memorial|monument|archaeological_site",i](area.searchArea);
+  nwr["ruins"="yes"](area.searchArea);
+  nwr["building"~"abbey|cathedral|church|chapel|castle",i](area.searchArea);
+  nwr["site_type"~"megalith|dolmen|menhir|archaeological",i](area.searchArea);
+  nwr["megalith_type"](area.searchArea);
+);
+out center tags;
+`.trim();
+}
+
+function toRadians(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+export function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const earthRadius = 6_371_000;
+  const dLat = toRadians(bLat - aLat);
+  const dLng = toRadians(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadius * Math.asin(Math.sqrt(h));
+}
+
+export function areLikelySamePlace(input: {
+  nameA: string;
+  latA: number;
+  lngA: number;
+  nameB: string;
+  latB: number;
+  lngB: number;
+}): boolean {
+  const normA = normalizeName(input.nameA);
+  const normB = normalizeName(input.nameB);
+  const distance = distanceMeters(input.latA, input.lngA, input.latB, input.lngB);
+
+  if (distance <= 40) return true;
+  if (normA === normB && distance <= 250) return true;
+  if ((normA.includes(normB) || normB.includes(normA)) && distance <= 120) return true;
+
+  return false;
+}

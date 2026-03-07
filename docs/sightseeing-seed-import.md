@@ -1,4 +1,4 @@
-# Sightseeing Seed Import (Region + Nearby Radius + Highlight-Modus)
+# Sightseeing Seed Import (Region + Nearby Radius + Highlight-Modus + Curated Presets)
 
 Dieses Seed-Script importiert echte Sehenswürdigkeiten (OSM/Overpass) in `Place` mit `type=SEHENSWUERDIGKEIT`.
 
@@ -7,6 +7,7 @@ Unterstützte Modi:
 - **Region-Modus** (bestehend): Normandie / Bretagne über Overpass Area Query
 - **Nearby-Modus** (bestehend): Radius um expliziten Mittelpunkt (`--center` + `--radius-km`) oder Preset (`--near=nievern`)
 - **Highlight-Modus** (neu): fokussiert auf wenige Haupt-Sehenswürdigkeiten (`--highlight-mode` oder `--top-sights`)
+- **Curated-Preset-Modus** (neu): feste kuratierte Listen ohne Overpass (`--curated-set=...` oder `--preset=...`)
 
 ## Unterschied Nearby vs Highlight
 
@@ -73,6 +74,13 @@ Nearby-Modus:
 - optional: `--near=nievern` (Preset für lokalen Testfall)
 - optional: `--subqueries=<key1,key2,...>` (Alias: `--include-subqueries=...`, nur diese Nearby-Teilabfragen)
 
+Curated Presets:
+
+- `--curated-set=<preset-key>` (Alias: `--preset=<preset-key>`)
+- Verfügbar: `nievern-highlights`
+- Läuft vollständig **ohne Overpass** (kein API-Call nötig)
+
+
 Hinweise zu Kombinationen:
 
 - Nearby kann **nicht** mit `--bbox` oder `--test-mode` kombiniert werden.
@@ -80,6 +88,7 @@ Hinweise zu Kombinationen:
 - Nearby nutzt mehrere kleinere thematische Overpass-Teilabfragen, merged lokal und dedupliziert nach OSM-ID.
 - Nearby-Teilabfragen dürfen teilweise fehlschlagen (z. B. 429/504/Timeout): erfolgreiche Teilabfragen werden trotzdem weiterverarbeitet.
 - Nur wenn **alle** ausgewählten Nearby-Teilabfragen fehlschlagen, gilt der Scope als fehlgeschlagen.
+- Curated Presets können nicht mit Overpass-spezifischen Parametern kombiniert werden (`--near`, `--center`, `--radius-km`, `--bbox`, `--test-mode`, `--subqueries`, `--max-elements`).
 
 ## Beispiel Koblenz/Nievern
 
@@ -99,6 +108,15 @@ Nievern Highlight Dry-Run:
 Echter Highlight-Import:
 
 - `npm run import:sightseeing:seed -- --near=nievern --highlight-mode --limit=10 --verbose`
+
+Curated Dry-Run (ohne Overpass):
+
+- `npm run import:sightseeing:seed -- --curated-set=nievern-highlights --dry-run --verbose`
+- Shortcut: `npm run import:sightseeing:seed:nievern:curated -- --dry-run --verbose`
+
+Curated Echt-Import (ohne Overpass):
+
+- `npm run import:sightseeing:seed:nievern:curated -- --verbose`
 
 ## Overpass Endpoint (Standard + Fallback)
 

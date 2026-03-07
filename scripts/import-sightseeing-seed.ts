@@ -16,6 +16,7 @@ import {
   type SightseeingCandidate,
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
+import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets.ts";
 
 const REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -32,6 +33,7 @@ const NEAR_PRESETS = {
 
 type CliOptions = {
   region: TargetRegion | "all";
+  curatedSet: string | null;
   limit: number | null;
   dryRun: boolean;
   force: boolean;
@@ -67,6 +69,7 @@ type RankedCandidate = {
 
 type RegionSummary = {
   region: string;
+  sourceMode: "overpass" | "curated";
   fetched: number;
   normalized: number;
   afterDedupe: number;
@@ -131,6 +134,14 @@ function parseCliArgs(argv: string[]): CliOptions {
   const radiusKm = radiusRaw ? Number(radiusRaw) : null;
   if (radiusRaw && (!Number.isFinite(radiusKm) || Number(radiusKm) <= 0)) {
     throw new Error("Invalid --radius-km value. Must be a positive number.");
+  }
+
+  const curatedSetRaw = (readValue("--curated-set") ?? readValue("--preset"))?.toLowerCase() ?? null;
+  if (curatedSetRaw) {
+    const allowedCuratedSets = new Set(listCuratedPresetKeys());
+    if (!allowedCuratedSets.has(curatedSetRaw)) {
+      throw new Error(`Invalid curated preset. Allowed: ${Array.from(allowedCuratedSets).join(" | ")}`);
+    }
   }
 
   const regionRaw = (readValue("--region") ?? "all").toLowerCase();
@@ -199,6 +210,15 @@ function parseCliArgs(argv: string[]): CliOptions {
     throw new Error("Cannot combine nearby mode (--center/--radius-km) with --test-mode.");
   }
 
+  const hasCuratedSet = Boolean(curatedSetRaw);
+  if (hasCuratedSet) {
+    if (hasNearby || bbox || testMode || subqueriesRaw || maxElementsRaw) {
+      throw new Error(
+        "Curated preset mode (--curated-set / --preset) cannot be combined with --center/--radius-km/--near, --bbox, --test-mode, --subqueries, or --max-elements."
+      );
+    }
+  }
+
   const highlightMode = args.has("--highlight-mode") || args.has("--top-sights");
 
   const availableNearbySubqueryKeys = new Set(getNearbyQueryParts(highlightMode ? "highlight" : "default").map((part) => part.key));
@@ -222,6 +242,7 @@ function parseCliArgs(argv: string[]): CliOptions {
 
   return {
     region: regionRaw as CliOptions["region"],
+    curatedSet: curatedSetRaw,
     limit: limit ? Math.floor(limit) : null,
     dryRun: args.has("--dry-run"),
     force: args.has("--force"),
@@ -474,26 +495,38 @@ async function runRegionImport(options: {
   maxElements: number | null;
   selectedSubqueries: string[] | null;
   importMode: ImportMode;
+  curatedSet: string | null;
 }): Promise<RegionSummary> {
-  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries, importMode } = options;
-  const fetchedResult = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries, importMode });
+  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries, importMode, curatedSet } = options;
+
+  const sourceMode: RegionSummary["sourceMode"] = curatedSet ? "curated" : "overpass";
+
+  const fetchedResult = curatedSet
+    ? { elements: [] as OverpassElement[], successfulSubqueries: 0, failedSubqueries: 0 }
+    : await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries, importMode });
   const { elements, successfulSubqueries, failedSubqueries } = fetchedResult;
 
-  console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
+  const normalized = curatedSet
+    ? getCuratedPresetCandidates(curatedSet)
+    : elements
+        .map((el) => {
+          if (!verbose) {
+            return normalizeCandidate(el, scope.regionConfig);
+          }
+          const rawName = String(el.tags?.name ?? "").trim() || `${el.type}/${el.id}`;
+          return normalizeCandidate(el, scope.regionConfig, {
+            onReject: (reason) => {
+              console.log(`skip candidate: ${rawName} [${el.type}/${el.id}] -> ${reason}`);
+            },
+          });
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-  const normalized = elements
-    .map((el) => {
-      if (!verbose) {
-        return normalizeCandidate(el, scope.regionConfig);
-      }
-      const rawName = String(el.tags?.name ?? "").trim() || `${el.type}/${el.id}`;
-      return normalizeCandidate(el, scope.regionConfig, {
-        onReject: (reason) => {
-          console.log(`skip candidate: ${rawName} [${el.type}/${el.id}] -> ${reason}`);
-        },
-      });
-    })
-    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  if (curatedSet) {
+    console.log(`[pipeline:${scope.label}] curated preset=${curatedSet} candidates=${normalized.length}`);
+  } else {
+    console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
+  }
 
   const uniqueBySource = new Map<string, (typeof normalized)[number]>();
   for (const candidate of normalized) {
@@ -655,7 +688,8 @@ async function runRegionImport(options: {
 
   return {
     region: scope.label,
-    fetched: elements.length,
+    sourceMode,
+    fetched: curatedSet ? normalized.length : elements.length,
     normalized: normalized.length,
     afterDedupe: rankedAccepted.length,
     processed: effectiveList.length,
@@ -669,6 +703,21 @@ async function runRegionImport(options: {
 }
 
 function getScopes(options: CliOptions): QueryScope[] {
+  if (options.curatedSet) {
+    return [
+      {
+        regionConfig: {
+          key: options.curatedSet,
+          label: options.curatedSet,
+          country: "Germany",
+        },
+        bbox: null,
+        around: null,
+        label: `curated:${options.curatedSet}`,
+      },
+    ];
+  }
+
   if (options.center && options.radiusKm) {
     const nearLabel = options.nearPreset ? `near:${options.nearPreset}` : "nearby";
     return [
@@ -718,25 +767,29 @@ async function run() {
     testMode: options.testMode,
     subqueries: options.subqueries,
     importMode: options.importMode,
+    curatedSet: options.curatedSet,
   });
 
   try {
     for (const scope of scopes) {
       try {
         console.log(`\n--- scope ${scope.label} ---`);
-        if (scope.bbox) {
+        if (!options.curatedSet && scope.bbox) {
           console.log(
             `[overpass] scope=${scope.label} query scope reduced via bbox=${scope.bbox.minLon},${scope.bbox.minLat},${scope.bbox.maxLon},${scope.bbox.maxLat}`
           );
         }
-        if (scope.around) {
+        if (!options.curatedSet && scope.around) {
           console.log(
             `[overpass] scope=${scope.label} query scope reduced via around=${scope.around.lat},${scope.around.lng} radiusKm=${scope.around.radiusKm}`
           );
           console.log(`[overpass] scope=${scope.label} using split nearby query strategy (multiple smaller Overpass requests)`);
         }
-        if (options.maxElements) {
+        if (!options.curatedSet && options.maxElements) {
           console.log(`[overpass] scope=${scope.label} response capped by --max-elements=${options.maxElements}`);
+        }
+        if (options.curatedSet) {
+          console.log(`[curated] scope=${scope.label} preset=${options.curatedSet} (without Overpass)`);
         }
 
         const summary = await runRegionImport({
@@ -750,6 +803,7 @@ async function run() {
           maxElements: options.maxElements,
           selectedSubqueries: options.subqueries,
           importMode: options.importMode,
+          curatedSet: options.curatedSet,
         });
         summaries.push(summary);
       } catch (error: any) {
@@ -784,7 +838,7 @@ async function run() {
   console.log("\n=== sightseeing-seed-import summary ===");
   for (const item of summaries) {
     console.log(
-      `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError} successfulSubqueries=${item.successfulSubqueries} failedSubqueries=${item.failedSubqueries}`
+      `${item.region} [${item.sourceMode}]: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError} successfulSubqueries=${item.successfulSubqueries} failedSubqueries=${item.failedSubqueries}`
     );
   }
   if (failedScopes.length > 0) {

@@ -349,13 +349,18 @@ export default function MapPage() {
   ]);
 
   function scoreForListOrSort(p: any): number {
-    if (!isTsRelevantType(p?.type)) return 0;
+    if (p?.type === "SEHENSWUERDIGKEIT") {
+      const sightScore = Number(p?.sightseeingTotalScore);
+      return Number.isFinite(sightScore) ? sightScore : Number.NEGATIVE_INFINITY;
+    }
+
+    if (!isTsRelevantType(p?.type)) return Number.NEGATIVE_INFINITY;
 
     const t21 = ts21TotalFromDetail(p?.ts21);
     if (t21 != null) return t21;
 
     const t1 = p?.ratingDetail?.totalPoints;
-    return typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
+    return typeof t1 === "number" && Number.isFinite(t1) ? t1 : Number.NEGATIVE_INFINITY;
   }
 
   const sortedPlaces = useMemo(() => {

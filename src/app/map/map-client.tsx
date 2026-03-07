@@ -25,6 +25,10 @@ type Place = {
   heroImageUrl?: string | null;
   thumbnailImageId?: number | null;
   ratingDetail?: { totalPoints?: number | null } | null;
+  sightseeingTotalScore?: number | null;
+  sightRelevanceType?: string | null;
+  sightVisitModePrimary?: string | null;
+  sightCategory?: string | null;
 
   distanceKm?: number | null;
 };
@@ -178,9 +182,16 @@ function hoverTooltipHtml(p: Place) {
   const hero = heroFilename(p);
   const heroUrl = hero ? publicUrlForObjectKey(hero) : null;
 
-  const score = Number(p.ratingDetail?.totalPoints ?? 0);
+  const isSightseeing = p.type === "SEHENSWUERDIGKEIT";
+  const score = isSightseeing
+    ? (typeof p.sightseeingTotalScore === "number" && Number.isFinite(p.sightseeingTotalScore) ? p.sightseeingTotalScore : null)
+    : (() => { const v = Number(p.ratingDetail?.totalPoints ?? 0); return Number.isFinite(v) ? v : null; })();
+
   const name = escapeHtml(clampText(p.name ?? ""));
   const typeText = escapeHtml(String(p.type ?? ""));
+  const category = isSightseeing && typeof p.sightCategory === "string" && p.sightCategory.trim().length > 0 ? p.sightCategory.trim() : null;
+  const relevance = isSightseeing && typeof p.sightRelevanceType === "string" && p.sightRelevanceType.trim().length > 0 ? p.sightRelevanceType.trim() : null;
+  const visitMode = isSightseeing && typeof p.sightVisitModePrimary === "string" && p.sightVisitModePrimary.trim().length > 0 ? p.sightVisitModePrimary.trim() : null;
 
   const dist =
     typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm)
@@ -221,6 +232,16 @@ function hoverTooltipHtml(p: Place) {
         ${typeText}
       </div>
 
+      ${
+        isSightseeing && (category || relevance || visitMode)
+          ? `<div style="margin-top:6px;font-size:11px;opacity:0.8;display:flex;gap:6px;flex-wrap:wrap;">
+              ${category ? `<span>🏷️ ${escapeHtml(category)}</span>` : ""}
+              ${relevance ? `<span>🎯 ${escapeHtml(relevance)}</span>` : ""}
+              ${visitMode ? `<span>🧭 ${escapeHtml(visitMode)}</span>` : ""}
+            </div>`
+          : ""
+      }
+
       <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div style="
           display:flex;align-items:center;gap:6px;
@@ -233,7 +254,7 @@ function hoverTooltipHtml(p: Place) {
           line-height:1;
         ">
           <span style="font-size:14px;">🍰</span>
-          <span>${score}/14</span>
+          <span>${score != null ? `${score}/${isSightseeing ? 100 : 14}` : "—"}</span>
         </div>
 
         ${

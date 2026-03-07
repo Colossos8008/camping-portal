@@ -638,6 +638,7 @@ async function runRegionImport(options: {
             sightTags: candidate.tags,
             sightRegion: candidate.sourceRegion,
             sightCountry: candidate.country,
+            ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
           },
           select: { id: true },
         });
@@ -666,6 +667,7 @@ async function runRegionImport(options: {
           sightTags: candidate.tags,
           sightRegion: candidate.sourceRegion,
           sightCountry: candidate.country,
+          heroImageUrl: candidate.heroImageUrl ?? null,
         },
         select: { id: true },
       });

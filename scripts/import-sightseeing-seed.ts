@@ -58,6 +58,7 @@ type RegionSummary = {
   afterDedupe: number;
   processed: number;
   created: number;
+  updated: number;
   skippedDuplicate: number;
   skippedError: number;
 };
@@ -353,6 +354,7 @@ async function runRegionImport(options: {
   }
 
   let created = 0;
+  let updated = 0;
   let skippedDuplicate = 0;
   let skippedError = 0;
 
@@ -373,6 +375,40 @@ async function runRegionImport(options: {
         skippedDuplicate += 1;
         if (verbose) {
           console.log(`skip db-duplicate: ${candidate.name} -> #${duplicateInDb.id} ${duplicateInDb.name}`);
+        }
+        continue;
+      }
+
+      if (duplicateInDb && force) {
+        if (dryRun) {
+          updated += 1;
+          if (verbose) {
+            console.log(
+              `[dry-run] would update existing place #${duplicateInDb.id}: ${duplicateInDb.name} <- ${candidate.name} (${candidate.category})`
+            );
+          }
+          continue;
+        }
+
+        await prisma.place.update({
+          where: { id: duplicateInDb.id },
+          data: {
+            sightSource: candidate.source,
+            sightExternalId: candidate.sourceId,
+            sightCategory: candidate.category,
+            sightDescription: candidate.reason,
+            sightTags: candidate.tags,
+            sightRegion: candidate.sourceRegion,
+            sightCountry: candidate.country,
+          },
+          select: { id: true },
+        });
+
+        updated += 1;
+        if (verbose) {
+          console.log(
+            `updated #${duplicateInDb.id}: ${duplicateInDb.name} (${candidate.category}) [${candidate.sourceId}]`
+          );
         }
         continue;
       }
@@ -427,6 +463,7 @@ async function runRegionImport(options: {
     afterDedupe: accepted.length,
     processed: effectiveList.length,
     created,
+    updated,
     skippedDuplicate,
     skippedError,
   };
@@ -512,6 +549,7 @@ async function run() {
       afterDedupe: acc.afterDedupe + item.afterDedupe,
       processed: acc.processed + item.processed,
       created: acc.created + item.created,
+      updated: acc.updated + item.updated,
       skippedDuplicate: acc.skippedDuplicate + item.skippedDuplicate,
       skippedError: acc.skippedError + item.skippedError,
     }),
@@ -521,6 +559,7 @@ async function run() {
       afterDedupe: 0,
       processed: 0,
       created: 0,
+      updated: 0,
       skippedDuplicate: 0,
       skippedError: 0,
     }
@@ -529,14 +568,14 @@ async function run() {
   console.log("\n=== sightseeing-seed-import summary ===");
   for (const item of summaries) {
     console.log(
-      `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} duplicates=${item.skippedDuplicate} errors=${item.skippedError}`
+      `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError}`
     );
   }
   if (failedRegions.length > 0) {
     console.warn(`FAILED REGIONS: ${failedRegions.join(", ")}`);
   }
   console.log(
-    `TOTAL: fetched=${total.fetched} normalized=${total.normalized} afterDedupe=${total.afterDedupe} processed=${total.processed} created=${total.created} duplicates=${total.skippedDuplicate} errors=${total.skippedError}`
+    `TOTAL: fetched=${total.fetched} normalized=${total.normalized} afterDedupe=${total.afterDedupe} processed=${total.processed} created=${total.created} updated=${total.updated} duplicates=${total.skippedDuplicate} errors=${total.skippedError}`
   );
 
   if (!options.dryRun) {

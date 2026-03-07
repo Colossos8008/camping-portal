@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName } from "@/lib/hero-image";
+import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName, isWikimediaSpecialFilePathUrl } from "@/lib/hero-image";
 
 export const runtime = "nodejs";
 
@@ -53,6 +53,28 @@ async function streamGooglePhoto(photoResourceName: string, apiKey: string): Pro
   return new Response(upstream.body, { status: 200, headers });
 }
 
+async function streamRemoteImage(url: string): Promise<Response | null> {
+  const upstream = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "image/*,*/*;q=0.8",
+    },
+    cache: "no-store",
+    redirect: "follow",
+  });
+
+  if (!upstream.ok || !upstream.body) return null;
+
+  const contentType = upstream.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("image/")) return null;
+
+  const headers = new Headers();
+  headers.set("Content-Type", contentType.split(";")[0]?.trim() || "image/jpeg");
+  headers.set("Cache-Control", cacheControl(3600 * 24 * 7));
+
+  return new Response(upstream.body, { status: 200, headers });
+}
+
 function redirectTo(req: NextRequest, value: string, cacheSeconds: number): NextResponse {
   const target = value.startsWith("/") ? new URL(value, req.nextUrl.origin) : new URL(value);
   const response = NextResponse.redirect(target, 307);
@@ -89,6 +111,15 @@ export async function GET(req: NextRequest) {
   }
 
   if (heroImageUrl) {
+    if (isWikimediaSpecialFilePathUrl(heroImageUrl)) {
+      try {
+        const response = await streamRemoteImage(heroImageUrl);
+        if (response) return response;
+      } catch {
+        // keep existing fallback behavior
+      }
+    }
+
     if (heroImageUrl.startsWith("/")) return redirectTo(req, heroImageUrl, 3600 * 24);
     if (isHttpUrl(heroImageUrl)) return redirectTo(req, heroImageUrl, 3600 * 24);
   }

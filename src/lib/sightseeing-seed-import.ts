@@ -561,6 +561,9 @@ export function getNearbyQueryParts(mode: ImportMode = "default"): NearbyQueryPa
 
 const HIGHLIGHT_NAME_SIGNALS = [
   { pattern: /\b(deutsches\s+eck|deutsche\s+eck)\b/, score: 10 },
+  { pattern: /\b(kurfuerstliches\s+schloss|kurfurstliches\s+schloss|kurfürstliches\s+schloss)\b/, score: 7 },
+  { pattern: /\b(basilika\s+st\.?\s?kastor|st\.?\s?kastor)\b/, score: 6 },
+  { pattern: /\b(schloss\s+sayn)\b/, score: 5 },
   { pattern: /\b(citadel|zitadelle|fortress|festung)\b/, score: 9 },
   { pattern: /\b(castle|schloss|burg|palace)\b/, score: 8 },
   { pattern: /\b(abbey|abtei|monastery|kloster|cathedral|dom)\b/, score: 8 },

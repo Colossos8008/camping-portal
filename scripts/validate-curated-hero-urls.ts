@@ -63,12 +63,17 @@ async function main() {
     const marker = result.ok ? "ok" : "failed";
     const status = result.status ?? "-";
     const type = result.contentType ?? "-";
+    const finalUrl = result.finalUrl ?? "-";
     const extra = result.error ? ` error=${result.error}` : "";
-    console.log(`${marker}\t${result.key}\tstatus=${status}\tcontent-type=${type}\turl=${result.url}${extra}`);
+    console.log(`${marker}\t${result.key}\tstatus=${status}\tcontent-type=${type}\turl=${result.url}\tfinal=${finalUrl}${extra}`);
   }
 
   const failed = results.filter((item) => !item.ok);
+  const networkErrors = failed.filter((item) => item.error && item.status === null);
   console.log(`\nsummary: total=${results.length} ok=${results.length - failed.length} failed=${failed.length}`);
+  if (networkErrors.length > 0) {
+    console.log(`note: ${networkErrors.length} failed requests had network/transport errors before receiving an HTTP status.`);
+  }
 
   if (failed.length > 0) {
     process.exitCode = 1;

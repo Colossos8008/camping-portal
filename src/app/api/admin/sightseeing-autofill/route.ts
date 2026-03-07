@@ -85,14 +85,25 @@ function parseQuery(searchParams: URLSearchParams): {
   dryRun?: boolean;
   force?: boolean;
 } {
+  const getQueryValue = (key: string): string | null => {
+    const direct = searchParams.get(key);
+    if (direct != null) return direct;
+
+    const loweredKey = key.toLowerCase();
+    for (const [entryKey, entryValue] of searchParams.entries()) {
+      if (entryKey.toLowerCase() === loweredKey) return entryValue;
+    }
+    return null;
+  };
+
   return {
-    limit: parsePositiveInt(searchParams.get("limit")),
-    offset: parsePositiveInt(searchParams.get("offset")),
-    cursor: parsePositiveInt(searchParams.get("cursor")),
-    ids: parseIds(searchParams.get("ids")),
-    type: parseType(searchParams.get("type")),
-    dryRun: parseBoolean(searchParams.get("dryRun")),
-    force: parseBoolean(searchParams.get("force")),
+    limit: parsePositiveInt(getQueryValue("limit")),
+    offset: parsePositiveInt(getQueryValue("offset")),
+    cursor: parsePositiveInt(getQueryValue("cursor")),
+    ids: parseIds(getQueryValue("ids")),
+    type: parseType(getQueryValue("type")),
+    dryRun: parseBoolean(getQueryValue("dryRun")),
+    force: parseBoolean(getQueryValue("force")),
   };
 }
 

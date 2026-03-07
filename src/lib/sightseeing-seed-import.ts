@@ -180,6 +180,7 @@ export type SightseeingCandidate = {
   sourceRegion: string;
   country: string;
   reason: string;
+  heroImageUrl?: string;
 };
 
 export type NearbyQueryPart = {

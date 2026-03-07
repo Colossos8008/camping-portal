@@ -55,12 +55,15 @@ Nearby-Modus (neu):
 - `--center=<lat,lng>`
 - `--radius-km=<number>`
 - optional: `--near=nievern` (Preset für lokalen Testfall)
+- optional: `--subqueries=<key1,key2,...>` (Alias: `--include-subqueries=...`, nur diese Nearby-Teilabfragen ausführen)
 
 Hinweise zu Kombinationen:
 
 - Nearby kann **nicht** mit `--bbox` oder `--test-mode` kombiniert werden.
 - Bei `--near=nievern` werden Center und Standardradius vorbelegt (können über `--center/--radius-km` überschrieben werden).
 - Nearby nutzt mehrere kleinere thematische Overpass-Teilabfragen (statt einer großen Sammelabfrage), merged die Ergebnisse lokal und dedupliziert nach OSM-ID.
+- Nearby-Teilabfragen dürfen teilweise fehlschlagen (z. B. 429/504/Timeout): erfolgreiche Teilabfragen werden trotzdem gemerged und weiterverarbeitet.
+- Nur wenn **alle** ausgewählten Nearby-Teilabfragen fehlschlagen, gilt der Scope als fehlgeschlagen.
 - Ziel davon ist eine robustere Radius-Suche in dichten Regionen (z. B. rund um Koblenz/Lahntal/Nievern).
 
 ## Nearby Beispiele (Nievern / Lahntal / Koblenz)

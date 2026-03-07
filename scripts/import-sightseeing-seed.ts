@@ -5,6 +5,7 @@ import {
   buildOverpassQuery,
   buildOverpassQueryFromClauses,
   getNearbyQueryParts,
+  normalizeName,
   normalizeCandidate,
   parseOverpassElements,
   REGION_CONFIGS,
@@ -96,6 +97,47 @@ type FetchScopeResult = {
   successfulSubqueries: number;
   failedSubqueries: number;
 };
+
+function tokenSet(name: string): Set<string> {
+  return new Set(
+    normalizeName(name)
+      .split(" ")
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 3)
+  );
+}
+
+function curatedNameSimilarity(nameA: string, nameB: string): number {
+  const a = tokenSet(nameA);
+  const b = tokenSet(nameB);
+  if (a.size === 0 || b.size === 0) return 0;
+  let overlap = 0;
+  for (const token of a) {
+    if (b.has(token)) overlap += 1;
+  }
+  const union = new Set([...a, ...b]).size;
+  return union > 0 ? overlap / union : 0;
+}
+
+function isCuratedIdentityMismatch(existing: ExistingPlace, candidate: SightseeingCandidate): boolean {
+  const normExisting = normalizeName(existing.name);
+  const normCandidate = normalizeName(candidate.name);
+  if (normExisting === normCandidate) return false;
+
+  const similarity = curatedNameSimilarity(existing.name, candidate.name);
+  if (similarity >= 0.8) return false;
+
+  const distanceIsVeryClose = areLikelySamePlace({
+    nameA: existing.name,
+    latA: existing.lat,
+    lngA: existing.lng,
+    nameB: candidate.name,
+    latB: candidate.lat,
+    lngB: candidate.lng,
+  });
+
+  return !distanceIsVeryClose || similarity < 0.5;
+}
 
 type QueryScope = {
   regionConfig: RegionConfig;
@@ -550,8 +592,11 @@ async function runRegionImport(options: {
     const duplicateInBatch = seenInBatch.find((x) => {
       const bothCurated = isCuratedCandidate && x.source === "curated-preset";
       if (bothCurated) {
-        if (x.sourceId !== candidate.sourceId) return false;
-        return true;
+        return x.sourceId === candidate.sourceId;
+      }
+
+      if (isCuratedCandidate || x.source === "curated-preset") {
+        return false;
       }
 
       return areLikelySamePlace({
@@ -607,63 +652,84 @@ async function runRegionImport(options: {
 
   for (const ranked of effectiveList) {
     const candidate = ranked.candidate;
+    const isCuratedCandidate = candidate.source === "curated-preset";
     try {
       const matchByExternalId = existingRows.find(
         (existing) => existing.sightExternalId && existing.sightExternalId === candidate.sourceId
       );
 
       if (matchByExternalId) {
-        if (dryRun) {
+        const curatedMismatch =
+          isCuratedCandidate &&
+          typeof matchByExternalId.sightExternalId === "string" &&
+          matchByExternalId.sightExternalId.startsWith("curated:") &&
+          isCuratedIdentityMismatch(matchByExternalId, candidate);
+
+        if (curatedMismatch) {
+          skippedDuplicate += 1;
+          if (verbose) {
+            console.warn(
+              `[curated-repair] mismatch on sightExternalId ${candidate.sourceId}: keep existing #${matchByExternalId.id} (${matchByExternalId.name}) and create separate place for ${candidate.name}`
+            );
+          }
+        } else {
+          if (dryRun) {
+            updated += 1;
+            if (verbose) {
+              console.log(
+                `[dry-run] would upsert by sightExternalId #${matchByExternalId.id}: ${matchByExternalId.name} <- ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
+              );
+            }
+            continue;
+          }
+
+          await prisma.place.update({
+            where: { id: matchByExternalId.id },
+            data: {
+              name: candidate.name,
+              lat: candidate.lat,
+              lng: candidate.lng,
+              sightSource: candidate.source,
+              sightExternalId: candidate.sourceId,
+              sightCategory: candidate.category,
+              sightDescription: candidate.reason,
+              sightTags: candidate.tags,
+              sightRegion: candidate.sourceRegion,
+              sightCountry: candidate.country,
+              ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+            },
+            select: { id: true },
+          });
+
+          matchByExternalId.name = candidate.name;
+          matchByExternalId.lat = candidate.lat;
+          matchByExternalId.lng = candidate.lng;
+
           updated += 1;
           if (verbose) {
             console.log(
-              `[dry-run] would upsert by sightExternalId #${matchByExternalId.id}: ${matchByExternalId.name} <- ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
+              `updated by sightExternalId #${matchByExternalId.id}: ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
             );
           }
           continue;
         }
-
-        await prisma.place.update({
-          where: { id: matchByExternalId.id },
-          data: {
-            name: candidate.name,
-            lat: candidate.lat,
-            lng: candidate.lng,
-            sightSource: candidate.source,
-            sightExternalId: candidate.sourceId,
-            sightCategory: candidate.category,
-            sightDescription: candidate.reason,
-            sightTags: candidate.tags,
-            sightRegion: candidate.sourceRegion,
-            sightCountry: candidate.country,
-            ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
-          },
-          select: { id: true },
-        });
-
-        matchByExternalId.name = candidate.name;
-        matchByExternalId.lat = candidate.lat;
-        matchByExternalId.lng = candidate.lng;
-
-        updated += 1;
-        if (verbose) {
-          console.log(
-            `updated by sightExternalId #${matchByExternalId.id}: ${candidate.name} (${candidate.category}) [${candidate.sourceId}]`
-          );
-        }
-        continue;
       }
 
-      const duplicateInDb = existingRows.find((existing) =>
-        areLikelySamePlace({
+      const duplicateInDb = existingRows.find((existing) => {
+        if (isCuratedCandidate) {
+          if (existing.sightExternalId && existing.sightExternalId !== candidate.sourceId) return false;
+          if (existing.sightExternalId === candidate.sourceId) return true;
+        }
+
+        return areLikelySamePlace({
           nameA: existing.name,
           latA: existing.lat,
           lngA: existing.lng,
           nameB: candidate.name,
           latB: candidate.lat,
           lngB: candidate.lng,
-        })
-      );
+        });
+      });
 
       if (duplicateInDb && !force) {
         skippedDuplicate += 1;
@@ -672,6 +738,15 @@ async function runRegionImport(options: {
       }
 
       if (duplicateInDb && force) {
+        if (isCuratedCandidate && duplicateInDb.sightExternalId && duplicateInDb.sightExternalId !== candidate.sourceId) {
+          skippedDuplicate += 1;
+          if (verbose) {
+            console.log(
+              `[curated-protect] skip forced merge: ${candidate.sourceId} would overwrite #${duplicateInDb.id} (${duplicateInDb.sightExternalId})`
+            );
+          }
+          continue;
+        }
         if (dryRun) {
           updated += 1;
           if (verbose) {

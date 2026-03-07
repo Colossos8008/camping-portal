@@ -40,6 +40,7 @@ type CliOptions = {
   center: { lat: number; lng: number } | null;
   radiusKm: number | null;
   nearPreset: keyof typeof NEAR_PRESETS | null;
+  subqueries: string[] | null;
 };
 
 type ExistingPlace = {
@@ -65,6 +66,22 @@ type RegionSummary = {
   updated: number;
   skippedDuplicate: number;
   skippedError: number;
+  successfulSubqueries: number;
+  failedSubqueries: number;
+};
+
+type NearbySubqueryStatus = {
+  key: string;
+  label: string;
+  success: boolean;
+  fetched: number;
+  error?: string;
+};
+
+type FetchScopeResult = {
+  elements: OverpassElement[];
+  successfulSubqueries: number;
+  failedSubqueries: number;
 };
 
 type QueryScope = {
@@ -142,6 +159,7 @@ function parseCliArgs(argv: string[]): CliOptions {
   }
 
   const testMode = args.has("--test-mode");
+  const subqueriesRaw = readValue("--subqueries") ?? readValue("--include-subqueries");
 
   const overpassUrlRaw = readValue("--overpass-url") ?? process.env.OVERPASS_URL ?? DEFAULT_OVERPASS_URL;
   const overpassUrl = overpassUrlRaw.trim();
@@ -172,6 +190,25 @@ function parseCliArgs(argv: string[]): CliOptions {
     throw new Error("Cannot combine nearby mode (--center/--radius-km) with --test-mode.");
   }
 
+  const availableNearbySubqueryKeys = new Set(getNearbyQueryParts().map((part) => part.key));
+  const subqueries = subqueriesRaw
+    ? Array.from(new Set(subqueriesRaw.split(",").map((item) => item.trim()).filter(Boolean)))
+    : null;
+  if (subqueries && subqueries.length === 0) {
+    throw new Error("Invalid --subqueries value. Provide a comma-separated list of nearby subquery keys.");
+  }
+  if (subqueries) {
+    const invalidSubqueries = subqueries.filter((key) => !availableNearbySubqueryKeys.has(key));
+    if (invalidSubqueries.length > 0) {
+      throw new Error(
+        `Invalid nearby subquery keys: ${invalidSubqueries.join(", ")}. Allowed: ${Array.from(availableNearbySubqueryKeys).join(", ")}`
+      );
+    }
+    if (!hasNearby) {
+      throw new Error("--subqueries / --include-subqueries can only be used in nearby mode (--center/--radius-km or --near). ");
+    }
+  }
+
   return {
     region: regionRaw as CliOptions["region"],
     limit: limit ? Math.floor(limit) : null,
@@ -185,6 +222,7 @@ function parseCliArgs(argv: string[]): CliOptions {
     center,
     radiusKm: effectiveRadius,
     nearPreset,
+    subqueries,
   };
 }
 
@@ -322,8 +360,9 @@ async function fetchScopeElements(input: {
   overpassUrl: string;
   maxElements: number | null;
   verbose: boolean;
-}): Promise<OverpassElement[]> {
-  const { scope, overpassUrl, maxElements, verbose } = input;
+  selectedSubqueries: string[] | null;
+}): Promise<FetchScopeResult> {
+  const { scope, overpassUrl, maxElements, verbose, selectedSubqueries } = input;
 
   if (!scope.around) {
     const query = buildOverpassQuery(scope.regionConfig, { bbox: scope.bbox, around: scope.around });
@@ -331,13 +370,24 @@ async function fetchScopeElements(input: {
     const elements = parseOverpassElements(payload);
     if (maxElements && elements.length > maxElements) {
       console.log(`[overpass] scope=${scope.label} applying --max-elements=${maxElements} to fetched=${elements.length}`);
-      return elements.slice(0, maxElements);
+      return { elements: elements.slice(0, maxElements), successfulSubqueries: 0, failedSubqueries: 0 };
     }
-    return elements;
+    return { elements, successfulSubqueries: 0, failedSubqueries: 0 };
   }
 
   const mergedElements: OverpassElement[] = [];
-  const parts = getNearbyQueryParts();
+  const allParts = getNearbyQueryParts();
+  const parts = selectedSubqueries ? allParts.filter((part) => selectedSubqueries.includes(part.key)) : allParts;
+  const statusRows: NearbySubqueryStatus[] = [];
+
+  if (parts.length === 0) {
+    throw new Error("No nearby subqueries selected. Provide at least one key via --subqueries/--include-subqueries.");
+  }
+
+  if (selectedSubqueries) {
+    console.log(`[overpass] scope=${scope.label} nearby subquery filter active: ${selectedSubqueries.join(", ")}`);
+  }
+
   for (const [index, part] of parts.entries()) {
     const query = buildOverpassQueryFromClauses({
       region: scope.regionConfig,
@@ -348,23 +398,56 @@ async function fetchScopeElements(input: {
     if (verbose) {
       console.log(`[overpass] scope=${scope.label} running nearby subquery ${index + 1}/${parts.length} (${part.label})`);
     }
-    const payload = await fetchOverpass({ scope, overpassUrl, query, queryLabel });
-    const partElements = parseOverpassElements(payload);
-    console.log(`[overpass] scope=${scope.label} subquery=${part.key} fetched=${partElements.length}`);
-    mergedElements.push(...partElements);
+    try {
+      const payload = await fetchOverpass({ scope, overpassUrl, query, queryLabel });
+      const partElements = parseOverpassElements(payload);
+      console.log(`[overpass] scope=${scope.label} subquery=${part.key} status=success fetched=${partElements.length}`);
+      statusRows.push({ key: part.key, label: part.label, success: true, fetched: partElements.length });
+      mergedElements.push(...partElements);
+    } catch (error: any) {
+      const reason = String(error?.message ?? error).replace(/\s+/g, " ").trim().slice(0, 220);
+      console.warn(`[overpass] scope=${scope.label} subquery=${part.key} status=failed reason=${reason}`);
+      statusRows.push({ key: part.key, label: part.label, success: false, fetched: 0, error: reason });
+    }
+  }
+
+  const successfulSubqueries = statusRows.filter((row) => row.success).length;
+  const failedSubqueries = statusRows.length - successfulSubqueries;
+
+  console.log(
+    `[overpass] scope=${scope.label} nearby subquery summary success=${successfulSubqueries} failed=${failedSubqueries}`
+  );
+  if (failedSubqueries > 0) {
+    const failedDetails = statusRows
+      .filter((row) => !row.success)
+      .map((row) => `${row.key}: ${row.error ?? "unknown error"}`)
+      .join(" | ");
+    console.warn(`[overpass] scope=${scope.label} nearby failed subqueries -> ${failedDetails}`);
+  }
+
+  if (successfulSubqueries === 0) {
+    throw new Error(`All nearby subqueries failed (${failedSubqueries}/${statusRows.length}).`);
   }
 
   const deduped = dedupeElementsByOverpassIdentity(mergedElements);
   console.log(
-    `[overpass] scope=${scope.label} nearby merged elements=${mergedElements.length} dedupedByOverpassId=${deduped.length}`
+    `[overpass] scope=${scope.label} nearby merged elementsFromSuccessfulSubqueries=${mergedElements.length} dedupedByOverpassId=${deduped.length}`
   );
 
   if (maxElements && deduped.length > maxElements) {
     console.log(`[overpass] scope=${scope.label} applying --max-elements=${maxElements} to merged=${deduped.length}`);
-    return deduped.slice(0, maxElements);
+    return {
+      elements: deduped.slice(0, maxElements),
+      successfulSubqueries,
+      failedSubqueries,
+    };
   }
 
-  return deduped;
+  return {
+    elements: deduped,
+    successfulSubqueries,
+    failedSubqueries,
+  };
 }
 
 async function runRegionImport(options: {
@@ -376,9 +459,11 @@ async function runRegionImport(options: {
   verbose: boolean;
   overpassUrl: string;
   maxElements: number | null;
+  selectedSubqueries: string[] | null;
 }): Promise<RegionSummary> {
-  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements } = options;
-  const elements = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose });
+  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries } = options;
+  const fetchedResult = await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries });
+  const { elements, successfulSubqueries, failedSubqueries } = fetchedResult;
 
   console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
 
@@ -545,6 +630,8 @@ async function runRegionImport(options: {
     updated,
     skippedDuplicate,
     skippedError,
+    successfulSubqueries,
+    failedSubqueries,
   };
 }
 
@@ -596,6 +683,7 @@ async function run() {
     near: options.nearPreset,
     maxElements: options.maxElements,
     testMode: options.testMode,
+    subqueries: options.subqueries,
   });
 
   try {
@@ -626,6 +714,7 @@ async function run() {
           verbose: options.verbose,
           overpassUrl: options.overpassUrl,
           maxElements: options.maxElements,
+          selectedSubqueries: options.subqueries,
         });
         summaries.push(summary);
       } catch (error: any) {
@@ -660,7 +749,7 @@ async function run() {
   console.log("\n=== sightseeing-seed-import summary ===");
   for (const item of summaries) {
     console.log(
-      `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError}`
+      `${item.region}: fetched=${item.fetched} normalized=${item.normalized} afterDedupe=${item.afterDedupe} processed=${item.processed} created=${item.created} updated=${item.updated} duplicates=${item.skippedDuplicate} errors=${item.skippedError} successfulSubqueries=${item.successfulSubqueries} failedSubqueries=${item.failedSubqueries}`
     );
   }
   if (failedScopes.length > 0) {

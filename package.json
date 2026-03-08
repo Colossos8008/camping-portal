@@ -32,7 +32,8 @@
     "smoke:curated:nievern-highlights": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/smoke-test-curated-nievern-highlights.ts",
     "verify:curated-priority-coordinates": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-curated-priority-coordinates.ts",
     "assist:curated-priority-osm": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-curated-osm-priority-coordinates.ts",
-    "assist:poi-governance-preview": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-poi-governance-preview.ts"
+    "assist:poi-governance-preview": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-poi-governance-preview.ts",
+    "assist:koblenz-goldset-review": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-koblenz-goldset-review.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

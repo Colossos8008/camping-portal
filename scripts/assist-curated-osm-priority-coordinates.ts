@@ -8,7 +8,13 @@ type PriorityTarget = {
   query: string;
   requiredNameTerms: string[];
   requiredDisplayTerms?: string[];
+  requiredAddressTerms?: string[];
+  forbiddenDisplayTerms?: string[];
+  preferredClassTypes?: Array<{ className: string; typeName?: string }>;
+  strictClassTypes?: Array<{ className: string; typeName?: string }>;
   maxDistanceMeters: number;
+  maxDistanceMetersStrict?: number;
+  customGuardrail?: (hit: NominatimHit) => boolean;
 };
 
 type NominatimHit = {
@@ -16,21 +22,148 @@ type NominatimHit = {
   display_name?: string;
   lat?: string;
   lon?: string;
+  class?: string;
+  type?: string;
+  addresstype?: string;
+  category?: string;
+  name?: string;
+  importance?: number;
 };
 
 const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
 
 const PRIORITY_TARGETS: PriorityTarget[] = [
-  { key: "deutsches-eck", name: "Deutsches Eck", query: "Deutsches Eck, Koblenz", requiredNameTerms: ["deutsches", "eck"], requiredDisplayTerms: ["koblenz"], maxDistanceMeters: 2_500 },
-  { key: "altstadt-koblenz", name: "Altstadt Koblenz", query: "Altstadt Koblenz", requiredNameTerms: ["altstadt"], requiredDisplayTerms: ["koblenz"], maxDistanceMeters: 3_000 },
-  { key: "kurfuerstliches-schloss-koblenz", name: "Kurfürstliches Schloss Koblenz", query: "Kurfürstliches Schloss Koblenz", requiredNameTerms: ["schloss"], requiredDisplayTerms: ["koblenz"], maxDistanceMeters: 2_500 },
-  { key: "marksburg", name: "Marksburg", query: "Marksburg Braubach", requiredNameTerms: ["marksburg"], requiredDisplayTerms: ["braubach"], maxDistanceMeters: 2_500 },
-  { key: "burg-lahneck", name: "Burg Lahneck", query: "Burg Lahneck Lahnstein", requiredNameTerms: ["burg", "lahneck"], requiredDisplayTerms: ["lahnstein"], maxDistanceMeters: 2_500 },
-  { key: "geysir-andernach", name: "Geysir Andernach", query: "Geysir Andernach", requiredNameTerms: ["geysir"], requiredDisplayTerms: ["andernach"], maxDistanceMeters: 5_000 },
-  { key: "liebfrauenkirche-koblenz", name: "Liebfrauenkirche Koblenz", query: "Liebfrauenkirche Koblenz", requiredNameTerms: ["liebfrauenkirche"], requiredDisplayTerms: ["koblenz"], maxDistanceMeters: 2_500 },
-  { key: "jesuitenplatz", name: "Jesuitenplatz", query: "Jesuitenplatz Koblenz", requiredNameTerms: ["jesuitenplatz"], requiredDisplayTerms: ["koblenz"], maxDistanceMeters: 2_500 },
-  { key: "kurhaus-bad-ems", name: "Kurhaus Bad Ems", query: "Kurhaus Bad Ems", requiredNameTerms: ["kurhaus"], requiredDisplayTerms: ["bad ems"], maxDistanceMeters: 2_500 },
+  {
+    key: "deutsches-eck",
+    name: "Deutsches Eck",
+    query: "Deutsches Eck, Koblenz",
+    requiredNameTerms: ["deutsches", "eck"],
+    requiredDisplayTerms: ["koblenz"],
+    preferredClassTypes: [{ className: "tourism" }, { className: "historic" }, { className: "leisure" }],
+    maxDistanceMeters: 2_000,
+  },
+  {
+    key: "altstadt-koblenz",
+    name: "Altstadt Koblenz",
+    query: "Altstadt Koblenz",
+    requiredNameTerms: ["altstadt"],
+    requiredDisplayTerms: ["koblenz"],
+    requiredAddressTerms: ["koblenz"],
+    forbiddenDisplayTerms: ["strasse", "straße", "weg", "haus", "hotel", "parkplatz"],
+    strictClassTypes: [
+      { className: "boundary", typeName: "administrative" },
+      { className: "place", typeName: "suburb" },
+      { className: "place", typeName: "quarter" },
+      { className: "place", typeName: "neighbourhood" },
+    ],
+    maxDistanceMeters: 2_500,
+    maxDistanceMetersStrict: 1_800,
+    customGuardrail: (hit) => {
+      const label = normalize(String(hit.display_name ?? ""));
+      return label.includes("altstadt") && (label.includes("koblenz") || label.includes("mitte"));
+    },
+  },
+  {
+    key: "kurfuerstliches-schloss-koblenz",
+    name: "Kurfürstliches Schloss Koblenz",
+    query: "Kurfürstliches Schloss Koblenz",
+    requiredNameTerms: ["schloss"],
+    requiredDisplayTerms: ["koblenz"],
+    strictClassTypes: [{ className: "historic", typeName: "castle" }, { className: "tourism", typeName: "attraction" }],
+    maxDistanceMeters: 1_500,
+  },
+  {
+    key: "marksburg",
+    name: "Marksburg",
+    query: "Marksburg Braubach",
+    requiredNameTerms: ["marksburg"],
+    requiredDisplayTerms: ["braubach"],
+    strictClassTypes: [{ className: "historic", typeName: "castle" }, { className: "tourism", typeName: "attraction" }],
+    maxDistanceMeters: 1_500,
+  },
+  {
+    key: "burg-lahneck",
+    name: "Burg Lahneck",
+    query: "Burg Lahneck Lahnstein",
+    requiredNameTerms: ["burg", "lahneck"],
+    requiredDisplayTerms: ["lahnstein"],
+    strictClassTypes: [{ className: "historic", typeName: "castle" }, { className: "tourism", typeName: "attraction" }],
+    maxDistanceMeters: 1_500,
+  },
+  {
+    key: "geysir-andernach",
+    name: "Geysir Andernach",
+    query: "Geysir Andernach",
+    requiredNameTerms: ["geysir"],
+    requiredDisplayTerms: ["andernach"],
+    forbiddenDisplayTerms: ["strasse", "straße", "weg", "parkplatz", "bahnhof"],
+    strictClassTypes: [
+      { className: "tourism", typeName: "attraction" },
+      { className: "amenity", typeName: "museum" },
+      { className: "natural", typeName: "geyser" },
+    ],
+    maxDistanceMeters: 1_200,
+    customGuardrail: (hit) => {
+      const label = normalize(String(hit.display_name ?? ""));
+      return label.includes("geysir") && (label.includes("erlebniszentrum") || label.includes("attraction") || label.includes("museum") || label.includes("andernach"));
+    },
+  },
+  {
+    key: "liebfrauenkirche-koblenz",
+    name: "Liebfrauenkirche Koblenz",
+    query: "Liebfrauenkirche Koblenz",
+    requiredNameTerms: ["liebfrauenkirche"],
+    requiredDisplayTerms: ["koblenz"],
+    strictClassTypes: [{ className: "amenity", typeName: "place_of_worship" }, { className: "building", typeName: "church" }],
+    maxDistanceMeters: 1_500,
+  },
+  {
+    key: "jesuitenplatz",
+    name: "Jesuitenplatz",
+    query: "Jesuitenplatz Koblenz",
+    requiredNameTerms: ["jesuitenplatz"],
+    requiredDisplayTerms: ["koblenz"],
+    forbiddenDisplayTerms: ["strasse", "straße", "weg", "hausnummer"],
+    strictClassTypes: [{ className: "highway", typeName: "pedestrian" }, { className: "place", typeName: "square" }],
+    maxDistanceMeters: 1_500,
+  },
+  {
+    key: "kurhaus-bad-ems",
+    name: "Kurhaus Bad Ems",
+    query: "Kurhaus Bad Ems",
+    requiredNameTerms: ["kurhaus"],
+    requiredDisplayTerms: ["bad ems"],
+    forbiddenDisplayTerms: ["strasse", "straße", "weg", "parkplatz", "bahnhof"],
+    strictClassTypes: [{ className: "historic", typeName: "building" }, { className: "tourism", typeName: "attraction" }, { className: "building" }],
+    maxDistanceMeters: 900,
+    customGuardrail: (hit) => {
+      const label = normalize(String(hit.display_name ?? ""));
+      return label.includes("kurhaus") && label.includes("bad ems");
+    },
+  },
 ];
+
+const REJECT_CLASS_TYPES = [
+  { className: "highway", typeName: "residential" },
+  { className: "highway", typeName: "service" },
+  { className: "highway", typeName: "tertiary" },
+  { className: "highway", typeName: "secondary" },
+  { className: "railway" },
+  { className: "route" },
+  { className: "landuse" },
+  { className: "shop" },
+];
+
+function matchesClassType(hit: NominatimHit, matcher: { className: string; typeName?: string }): boolean {
+  const hitClass = normalize(String(hit.class ?? hit.category ?? ""));
+  const hitType = normalize(String(hit.type ?? hit.addresstype ?? ""));
+  const className = normalize(matcher.className);
+  const typeName = matcher.typeName ? normalize(matcher.typeName) : "";
+
+  if (hitClass !== className) return false;
+  if (!typeName) return true;
+  return hitType === typeName;
+}
 
 function normalize(input: string): string {
   return input
@@ -101,10 +234,56 @@ function isHitSafe(target: PriorityTarget, hit: NominatimHit, currentLat: number
     if (!label.includes(normalize(term))) return false;
   }
 
+  for (const term of target.requiredAddressTerms ?? []) {
+    if (!label.includes(normalize(term))) return false;
+  }
+
+  for (const term of target.forbiddenDisplayTerms ?? []) {
+    if (label.includes(normalize(term))) return false;
+  }
+
+  if (REJECT_CLASS_TYPES.some((matcher) => matchesClassType(hit, matcher))) {
+    return false;
+  }
+
+  if (target.strictClassTypes && !target.strictClassTypes.some((matcher) => matchesClassType(hit, matcher))) {
+    return false;
+  }
+
   const distance = distanceMeters(currentLat, currentLng, lat, lng);
-  if (distance > target.maxDistanceMeters) return false;
+  const maxDistance = target.maxDistanceMetersStrict ?? target.maxDistanceMeters;
+  if (distance > maxDistance) return false;
+
+  if (target.customGuardrail && !target.customGuardrail(hit)) return false;
 
   return true;
+}
+
+function scoreHit(target: PriorityTarget, hit: NominatimHit): number {
+  let score = 0;
+  const label = normalize(String(hit.display_name ?? ""));
+  const hitName = normalize(String(hit.name ?? ""));
+  const importance = Number(hit.importance ?? 0);
+
+  if (target.preferredClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
+    score += 15;
+  }
+
+  if (target.strictClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
+    score += 25;
+  }
+
+  for (const term of target.requiredNameTerms) {
+    const normalizedTerm = normalize(term);
+    if (hitName.includes(normalizedTerm)) {
+      score += 20;
+    } else if (label.includes(normalizedTerm)) {
+      score += 8;
+    }
+  }
+
+  score += Math.round(Math.max(0, importance) * 10);
+  return score;
 }
 
 function applyCoordinateUpdate(content: string, key: string, lat: number, lng: number): string {
@@ -133,7 +312,9 @@ async function main() {
 
     try {
       const hits = await searchViaNominatim(target.query);
-      const safeHit = hits.find((hit) => isHitSafe(target, hit, current.lat, current.lng));
+      const safeHit = hits
+        .filter((hit) => isHitSafe(target, hit, current.lat, current.lng))
+        .sort((a, b) => scoreHit(target, b) - scoreHit(target, a))[0];
 
       if (!safeHit || safeHit.lat == null || safeHit.lon == null) {
         skipped.push({ key: target.key, reason: "no-safe-osm-hit" });

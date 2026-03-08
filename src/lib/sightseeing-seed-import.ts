@@ -1,3 +1,5 @@
+import { derivePoiGovernanceFromOsmElement } from "./poi-governance.ts";
+
 export type TargetRegion = "normandie" | "bretagne";
 
 export type RegionConfig = {
@@ -180,6 +182,19 @@ export type SightseeingCandidate = {
   sourceRegion: string;
   country: string;
   reason: string;
+  canonicalSource?: string;
+  canonicalSourceId?: string;
+  wikidataId?: string;
+  osmType?: string;
+  osmId?: string;
+  wikipediaTitle?: string;
+  wikipediaUrl?: string;
+  coordinateSource?: string;
+  coordinateConfidence?: number;
+  coordinateMode?: string;
+  geometryType?: string;
+  suggestedReviewState?: string;
+  suggestedReviewReason?: string;
   heroImageUrl?: string;
 };
 
@@ -375,6 +390,7 @@ export function normalizeCandidate(
   }
 
   const category = classifyCategory(tags, searchableText);
+  const governance = derivePoiGovernanceFromOsmElement(element);
 
   return {
     sourceId: `osm:${element.type}/${element.id}`,
@@ -387,6 +403,19 @@ export function normalizeCandidate(
     sourceRegion: region.key,
     country: region.country,
     reason: `OSM match category=${category}`,
+    canonicalSource: governance.canonicalSource,
+    canonicalSourceId: governance.canonicalSourceId,
+    wikidataId: governance.wikidataId ?? undefined,
+    osmType: governance.osmType,
+    osmId: governance.osmId.toString(),
+    wikipediaTitle: governance.wikipediaTitle ?? undefined,
+    wikipediaUrl: governance.wikipediaUrl ?? undefined,
+    coordinateSource: governance.coordinateSource,
+    coordinateConfidence: governance.coordinateConfidence,
+    coordinateMode: governance.coordinateMode,
+    geometryType: governance.geometryType,
+    suggestedReviewState: governance.suggestedReviewState,
+    suggestedReviewReason: governance.suggestedReviewReason,
   };
 }
 

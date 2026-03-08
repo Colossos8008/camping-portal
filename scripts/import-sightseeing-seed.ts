@@ -105,6 +105,25 @@ async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[]
   return out;
 }
 
+
+function buildPoiGovernanceData(candidate: SightseeingCandidate) {
+  return {
+    canonicalSource: candidate.canonicalSource ?? null,
+    canonicalSourceId: candidate.canonicalSourceId ?? null,
+    wikidataId: candidate.wikidataId ?? null,
+    osmType: candidate.osmType ?? null,
+    osmId: candidate.osmId ? BigInt(candidate.osmId) : null,
+    wikipediaTitle: candidate.wikipediaTitle ?? null,
+    wikipediaUrl: candidate.wikipediaUrl ?? null,
+    coordinateSource: candidate.coordinateSource ?? null,
+    coordinateConfidence: candidate.coordinateConfidence ?? null,
+    coordinateMode: candidate.coordinateMode as any,
+    geometryType: candidate.geometryType ?? null,
+    poiReviewState: (candidate.suggestedReviewState as any) ?? undefined,
+    poiReviewReason: candidate.suggestedReviewReason ?? null,
+  };
+}
+
 type RegionSummary = {
   region: string;
   sourceMode: "overpass" | "curated";
@@ -752,6 +771,7 @@ async function runRegionImport(options: {
               sightTags: candidate.tags,
               sightRegion: candidate.sourceRegion,
               sightCountry: candidate.country,
+              ...buildPoiGovernanceData(candidate),
               ...buildHeroImageUpdate({
                 candidate,
                 existingHeroImageUrl: matchByExternalId.heroImageUrl,
@@ -829,6 +849,7 @@ async function runRegionImport(options: {
             sightTags: candidate.tags,
             sightRegion: candidate.sourceRegion,
             sightCountry: candidate.country,
+            ...buildPoiGovernanceData(candidate),
             ...buildHeroImageUpdate({
               candidate,
               existingHeroImageUrl: duplicateInDb.heroImageUrl,
@@ -861,6 +882,7 @@ async function runRegionImport(options: {
           sightTags: candidate.tags,
           sightRegion: candidate.sourceRegion,
           sightCountry: candidate.country,
+          ...buildPoiGovernanceData(candidate),
           heroImageUrl: candidate.heroImageUrl ?? null,
         },
         select: { id: true },

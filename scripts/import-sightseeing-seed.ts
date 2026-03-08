@@ -49,6 +49,7 @@ type CliOptions = {
   nearPreset: keyof typeof NEAR_PRESETS | null;
   subqueries: string[] | null;
   importMode: ImportMode;
+  recoverCuratedHeroes: boolean;
 };
 
 type ExistingPlace = {
@@ -58,6 +59,7 @@ type ExistingPlace = {
   lat: number;
   lng: number;
   sightExternalId: string | null;
+  heroImageUrl: string | null;
 };
 
 const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
@@ -81,10 +83,15 @@ async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[]
 
     const result = await validateHeroUrl(heroImageUrl);
     if (!result.ok) {
+      const rejectionKind = result.rejectionKind ?? "transient";
       console.warn(
-        `[curated-hero] rejected ${candidate.sourceId} (${candidate.name}) status=${result.status ?? "-"} content-type=${result.contentType ?? "-"} final=${result.finalUrl ?? "-"}${result.error ? ` error=${result.error}` : ""}`
+        `[curated-hero] rejected ${candidate.sourceId} (${candidate.name}) kind=${rejectionKind} status=${result.status ?? "-"} content-type=${result.contentType ?? "-"} final=${result.finalUrl ?? "-"}${result.error ? ` error=${result.error}` : ""}`
       );
-      out.push({ ...candidate, heroImageUrl: undefined });
+      if (rejectionKind === "hard-invalid") {
+        out.push({ ...candidate, heroImageUrl: undefined });
+      } else {
+        out.push(candidate);
+      }
       continue;
     }
 
@@ -328,7 +335,19 @@ function parseCliArgs(argv: string[]): CliOptions {
     nearPreset,
     subqueries,
     importMode: highlightMode ? "highlight" : "default",
+    recoverCuratedHeroes: args.has("--recover-curated-heroes"),
   };
+}
+
+function buildHeroImageUpdate(input: {
+  candidate: SightseeingCandidate;
+  existingHeroImageUrl: string | null;
+}): { heroImageUrl?: string } {
+  const candidateHero = String(input.candidate.heroImageUrl ?? "").trim();
+  const existingHero = String(input.existingHeroImageUrl ?? "").trim();
+  if (!candidateHero) return {};
+  if (candidateHero === existingHero) return {};
+  return { heroImageUrl: candidateHero };
 }
 
 function getOverpassEndpoints(primaryUrl: string): string[] {
@@ -568,8 +587,9 @@ async function runRegionImport(options: {
   selectedSubqueries: string[] | null;
   importMode: ImportMode;
   curatedSet: string | null;
+  recoverCuratedHeroes: boolean;
 }): Promise<RegionSummary> {
-  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries, importMode, curatedSet } = options;
+  const { prisma, scope, dryRun, force, verbose, globalLimit, overpassUrl, maxElements, selectedSubqueries, importMode, curatedSet, recoverCuratedHeroes } = options;
 
   const sourceMode: RegionSummary["sourceMode"] = curatedSet ? "curated" : "overpass";
 
@@ -600,6 +620,9 @@ async function runRegionImport(options: {
 
   if (curatedSet) {
     console.log(`[pipeline:${scope.label}] curated preset=${curatedSet} candidates=${normalized.length}`);
+    if (recoverCuratedHeroes) {
+      console.log(`[pipeline:${scope.label}] curated hero recovery enabled (--recover-curated-heroes)`);
+    }
   } else {
     console.log(`[pipeline:${scope.label}] overpass elements fetched=${elements.length}`);
   }
@@ -614,7 +637,7 @@ async function runRegionImport(options: {
 
   const existingRows = (await prisma.place.findMany({
     where: { type: "SEHENSWUERDIGKEIT" },
-    select: { id: true, name: true, lat: true, lng: true, type: true, sightExternalId: true },
+    select: { id: true, name: true, lat: true, lng: true, type: true, sightExternalId: true, heroImageUrl: true },
   })) as ExistingPlace[];
 
   const accepted: RankedCandidate[] = [];
@@ -729,7 +752,10 @@ async function runRegionImport(options: {
               sightTags: candidate.tags,
               sightRegion: candidate.sourceRegion,
               sightCountry: candidate.country,
-              ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+              ...buildHeroImageUpdate({
+                candidate,
+                existingHeroImageUrl: matchByExternalId.heroImageUrl,
+              }),
             },
             select: { id: true },
           });
@@ -737,6 +763,9 @@ async function runRegionImport(options: {
           matchByExternalId.name = candidate.name;
           matchByExternalId.lat = candidate.lat;
           matchByExternalId.lng = candidate.lng;
+          if (String(candidate.heroImageUrl ?? "").trim()) {
+            matchByExternalId.heroImageUrl = String(candidate.heroImageUrl);
+          }
 
           updated += 1;
           if (verbose) {
@@ -800,7 +829,10 @@ async function runRegionImport(options: {
             sightTags: candidate.tags,
             sightRegion: candidate.sourceRegion,
             sightCountry: candidate.country,
-            ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+            ...buildHeroImageUpdate({
+              candidate,
+              existingHeroImageUrl: duplicateInDb.heroImageUrl,
+            }),
           },
           select: { id: true },
         });
@@ -841,6 +873,7 @@ async function runRegionImport(options: {
         lat: candidate.lat,
         lng: candidate.lng,
         sightExternalId: candidate.sourceId,
+        heroImageUrl: candidate.heroImageUrl ?? null,
       });
 
       created += 1;
@@ -933,6 +966,7 @@ async function run() {
     subqueries: options.subqueries,
     importMode: options.importMode,
     curatedSet: options.curatedSet,
+    recoverCuratedHeroes: options.recoverCuratedHeroes,
   });
 
   try {
@@ -969,6 +1003,7 @@ async function run() {
           selectedSubqueries: options.subqueries,
           importMode: options.importMode,
           curatedSet: options.curatedSet,
+          recoverCuratedHeroes: options.recoverCuratedHeroes,
         });
         summaries.push(summary);
       } catch (error: any) {

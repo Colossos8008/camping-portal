@@ -3,6 +3,7 @@ export type HeroUrlValidationResult = {
   status: number | null;
   contentType: string | null;
   finalUrl: string | null;
+  rejectionKind?: "hard-invalid" | "transient";
   error?: string;
 };
 
@@ -34,12 +35,23 @@ export async function validateHeroUrl(url: string): Promise<HeroUrlValidationRes
     });
 
     const { ok, contentType } = isValidHeroResponse(response);
+    const normalizedContentType = normalizeContentType(contentType);
+    const hardInvalidStatus = response.status === 404 || response.status === 410;
+    const hardInvalidContentType = normalizedContentType.length > 0 && !normalizedContentType.startsWith("image/");
+    const hardInvalidHtml = normalizedContentType.startsWith("text/html") || normalizedContentType.includes("application/xhtml");
+
+    const rejectionKind: HeroUrlValidationResult["rejectionKind"] = ok
+      ? undefined
+      : hardInvalidStatus || hardInvalidContentType || hardInvalidHtml
+        ? "hard-invalid"
+        : "transient";
 
     return {
       ok,
       status: response.status,
       contentType,
       finalUrl: response.url,
+      rejectionKind,
     };
   } catch (error) {
     return {
@@ -47,8 +59,8 @@ export async function validateHeroUrl(url: string): Promise<HeroUrlValidationRes
       status: null,
       contentType: null,
       finalUrl: null,
+      rejectionKind: "transient",
       error: error instanceof Error ? error.message : String(error),
     };
   }
 }
-

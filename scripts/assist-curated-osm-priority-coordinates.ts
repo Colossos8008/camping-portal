@@ -189,8 +189,140 @@ function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number):
   return 2 * earthRadius * Math.asin(Math.sqrt(h));
 }
 
-function parseArgs(argv: string[]): { apply: boolean } {
-  return { apply: argv.includes("--apply") };
+type CliArgs = { apply: boolean; showCandidates: boolean; focus: Set<string> };
+
+function parseArgs(argv: string[]): CliArgs {
+  const showCandidates = argv.includes("--show-candidates");
+  const focusArg = argv.find((arg) => arg.startsWith("--focus="));
+  const focus = new Set(
+    String(focusArg ?? "")
+      .replace("--focus=", "")
+      .split(",")
+      .map((entry) => normalize(entry))
+      .filter(Boolean),
+  );
+
+  return {
+    apply: argv.includes("--apply"),
+    showCandidates,
+    focus,
+  };
+}
+
+type CandidateBreakdown = {
+  score: number;
+  reasons: string[];
+};
+
+type CandidateView = {
+  rank: number;
+  lat: number;
+  lng: number;
+  display_name: string;
+  class: string;
+  type: string;
+  importance: number;
+  distance_meters: number;
+  score: number;
+  safe: boolean;
+  reasons: string[];
+};
+
+function shouldInspectTarget(target: PriorityTarget, args: CliArgs): boolean {
+  if (args.focus.size > 0) {
+    return args.focus.has(normalize(target.key)) || args.focus.has(normalize(target.name));
+  }
+
+  if (args.showCandidates) {
+    return true;
+  }
+
+  return ["marksburg", "geysir-andernach", "kurhaus-bad-ems"].includes(target.key);
+}
+
+function evaluateSafety(target: PriorityTarget, hit: NominatimHit, currentLat: number, currentLng: number): { safe: boolean; reasons: string[]; distance: number } {
+  const reasons: string[] = [];
+  const lat = Number(hit.lat);
+  const lng = Number(hit.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { safe: false, reasons: ["invalid-coordinates"], distance: Number.NaN };
+  }
+
+  const label = normalize(String(hit.display_name ?? ""));
+  if (!label) {
+    return { safe: false, reasons: ["missing-display-name"], distance: Number.NaN };
+  }
+
+  for (const term of target.requiredNameTerms) {
+    if (!label.includes(normalize(term))) reasons.push(`missing-required-name:${term}`);
+  }
+
+  for (const term of target.requiredDisplayTerms ?? []) {
+    if (!label.includes(normalize(term))) reasons.push(`missing-required-display:${term}`);
+  }
+
+  for (const term of target.requiredAddressTerms ?? []) {
+    if (!label.includes(normalize(term))) reasons.push(`missing-required-address:${term}`);
+  }
+
+  for (const term of target.forbiddenDisplayTerms ?? []) {
+    if (label.includes(normalize(term))) reasons.push(`contains-forbidden-term:${term}`);
+  }
+
+  if (REJECT_CLASS_TYPES.some((matcher) => matchesClassType(hit, matcher))) {
+    reasons.push("rejected-class-type");
+  }
+
+  if (target.strictClassTypes && !target.strictClassTypes.some((matcher) => matchesClassType(hit, matcher))) {
+    reasons.push("strict-class-type-mismatch");
+  }
+
+  const distance = distanceMeters(currentLat, currentLng, lat, lng);
+  const maxDistance = target.maxDistanceMetersStrict ?? target.maxDistanceMeters;
+  if (distance > maxDistance) {
+    reasons.push(`distance-too-large:${Math.round(distance)}m>${maxDistance}m`);
+  }
+
+  if (target.customGuardrail && !target.customGuardrail(hit)) {
+    reasons.push("custom-guardrail-failed");
+  }
+
+  return { safe: reasons.length === 0, reasons: reasons.length > 0 ? reasons : ["safe"], distance };
+}
+
+function scoreHitWithBreakdown(target: PriorityTarget, hit: NominatimHit): CandidateBreakdown {
+  let score = 0;
+  const reasons: string[] = [];
+  const label = normalize(String(hit.display_name ?? ""));
+  const hitName = normalize(String(hit.name ?? ""));
+  const importance = Number(hit.importance ?? 0);
+
+  if (target.preferredClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
+    score += 15;
+    reasons.push("preferred-class-type:+15");
+  }
+
+  if (target.strictClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
+    score += 25;
+    reasons.push("strict-class-type:+25");
+  }
+
+  for (const term of target.requiredNameTerms) {
+    const normalizedTerm = normalize(term);
+    if (hitName.includes(normalizedTerm)) {
+      score += 20;
+      reasons.push(`name-match:${term}:+20`);
+    } else if (label.includes(normalizedTerm)) {
+      score += 8;
+      reasons.push(`display-match:${term}:+8`);
+    }
+  }
+
+  const importancePoints = Math.round(Math.max(0, importance) * 10);
+  score += importancePoints;
+  reasons.push(`importance:${importance.toFixed(3)}:+${importancePoints}`);
+
+  return { score, reasons };
 }
 
 async function searchViaNominatim(query: string): Promise<NominatimHit[]> {
@@ -260,30 +392,7 @@ function isHitSafe(target: PriorityTarget, hit: NominatimHit, currentLat: number
 }
 
 function scoreHit(target: PriorityTarget, hit: NominatimHit): number {
-  let score = 0;
-  const label = normalize(String(hit.display_name ?? ""));
-  const hitName = normalize(String(hit.name ?? ""));
-  const importance = Number(hit.importance ?? 0);
-
-  if (target.preferredClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
-    score += 15;
-  }
-
-  if (target.strictClassTypes?.some((matcher) => matchesClassType(hit, matcher))) {
-    score += 25;
-  }
-
-  for (const term of target.requiredNameTerms) {
-    const normalizedTerm = normalize(term);
-    if (hitName.includes(normalizedTerm)) {
-      score += 20;
-    } else if (label.includes(normalizedTerm)) {
-      score += 8;
-    }
-  }
-
-  score += Math.round(Math.max(0, importance) * 10);
-  return score;
+  return scoreHitWithBreakdown(target, hit).score;
 }
 
 function applyCoordinateUpdate(content: string, key: string, lat: number, lng: number): string {
@@ -302,6 +411,7 @@ async function main() {
 
   const changes: Array<{ key: string; name: string; oldLat: number; oldLng: number; newLat: number; newLng: number; displayName: string }> = [];
   const skipped: Array<{ key: string; reason: string }> = [];
+  const inspectedCandidates: Array<{ key: string; name: string; query: string; candidates: CandidateView[] }> = [];
 
   for (const target of PRIORITY_TARGETS) {
     const current = byKey.get(target.key);
@@ -312,6 +422,39 @@ async function main() {
 
     try {
       const hits = await searchViaNominatim(target.query);
+      const rankedCandidates = hits
+        .map((hit) => {
+          const safety = evaluateSafety(target, hit, current.lat, current.lng);
+          const breakdown = scoreHitWithBreakdown(target, hit);
+          const lat = Number(hit.lat);
+          const lng = Number(hit.lon);
+
+          return {
+            lat,
+            lng,
+            display_name: String(hit.display_name ?? ""),
+            class: String(hit.class ?? hit.category ?? ""),
+            type: String(hit.type ?? hit.addresstype ?? ""),
+            importance: Number(hit.importance ?? 0),
+            distance_meters: safety.distance,
+            score: breakdown.score,
+            safe: safety.safe,
+            reasons: [...safety.reasons, ...breakdown.reasons],
+          };
+        })
+        .filter((entry) => Number.isFinite(entry.lat) && Number.isFinite(entry.lng))
+        .sort((a, b) => b.score - a.score)
+        .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+      if (shouldInspectTarget(target, args)) {
+        inspectedCandidates.push({
+          key: target.key,
+          name: target.name,
+          query: target.query,
+          candidates: rankedCandidates.slice(0, 3),
+        });
+      }
+
       const safeHit = hits
         .filter((hit) => isHitSafe(target, hit, current.lat, current.lng))
         .sort((a, b) => scoreHit(target, b) - scoreHit(target, a))[0];
@@ -345,8 +488,11 @@ async function main() {
 
   console.log(JSON.stringify({
     mode: args.apply ? "apply" : "verify",
+    showCandidates: args.showCandidates,
+    focus: Array.from(args.focus),
     changed: changes,
     skipped,
+    candidateInsights: inspectedCandidates,
   }, null, 2));
 }
 

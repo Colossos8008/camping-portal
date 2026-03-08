@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName, isWikimediaSpecialFilePathUrl } from "@/lib/hero-image";
+import { isHeroDebugPoiName } from "@/lib/hero-debug";
 
 export const runtime = "nodejs";
 
@@ -86,6 +87,18 @@ async function streamRemoteImage(url: string): Promise<Response | null> {
   return new Response(upstream.body, { status: 200, headers });
 }
 
+
+function appendDecisionHeaders(res: Response | NextResponse, meta: { placeId: number; source: string; targeted: boolean; usedPlaceholder: boolean; placeUpdatedAt?: Date | null }): Response | NextResponse {
+  res.headers.set("X-Hero-Place-Id", String(meta.placeId));
+  res.headers.set("X-Hero-Source", meta.source);
+  res.headers.set("X-Hero-Targeted-Debug", meta.targeted ? "1" : "0");
+  res.headers.set("X-Hero-Used-Placeholder", meta.usedPlaceholder ? "1" : "0");
+  if (meta.placeUpdatedAt) {
+    res.headers.set("X-Hero-Place-Updated-At", new Date(meta.placeUpdatedAt).toISOString());
+  }
+  return res;
+}
+
 function redirectTo(req: NextRequest, value: string, cacheSeconds: number): NextResponse {
   const target = value.startsWith("/") ? new URL(value, req.nextUrl.origin) : new URL(value);
   const response = NextResponse.redirect(target, 307);
@@ -101,7 +114,7 @@ export async function GET(req: NextRequest) {
 
   const place = await prisma.place.findUnique({
     where: { id: placeId },
-    select: { id: true, heroImageUrl: true },
+    select: { id: true, name: true, heroImageUrl: true, updatedAt: true },
   });
 
   if (!place) {
@@ -109,6 +122,7 @@ export async function GET(req: NextRequest) {
   }
 
   const heroImageUrl = String(place.heroImageUrl ?? "").trim();
+  const targetedDebugPoi = isHeroDebugPoiName(place.name);
   const googlePhotoResource = extractGooglePhotoResourceName(heroImageUrl);
   const googleApiKey = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
   const debug = getDebugFlag(req);
@@ -148,10 +162,18 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       placeId,
+      placeName: place.name,
+      targetedDebugPoi,
+      placeUpdatedAt: place.updatedAt ? new Date(place.updatedAt).toISOString() : null,
       heroImageUrl: heroImageUrl || null,
       googlePhotoResource,
       hasGoogleApiKey: Boolean(googleApiKey),
       placeholder: String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER,
+      cacheRequestHeaders: {
+        "if-none-match": req.headers.get("if-none-match"),
+        "if-modified-since": req.headers.get("if-modified-since"),
+        "cache-control": req.headers.get("cache-control"),
+      },
       checks,
     });
   }
@@ -159,19 +181,19 @@ export async function GET(req: NextRequest) {
   if (googlePhotoResource && googleApiKey) {
     try {
       const response = await streamGooglePhoto(googlePhotoResource, googleApiKey);
-      if (response) return response;
+      if (response) return appendDecisionHeaders(response, { placeId, source: "google-photo", targeted: targetedDebugPoi, usedPlaceholder: false, placeUpdatedAt: place.updatedAt });
     } catch {
       // keep existing fallback behavior
     }
   }
 
   if (heroImageUrl) {
-    if (heroImageUrl.startsWith("/")) return redirectTo(req, heroImageUrl, 3600 * 24);
+    if (heroImageUrl.startsWith("/")) return appendDecisionHeaders(redirectTo(req, heroImageUrl, 3600 * 24), { placeId, source: "local-path", targeted: targetedDebugPoi, usedPlaceholder: false, placeUpdatedAt: place.updatedAt });
 
     if (isWikimediaSpecialFilePathUrl(heroImageUrl) || isHttpUrl(heroImageUrl)) {
       try {
         const response = await streamRemoteImage(heroImageUrl);
-        if (response) return response;
+        if (response) return appendDecisionHeaders(response, { placeId, source: "remote-http", targeted: targetedDebugPoi, usedPlaceholder: false, placeUpdatedAt: place.updatedAt });
       } catch {
         // keep existing fallback behavior
       }
@@ -179,8 +201,8 @@ export async function GET(req: NextRequest) {
   }
 
   const placeholder = String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER;
-  if (placeholder.startsWith("/")) return redirectTo(req, placeholder, 3600 * 24);
-  if (isHttpUrl(placeholder)) return redirectTo(req, placeholder, 3600 * 24);
+  if (placeholder.startsWith("/")) return appendDecisionHeaders(redirectTo(req, placeholder, 3600 * 24), { placeId, source: "placeholder", targeted: targetedDebugPoi, usedPlaceholder: true, placeUpdatedAt: place.updatedAt });
+  if (isHttpUrl(placeholder)) return appendDecisionHeaders(redirectTo(req, placeholder, 3600 * 24), { placeId, source: "placeholder", targeted: targetedDebugPoi, usedPlaceholder: true, placeUpdatedAt: place.updatedAt });
 
-  return redirectTo(req, DEFAULT_PLACEHOLDER, 3600 * 24);
+  return appendDecisionHeaders(redirectTo(req, DEFAULT_PLACEHOLDER, 3600 * 24), { placeId, source: "placeholder", targeted: targetedDebugPoi, usedPlaceholder: true, placeUpdatedAt: place.updatedAt });
 }

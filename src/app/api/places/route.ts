@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
 import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
+import { isHeroDebugPoiName } from "@/lib/hero-debug";
 
 export const runtime = "nodejs";
 
@@ -399,8 +400,11 @@ function curatedPriorityScore(place: any): number {
   return prio;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const heroDebug = req.nextUrl.searchParams.get("heroDebug");
+    const wantsHeroDebug = heroDebug === "1" || heroDebug === "true";
+
     const places = await findManyPlaces();
     const normalizedPlaces = places.map((place: any) => ({
       ...place,
@@ -411,7 +415,19 @@ export async function GET() {
       if (prioDiff !== 0) return prioDiff;
       return Number(b?.id ?? 0) - Number(a?.id ?? 0);
     });
-    return NextResponse.json({ places: normalizedPlaces });
+    if (!wantsHeroDebug) {
+      return NextResponse.json({ places: normalizedPlaces });
+    }
+
+    const targetedHeroDebug = normalizedPlaces
+      .filter((place: any) => isHeroDebugPoiName(place?.name))
+      .map((place: any) => ({
+        id: Number(place?.id),
+        name: String(place?.name ?? ""),
+        datasetHeroImageUrl: String(place?.heroImageUrl ?? "").trim() || null,
+      }));
+
+    return NextResponse.json({ places: normalizedPlaces, targetedHeroDebug });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }

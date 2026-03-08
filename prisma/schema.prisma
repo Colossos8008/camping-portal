@@ -47,12 +47,45 @@ enum SightVisitMode {
   WEATHER_WINDOW
 }
 
+
+enum CoordinateMode {
+  POINT
+  AREA_CENTER
+  ENTRANCE_POINT
+  VIEWPOINT
+  COMPLEX_SITE
+}
+
+enum PoiReviewState {
+  PENDING
+  AUTO_ACCEPT
+  AUTO_REJECT
+  MANUAL_REVIEW
+}
+
 model Place {
   id               Int       @id @default(autoincrement())
   name             String
   type             PlaceType @default(CAMPINGPLATZ)
   lat              Float
   lng              Float
+
+  canonicalSource  String?
+  canonicalSourceId String?
+  wikidataId       String?
+  osmType          String?
+  osmId            BigInt?
+  wikipediaTitle   String?
+  wikipediaUrl     String?
+
+  coordinateSource String?
+  coordinateConfidence Float?
+  coordinateMode   CoordinateMode?
+  geometryType     String?
+  geometryJson     Json?
+
+  poiReviewState   PoiReviewState @default(PENDING)
+  poiReviewReason  String?
 
   dogAllowed       Boolean   @default(false)
   sanitary         Boolean   @default(false)
@@ -100,6 +133,12 @@ model Place {
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @default(now()) @updatedAt
+
+  @@index([canonicalSource, canonicalSourceId])
+  @@index([wikidataId])
+  @@index([osmType, osmId])
+  @@index([coordinateMode, coordinateConfidence])
+  @@index([poiReviewState])
 }
 
 model PlaceRating {

@@ -80,6 +80,12 @@ Curated Presets:
 - Verfügbar: `nievern-highlights`
 - Läuft vollständig **ohne Overpass** (kein API-Call nötig)
 
+Hero-Validierung bei Curated Presets:
+
+- Beim Import werden `heroImageUrl`-Werte nicht mehr blind übernommen.
+- Für jede kuratierte Hero-URL wird ein Live-Check ausgeführt (HTTP 200 + `content-type` beginnt mit `image/` + keine HTML-Response).
+- Fehlgeschlagene Hero-URLs werden verworfen (kein Write in `heroImageUrl`) und mit Status/Content-Type/Redirect-Ziel geloggt.
+
 
 Hinweise zu Kombinationen:
 
@@ -118,6 +124,14 @@ Curated Echt-Import (ohne Overpass):
 
 - `npm run import:sightseeing:seed:nievern:curated -- --verbose`
 
+Curated Hero-URL-Validierung (nur Preset-Daten prüfen):
+
+- `npm run verify:curated-hero-urls -- --preset=nievern-highlights`
+
+Smoke-Test für deutsche Prioritäts-Highlights (DB + Hero-Check):
+
+- `npm run smoke:curated:nievern-highlights`
+
 ## Overpass Endpoint (Standard + Fallback)
 
 - Standard-Endpoint: `https://overpass-api.de/api/interpreter`
@@ -150,3 +164,9 @@ Diese Felder bleiben optional/nullable und sind für `SEHENSWUERDIGKEIT` optimie
 Nach echtem Seed-Import:
 
 - `POST /api/admin/sightseeing-autofill`
+
+Typische Reihenfolge für den DE-Fix-Workflow:
+
+1. `npm run import:sightseeing:seed:nievern:curated -- --force --verbose`
+2. `npm run smoke:curated:nievern-highlights`
+3. optional: `curl -X POST http://localhost:3000/api/admin/sightseeing-autofill`

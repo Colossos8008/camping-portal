@@ -30,7 +30,8 @@
     "check:hero-endpoint-health": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/check-hero-endpoint-health.ts",
     "verify:curated-hero-urls": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/validate-curated-hero-urls.ts",
     "smoke:curated:nievern-highlights": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/smoke-test-curated-nievern-highlights.ts",
-    "verify:curated-priority-coordinates": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-curated-priority-coordinates.ts"
+    "verify:curated-priority-coordinates": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-curated-priority-coordinates.ts",
+    "assist:curated-priority-osm": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-curated-osm-priority-coordinates.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

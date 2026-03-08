@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.ts";
 import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets.ts";
+import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
 import { normalizeName } from "../src/lib/sightseeing-seed-import.ts";
 
 type CuratedPlace = {
@@ -11,7 +12,20 @@ type CuratedPlace = {
   lng: number;
   sightExternalId: string | null;
   sightSource: string | null;
+  heroImageUrl: string | null;
 };
+
+function parseHeroRecoveryMode(argv: string[]): boolean {
+  if (argv.includes("--skip-hero-recovery")) return false;
+  if (argv.includes("--recover-heroes")) return true;
+  return true;
+}
+
+async function shouldApplyHeroFromPreset(heroImageUrl: string): Promise<boolean> {
+  const result = await validateHeroUrl(heroImageUrl);
+  if (result.ok) return true;
+  return (result.rejectionKind ?? "transient") === "transient";
+}
 
 function parsePresetArg(argv: string[]): string {
   const hit = argv.find((arg) => arg.startsWith("--preset="));
@@ -34,6 +48,7 @@ function nameSimilarity(a: string, b: string): number {
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const preset = parsePresetArg(process.argv.slice(2));
+  const recoverHeroes = parseHeroRecoveryMode(process.argv.slice(2));
   const candidates = getCuratedPresetCandidates(preset);
   const bySourceId = new Map(candidates.map((c) => [c.sourceId, c]));
   const byNormalizedName = new Map(candidates.map((c) => [normalizeName(c.name), c]));
@@ -55,6 +70,7 @@ async function main() {
       lng: true,
       sightExternalId: true,
       sightSource: true,
+      heroImageUrl: true,
     },
     orderBy: { id: "asc" },
   })) as CuratedPlace[];
@@ -67,6 +83,7 @@ async function main() {
   let detached = 0;
   let reassigned = 0;
   let updatedByName = 0;
+  let heroRecovered = 0;
   let created = 0;
 
   for (const row of existing) {
@@ -125,6 +142,22 @@ async function main() {
         nameSimilarity(existingBySource.name, candidate.name) < 0.6;
       if (mismatch) {
         console.log(`[repair] keep mismatched #${existingBySource.id} (${existingBySource.name}) untouched for ${candidate.sourceId}`);
+      }
+
+      if (recoverHeroes) {
+        const presetHero = String(candidate.heroImageUrl ?? "").trim();
+        const dbHero = String(existingBySource.heroImageUrl ?? "").trim();
+        if (presetHero && !dbHero && (await shouldApplyHeroFromPreset(presetHero))) {
+          console.log(`[repair] restore hero #${existingBySource.id} ${existingBySource.name} <- ${presetHero}`);
+          heroRecovered += 1;
+          if (!dryRun) {
+            await prisma.place.update({
+              where: { id: existingBySource.id },
+              data: { heroImageUrl: presetHero },
+            });
+          }
+          existingBySource.heroImageUrl = presetHero;
+        }
       }
       continue;
     }
@@ -186,6 +219,9 @@ async function main() {
   }
 
   console.log(`Done. preset=${preset} dryRun=${dryRun} detached=${detached} reassigned=${reassigned} updatedByName=${updatedByName} created=${created}`);
+  if (recoverHeroes) {
+    console.log(`[repair] heroRecovery restored=${heroRecovered}`);
+  }
 }
 
 main()

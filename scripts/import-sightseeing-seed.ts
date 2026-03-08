@@ -168,6 +168,14 @@ function isCuratedIdentityMismatch(existing: ExistingPlace, candidate: Sightseei
   return !distanceIsVeryClose || similarity < 0.5;
 }
 
+function buildHeroImageUpdate(candidate: SightseeingCandidate): { heroImageUrl?: string | null } {
+  if (candidate.source === "curated-preset") {
+    return { heroImageUrl: candidate.heroImageUrl ?? null };
+  }
+
+  return candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {};
+}
+
 type QueryScope = {
   regionConfig: RegionConfig;
   bbox: BoundingBox | null;
@@ -729,7 +737,7 @@ async function runRegionImport(options: {
               sightTags: candidate.tags,
               sightRegion: candidate.sourceRegion,
               sightCountry: candidate.country,
-              ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+              ...buildHeroImageUpdate(candidate),
             },
             select: { id: true },
           });
@@ -800,7 +808,7 @@ async function runRegionImport(options: {
             sightTags: candidate.tags,
             sightRegion: candidate.sourceRegion,
             sightCountry: candidate.country,
-            ...(candidate.heroImageUrl ? { heroImageUrl: candidate.heroImageUrl } : {}),
+            ...buildHeroImageUpdate(candidate),
           },
           select: { id: true },
         });

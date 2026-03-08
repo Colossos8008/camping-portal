@@ -52,12 +52,20 @@ async function main() {
     }
 
     const heroImageUrl = String(place.heroImageUrl ?? "").trim();
-    let heroStatus = "failed";
+    let heroStatus = "missing";
     let heroDetail = "-";
 
     if (heroImageUrl) {
       const validation = await validateHeroUrl(heroImageUrl);
-      heroStatus = validation.ok ? "ok" : "failed";
+      if (validation.ok) {
+        heroStatus = "ok";
+      } else if (validation.status === 429) {
+        heroStatus = "rate_limited_429";
+      } else if (validation.status === 404) {
+        heroStatus = "not_found_404";
+      } else {
+        heroStatus = "failed";
+      }
       heroDetail = `status=${validation.status ?? "-"},type=${validation.contentType ?? "-"},final=${validation.finalUrl ?? "-"}${validation.error ? `,error=${validation.error}` : ""}`;
     }
 

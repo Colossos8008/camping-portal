@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { isGooglePhotoReference } from "@/lib/hero-image";
+import { isHeroDebugPoiName } from "@/lib/hero-debug";
 import { getSupabasePublicUrl } from "./_lib/image-url";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
@@ -32,6 +33,7 @@ type Place = {
   sightCategory?: string | null;
 
   distanceKm?: number | null;
+  updatedAt?: string | null;
 };
 
 type Props = {
@@ -88,9 +90,15 @@ function escapeHtml(s: string) {
 
 function heroFilename(p: Place): string | null {
   const heroImageUrl = String(p.heroImageUrl ?? "").trim();
+  const debugVersion = isHeroDebugPoiName(p.name) && p.updatedAt ? `v=${encodeURIComponent(String(p.updatedAt))}` : "";
+  const withDebugVersion = (url: string): string => {
+    if (!debugVersion || !url.startsWith("/api/places/")) return url;
+    return `${url}${url.includes("?") ? "&" : "?"}${debugVersion}`;
+  };
+
   if (heroImageUrl) {
-    if (isGooglePhotoReference(heroImageUrl)) return `/api/places/${p.id}/hero`;
-    return heroImageUrl;
+    if (isGooglePhotoReference(heroImageUrl)) return withDebugVersion(`/api/places/${p.id}/hero`);
+    return withDebugVersion(heroImageUrl);
   }
 
   const imgs = Array.isArray(p.images) ? p.images : [];

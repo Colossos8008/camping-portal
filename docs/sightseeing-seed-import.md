@@ -84,8 +84,7 @@ Hero-Validierung bei Curated Presets:
 
 - Beim Import werden `heroImageUrl`-Werte nicht mehr blind übernommen.
 - Für jede kuratierte Hero-URL wird ein Live-Check ausgeführt (HTTP 200 + `content-type` beginnt mit `image/` + keine HTML-Response).
-- Fehlgeschlagene Hero-URLs werden verworfen und mit Status/Content-Type/Redirect-Ziel geloggt.
-- Wichtig beim Reimport: Für Curated-Datensätze wird `heroImageUrl` explizit auf `null` gesetzt, wenn im Preset keine valide Hero-URL mehr vorhanden ist. So bleiben keine alten, zuvor gespeicherten kaputten Hero-URLs im Datensatz hängen.
+- Fehlgeschlagene Hero-URLs werden verworfen (kein Write in `heroImageUrl`) und mit Status/Content-Type/Redirect-Ziel geloggt.
 
 
 Hinweise zu Kombinationen:

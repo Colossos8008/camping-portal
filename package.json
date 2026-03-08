@@ -28,7 +28,8 @@
     "dedupe:sightseeing:external-id": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/dedupe-sightseeing-by-external-id.ts",
     "repair:curated:sightseeing-identities": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/repair-curated-sightseeing-identities.ts",
     "check:hero-endpoint-health": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/check-hero-endpoint-health.ts",
-    "verify:curated-hero-urls": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/validate-curated-hero-urls.ts"
+    "verify:curated-hero-urls": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/validate-curated-hero-urls.ts",
+    "smoke:curated:nievern-highlights": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/smoke-test-curated-nievern-highlights.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

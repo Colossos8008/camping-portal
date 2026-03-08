@@ -384,6 +384,21 @@ async function findManyPlaces() {
   return places.map((p: any) => ({ ...p, ts21: null }));
 }
 
+function curatedPriorityScore(place: any): number {
+  if (place?.type !== "SEHENSWUERDIGKEIT") return 0;
+  const externalId = String(place?.sightExternalId ?? "").trim();
+  const source = String(place?.sightSource ?? "").trim().toLowerCase();
+  const hasHero = Boolean(String(place?.heroImageUrl ?? "").trim());
+  const score = Number(place?.sightseeingTotalScore);
+
+  let prio = 0;
+  if (externalId.startsWith("curated:nievern-highlights:")) prio += 100;
+  if (source === "curated-preset") prio += 30;
+  if (hasHero) prio += 10;
+  if (Number.isFinite(score)) prio += Math.max(0, Math.min(20, Math.round(score / 5)));
+  return prio;
+}
+
 export async function GET() {
   try {
     const places = await findManyPlaces();
@@ -391,6 +406,11 @@ export async function GET() {
       ...place,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
     }));
+    normalizedPlaces.sort((a: any, b: any) => {
+      const prioDiff = curatedPriorityScore(b) - curatedPriorityScore(a);
+      if (prioDiff !== 0) return prioDiff;
+      return Number(b?.id ?? 0) - Number(a?.id ?? 0);
+    });
     return NextResponse.json({ places: normalizedPlaces });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });

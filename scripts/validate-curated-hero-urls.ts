@@ -1,4 +1,5 @@
 import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
+import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
 
 type Result = {
   key: string;
@@ -12,40 +13,17 @@ type Result = {
 };
 
 async function validateUrl(key: string, name: string, url: string): Promise<Result> {
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      headers: {
-        Accept: "image/*,*/*;q=0.8",
-        "User-Agent": "camping-portal/curated-hero-validator",
-      },
-    });
-
-    const contentType = response.headers.get("content-type");
-    const ok = response.ok && String(contentType ?? "").toLowerCase().startsWith("image/");
-
-    return {
-      key,
-      name,
-      url,
-      ok,
-      status: response.status,
-      contentType,
-      finalUrl: response.url,
-    };
-  } catch (error) {
-    return {
-      key,
-      name,
-      url,
-      ok: false,
-      status: null,
-      contentType: null,
-      finalUrl: null,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  const validation = await validateHeroUrl(url);
+  return {
+    key,
+    name,
+    url,
+    ok: validation.ok,
+    status: validation.status,
+    contentType: validation.contentType,
+    finalUrl: validation.finalUrl,
+    error: validation.error,
+  };
 }
 
 async function main() {

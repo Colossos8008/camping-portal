@@ -18,6 +18,7 @@ import {
   type TargetRegion,
 } from "../src/lib/sightseeing-seed-import.ts";
 import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets.ts";
+import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
 
 const REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -68,6 +69,34 @@ type RankedCandidate = {
   candidate: SightseeingCandidate;
   highlightScore: number | null;
 };
+
+async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[], verbose: boolean): Promise<SightseeingCandidate[]> {
+  const out: SightseeingCandidate[] = [];
+  for (const candidate of candidates) {
+    const heroImageUrl = String(candidate.heroImageUrl ?? "").trim();
+    if (!heroImageUrl) {
+      out.push(candidate);
+      continue;
+    }
+
+    const result = await validateHeroUrl(heroImageUrl);
+    if (!result.ok) {
+      console.warn(
+        `[curated-hero] rejected ${candidate.sourceId} (${candidate.name}) status=${result.status ?? "-"} content-type=${result.contentType ?? "-"} final=${result.finalUrl ?? "-"}${result.error ? ` error=${result.error}` : ""}`
+      );
+      out.push({ ...candidate, heroImageUrl: undefined });
+      continue;
+    }
+
+    if (verbose) {
+      console.log(
+        `[curated-hero] accepted ${candidate.sourceId} status=${result.status} content-type=${result.contentType ?? "-"} final=${result.finalUrl ?? heroImageUrl}`
+      );
+    }
+    out.push(candidate);
+  }
+  return out;
+}
 
 type RegionSummary = {
   region: string;
@@ -549,7 +578,7 @@ async function runRegionImport(options: {
     : await fetchScopeElements({ scope, overpassUrl, maxElements, verbose, selectedSubqueries, importMode });
   const { elements, successfulSubqueries, failedSubqueries } = fetchedResult;
 
-  const normalized = curatedSet
+  const normalizedRaw = curatedSet
     ? getCuratedPresetCandidates(curatedSet)
     : elements
         .map((el) => {
@@ -564,6 +593,10 @@ async function runRegionImport(options: {
           });
         })
         .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  const normalized = curatedSet
+    ? await validateCuratedCandidateHeroes(normalizedRaw, verbose)
+    : normalizedRaw;
 
   if (curatedSet) {
     console.log(`[pipeline:${scope.label}] curated preset=${curatedSet} candidates=${normalized.length}`);

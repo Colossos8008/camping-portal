@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { isGooglePhotoReference } from "@/lib/hero-image";
-import { isHeroDebugPoiName } from "@/lib/hero-debug";
+import { isHeroDebugPoiId, isHeroDebugPoiName } from "@/lib/hero-debug";
 import { getSupabasePublicUrl } from "./_lib/image-url";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
@@ -184,8 +184,13 @@ function hoverTooltipHtml(p: Place) {
   const hasTS2 = p.type === "CAMPINGPLATZ" || p.type === "STELLPLATZ";
   const hEmoji = hasTS2 ? haltungEmoji((p.ts2?.haltung ?? "DNA") as any) : null;
 
+  const heroDebugEnabled = isHeroDebugPoiId(p.id);
+  const debugInfoHtml = heroDebugEnabled
+    ? `<div style="margin-top:6px;font-size:10px;line-height:1.3;opacity:0.85;word-break:break-word;">src=${escapeHtml(heroUrl || "(empty)")}</div>`
+    : "";
+
   const imgHtml = heroUrl
-    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div style=&quot;width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);&quot;></div>');" />`
+    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src+(this.src.includes('?')?'&':'?')+'ui_retry=1';return;}this.style.display='none';this.insertAdjacentHTML('afterend','<div style=&quot;width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.85;&quot;>Hero failed</div>');" />`
     : `<div style="width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);"></div>`;
 
   return `
@@ -202,6 +207,7 @@ function hoverTooltipHtml(p: Place) {
   ">
     <div style="border-radius:14px;overflow:hidden;">
       ${imgHtml}
+      ${debugInfoHtml}
     </div>
 
     <div style="margin-top:8px;">

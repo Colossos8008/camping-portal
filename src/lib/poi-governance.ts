@@ -4,6 +4,8 @@ export type CoordinateMode = (typeof COORDINATE_MODES)[number];
 export const POI_REVIEW_STATES = ["PENDING", "AUTO_ACCEPT", "AUTO_REJECT", "MANUAL_REVIEW"] as const;
 export type PoiReviewState = (typeof POI_REVIEW_STATES)[number];
 
+import { decidePoiGovernancePolicy } from "./poi-source-decision-tree.ts";
+
 type OsmLikeElement = {
   type: "node" | "way" | "relation";
   id: number;
@@ -11,6 +13,11 @@ type OsmLikeElement = {
 };
 
 export type DerivedPoiGovernance = {
+  poiDecisionType: string;
+  identityPrimarySource: string;
+  coordinatePrimarySource: string;
+  identitySourceHierarchy: string[];
+  coordinateSourceHierarchy: string[];
   canonicalSource: string;
   canonicalSourceId: string;
   wikidataId: string | null;
@@ -100,18 +107,26 @@ export function derivePoiGovernanceFromOsmElement(element: OsmLikeElement): Deri
 
   coordinateConfidence = Math.max(0, Math.min(1, Number(coordinateConfidence.toFixed(2))));
 
-  let suggestedReviewState: PoiReviewState = "MANUAL_REVIEW";
-  let suggestedReviewReason = "default-manual-review";
+  const decision = decidePoiGovernancePolicy({
+    elementType: element.type,
+    tags,
+    hasName: Boolean(tags.name?.trim()),
+    hasWikidata: Boolean(wikidataId),
+    hasWikipedia: Boolean(wikipediaTitle),
+    hasGeoNamesRef: Boolean(tags["geonames:id"] || tags.geonames),
+    hasUnescoRef: Boolean(tags["ref:unesco"] || tags["heritage:operator"]?.toLowerCase().includes("unesco")),
+    coordinateConfidence,
+  });
 
-  if (coordinateConfidence >= 0.8 && coordinateMode !== "COMPLEX_SITE") {
-    suggestedReviewState = "AUTO_ACCEPT";
-    suggestedReviewReason = "high-confidence-single-anchor";
-  } else if (coordinateConfidence < 0.45) {
-    suggestedReviewState = "AUTO_REJECT";
-    suggestedReviewReason = "low-confidence-source-signals";
-  }
+  const suggestedReviewState: PoiReviewState = decision.action;
+  const suggestedReviewReason = decision.reason;
 
   return {
+    poiDecisionType: decision.poiType,
+    identityPrimarySource: decision.identityPrimarySource,
+    coordinatePrimarySource: decision.coordinatePrimarySource,
+    identitySourceHierarchy: decision.identityHierarchy,
+    coordinateSourceHierarchy: decision.coordinateHierarchy,
     canonicalSource,
     canonicalSourceId,
     wikidataId,
@@ -121,7 +136,7 @@ export function derivePoiGovernanceFromOsmElement(element: OsmLikeElement): Deri
     wikipediaUrl,
     coordinateSource: "osm-overpass",
     coordinateConfidence,
-    coordinateMode,
+    coordinateMode: decision.preferredCoordinateMode,
     geometryType: inferGeometryType(element.type),
     suggestedReviewState,
     suggestedReviewReason,

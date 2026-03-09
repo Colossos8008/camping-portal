@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-03-09T11:00:04.347Z",
+  "inputs": {
+    "worklist": "data/review/koblenz-goldset-quickwin-worklist.json",
+    "curatedPresetFile": "src/lib/curated-sightseeing-presets.ts"
+  },
+  "summary": {
+    "totalQuickWins": 0,
+    "resolvedAgainstCurated": 0,
+    "missingInCurated": 0
+  },
+  "proposals": [],
+  "missing": []
+}

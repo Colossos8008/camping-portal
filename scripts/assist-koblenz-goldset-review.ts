@@ -37,7 +37,41 @@ type GoogleSearchDebug = {
 
 const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
 const PRESET = "nievern-highlights";
-const MAX_DISTANCE_FOR_AUTO_ACCEPT_M = 250;
+type TargetCategory = "MONUMENT" | "COMPLEX_SITE" | "NATURE_ANCHOR";
+type DistanceGate = { autoAcceptMaxM: number; manualReviewMaxM: number };
+
+const DISTANCE_GATES: Record<TargetCategory, DistanceGate> = {
+  MONUMENT: { autoAcceptMaxM: 120, manualReviewMaxM: 450 },
+  COMPLEX_SITE: { autoAcceptMaxM: 260, manualReviewMaxM: 900 },
+  NATURE_ANCHOR: { autoAcceptMaxM: 180, manualReviewMaxM: 700 },
+};
+
+const KEY_CATEGORY_OVERRIDES: Partial<Record<string, TargetCategory>> = {
+  "deutsches-eck": "MONUMENT",
+  "florinskirche-koblenz": "MONUMENT",
+  "historiensaeule-koblenz": "MONUMENT",
+  "marksburg": "COMPLEX_SITE",
+  "schloss-stolzenfels": "COMPLEX_SITE",
+  "burg-lahneck": "COMPLEX_SITE",
+  "schloss-sayn": "COMPLEX_SITE",
+  "garten-der-schmetterlinge-sayn": "MONUMENT",
+  "kurhaus-bad-ems": "MONUMENT",
+  "geysir-andernach": "NATURE_ANCHOR",
+};
+
+const SEMANTIC_REJECT_PATTERNS = ["gmbh", "eventlocation", "event location", "besucherzentrum", "visitor center", "straße", "strasse"];
+const SEMANTIC_REVIEW_PATTERNS = ["museum", "besucherzentrum", "visitor center", "business", "center"];
+const SEMANTIC_EXPECTED_PATTERNS: Partial<Record<string, string[]>> = {
+  "schloss-stolzenfels": ["schloss", "stolzenfels"],
+  "marksburg": ["marksburg", "burg"],
+  "burg-lahneck": ["burg", "lahneck"],
+  "florinskirche-koblenz": ["florinskirche", "kirche"],
+  "historiensaeule-koblenz": ["historiensäule", "historiensaeule", "säule", "denkmal"],
+  "schloss-sayn": ["schloss", "sayn"],
+  "garten-der-schmetterlinge-sayn": ["schmetterlinge", "garten"],
+  "kurhaus-bad-ems": ["kurhaus"],
+  "geysir-andernach": ["geysir", "andernach"],
+};
 
 const GOLD_SET: GoldTarget[] = [
   { key: "deutsches-eck", name: "Deutsches Eck", wikidataId: "Q698646", googleQuery: "Deutsches Eck Koblenz", mode: "VIEWPOINT" },
@@ -95,6 +129,42 @@ function distanceMeters(a: Coordinates, b: Coordinates): number {
   const dLng = toRad(b.lng - a.lng);
   const p = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.atan2(Math.sqrt(p), Math.sqrt(1 - p));
+}
+
+function normalizeLabel(text: string): string {
+  return text.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function targetCategoryFor(target: GoldTarget): TargetCategory {
+  const explicit = KEY_CATEGORY_OVERRIDES[target.key];
+  if (explicit) return explicit;
+  if (target.mode === "COMPLEX_SITE") return "COMPLEX_SITE";
+  if (target.mode === "VIEWPOINT") return "NATURE_ANCHOR";
+  return "MONUMENT";
+}
+
+function evaluateGoogleSemantic(target: GoldTarget, candidate: SourceCandidate | null): { state: "ok" | "manual" | "reject"; reasons: string[] } {
+  if (!candidate) return { state: "reject", reasons: ["google_missing_candidate"] };
+  const normalized = normalizeLabel(candidate.label);
+  const reasons: string[] = [];
+
+  const expectedTokens = SEMANTIC_EXPECTED_PATTERNS[target.key] ?? [];
+  if (expectedTokens.length && !expectedTokens.some((token) => normalized.includes(normalizeLabel(token)))) {
+    reasons.push("google_semantic_expected_token_missing");
+  }
+
+  if (SEMANTIC_REJECT_PATTERNS.some((token) => normalized.includes(token))) {
+    reasons.push("google_semantic_reject_pattern");
+  }
+  if (SEMANTIC_REVIEW_PATTERNS.some((token) => normalized.includes(token))) {
+    reasons.push("google_semantic_review_pattern");
+  }
+
+  if (reasons.includes("google_semantic_reject_pattern") || reasons.includes("google_semantic_expected_token_missing")) {
+    return { state: "reject", reasons };
+  }
+  if (reasons.length) return { state: "manual", reasons };
+  return { state: "ok", reasons };
 }
 
 async function searchNominatim(query: string, limit: number): Promise<SourceCandidate[]> {
@@ -295,19 +365,42 @@ async function resolveTarget(target: GoldTarget, current: Coordinates, online: b
   const googleBest = google[0] ?? null;
   const osmBest = osm[0] ?? null;
 
-  const finalPoint = googleBest ?? osmBest;
+  const targetCategory = targetCategoryFor(target);
+  const distanceGate = DISTANCE_GATES[targetCategory];
+  const semantic = evaluateGoogleSemantic(target, googleBest);
   const conflictDistance = googleBest && osmBest ? distanceMeters(googleBest, osmBest) : 0;
-  const confidence = finalPoint ? (googleBest && osmBest && conflictDistance <= MAX_DISTANCE_FOR_AUTO_ACCEPT_M ? 0.95 : googleBest ? 0.82 : 0.7) : 0.35;
-  const reviewState: ReviewState = finalPoint && wikidataId && googleBest && osmBest && conflictDistance <= MAX_DISTANCE_FOR_AUTO_ACCEPT_M ? "AUTO_ACCEPT" : "MANUAL_REVIEW";
-  const coordinateSource = googleBest ? "google_places" : osmBest ? "nominatim-osm" : "unknown";
-  const canonicalSource = wikidataId ? "wikidata" : googleBest ? "google_places" : "nominatim-osm";
-  const canonicalSourceId = wikidataId ?? googleBest?.sourceId ?? osmBest?.sourceId ?? null;
+  const distanceState = !googleBest || !osmBest
+    ? "unknown"
+    : conflictDistance <= distanceGate.autoAcceptMaxM
+      ? "auto"
+      : conflictDistance <= distanceGate.manualReviewMaxM
+        ? "manual"
+        : "reject";
+
+  const canUseGoogle = Boolean(googleBest) && semantic.state !== "reject" && distanceState !== "reject";
+  const finalPoint = canUseGoogle ? googleBest : osmBest ?? googleBest;
+  const reviewState: ReviewState = finalPoint && wikidataId && canUseGoogle && distanceState === "auto" && semantic.state === "ok" ? "AUTO_ACCEPT" : "MANUAL_REVIEW";
+  const coordinateSource = canUseGoogle ? "google_places" : osmBest ? "nominatim-osm" : googleBest ? "google_places" : "unknown";
+  const canonicalSource = wikidataId ? "wikidata" : coordinateSource === "google_places" ? "google_places" : "nominatim-osm";
+  const canonicalSourceId = wikidataId ?? (coordinateSource === "google_places" ? googleBest?.sourceId : osmBest?.sourceId) ?? null;
+  const confidence = finalPoint
+    ? reviewState === "AUTO_ACCEPT"
+      ? 0.95
+      : canUseGoogle
+        ? 0.72
+        : osmBest
+          ? 0.78
+          : 0.45
+    : 0.35;
 
   const reasonParts = [
     `wikidata=${wikidataId ?? "missing"}`,
     `google=${googleBest ? googleBest.sourceId : "missing"}`,
     `osm=${osmBest ? osmBest.sourceId : "missing"}`,
     googleBest && osmBest ? `google_osm_distance_m=${Math.round(conflictDistance)}` : null,
+    `distance_gate=${targetCategory}:${distanceGate.autoAcceptMaxM}/${distanceGate.manualReviewMaxM}:${distanceState}`,
+    `google_semantic=${semantic.state}${semantic.reasons.length ? `(${semantic.reasons.join(",")})` : ""}`,
+    `selection=${coordinateSource}`,
     warnings.length ? `warnings=${warnings.join(";")}` : null,
     target.anchorNote ? `anchor=${target.anchorNote}` : null,
   ].filter(Boolean);
@@ -350,7 +443,7 @@ async function main() {
   if (args.apply) {
     let content = readFileSync(resolve(CURATED_FILE), "utf8");
     for (const item of resolved) {
-      if (!item.finalPoint) continue;
+      if (!item.finalPoint || item.governance.poiReviewState !== "AUTO_ACCEPT") continue;
       content = applyRowUpdate(content, item.key, {
         lat: item.finalPoint.lat.toFixed(6),
         lng: item.finalPoint.lng.toFixed(6),

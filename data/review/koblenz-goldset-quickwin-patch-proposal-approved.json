@@ -1,10 +1,41 @@
 {
-  "approvedAt": "1970-01-01T00:00:00.000Z",
-  "approvedBy": "manual-review",
-  "note": "Frozen approved quick-win snapshot",
-  "sourceProposalFile": "data/review/koblenz-goldset-quickwin-patch-proposal.json",
+  "approvedAt": "2026-03-09T14:26:41.463Z",
+  "approvedBy": "manual-review-seed",
+  "note": "Frozen approved quick-win snapshot for first two vetted Koblenz coordinate fixes.",
+  "sourceProposalFile": "manual-seed",
   "summary": {
-    "approvedCount": 0
+    "approvedCount": 2
   },
-  "proposals": []
+  "proposals": [
+    {
+      "placeKey": "ludwig-museum-koblenz",
+      "placeName": "Ludwig Museum Koblenz",
+      "currentLat": 50.3626,
+      "currentLng": 7.6059,
+      "proposedLat": 50.3627774,
+      "proposedLng": 7.605001699999999,
+      "deltaMeters": 67,
+      "proposedSource": "google_places",
+      "fallbackSource": "osm_nominatim",
+      "confidenceBucket": "HIGH",
+      "proposalReason": "Medium consensus for a location target with google_places and supporting secondary source.",
+      "manualCheckHint": "confirm museum entrance instead of area center",
+      "patchText": "Update ludwig-museum-koblenz from 50.3626, 7.6059 to 50.3627774, 7.605001699999999 using google_places; fallback osm_nominatim; delta ~67 m; confirm museum entrance instead of area center"
+    },
+    {
+      "placeKey": "basilika-st-kastor",
+      "placeName": "Basilika St. Kastor",
+      "currentLat": 50.36268,
+      "currentLng": 7.605,
+      "proposedLat": 50.362227399999995,
+      "proposedLng": 7.6044446,
+      "deltaMeters": 64,
+      "proposedSource": "google_places",
+      "fallbackSource": "osm_nominatim",
+      "confidenceBucket": "HIGH",
+      "proposalReason": "Medium consensus for a point-like target with google_places and supporting secondary source.",
+      "manualCheckHint": "prefer named building over surrounding street point",
+      "patchText": "Update basilika-st-kastor from 50.36268, 7.605 to 50.362227399999995, 7.6044446 using google_places; fallback osm_nominatim; delta ~64 m; prefer named building over surrounding street point"
+    }
+  ]
 }

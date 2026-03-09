@@ -41,7 +41,8 @@
     "patch-proposal:koblenz-quickwins": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-koblenz-quickwin-patch-proposal.ts",
     "apply:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts",
     "approve:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/approve-koblenz-quickwin-patch-proposal.ts",
-    "apply-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts --approved"
+    "apply-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts --approved",
+    "seed-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/seed-koblenz-approved-quickwin-patches.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

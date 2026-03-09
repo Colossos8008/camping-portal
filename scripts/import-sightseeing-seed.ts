@@ -107,6 +107,21 @@ async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[]
 
 
 function buildPoiGovernanceData(candidate: SightseeingCandidate) {
+  const coordinateModeRaw = String(candidate.coordinateMode ?? "").trim().toUpperCase();
+  const reviewStateRaw = String(candidate.suggestedReviewState ?? "").trim().toUpperCase();
+
+  const coordinateModeMap: Record<string, string> = {
+    EXACT: "POINT",
+    AREA_ANCHOR: "AREA_CENTER",
+  };
+
+  const reviewStateMap: Record<string, string> = {
+    REVIEWED: "MANUAL_REVIEW",
+  };
+
+  const mappedCoordinateMode = coordinateModeMap[coordinateModeRaw] ?? (coordinateModeRaw || undefined);
+  const mappedReviewState = reviewStateMap[reviewStateRaw] ?? (reviewStateRaw || undefined);
+
   return {
     canonicalSource: candidate.canonicalSource ?? null,
     canonicalSourceId: candidate.canonicalSourceId ?? null,
@@ -117,9 +132,9 @@ function buildPoiGovernanceData(candidate: SightseeingCandidate) {
     wikipediaUrl: candidate.wikipediaUrl ?? null,
     coordinateSource: candidate.coordinateSource ?? null,
     coordinateConfidence: candidate.coordinateConfidence ?? null,
-    coordinateMode: candidate.coordinateMode as any,
+    coordinateMode: mappedCoordinateMode as any,
     geometryType: candidate.geometryType ?? null,
-    poiReviewState: (candidate.suggestedReviewState as any) ?? undefined,
+    poiReviewState: mappedReviewState as any,
     poiReviewReason: candidate.suggestedReviewReason ?? null,
   };
 }

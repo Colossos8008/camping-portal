@@ -1,10 +1,10 @@
 {
-  "approvedAt": "2026-03-09T15:00:00.000Z",
+  "approvedAt": "2026-03-09T18:30:00.000Z",
   "approvedBy": "manual-review-seed",
-  "note": "Frozen approved quick-win snapshot including four additional Koblenz Zentrum landmark fixes.",
+  "note": "Approved quick-win snapshot with Koblenz Altstadt exact-object rollback for 3 POIs; schaengelbrunnen intentionally excluded pending verifiable OSM exact-object point.",
   "sourceProposalFile": "manual-seed",
   "summary": {
-    "approvedCount": 6
+    "approvedCount": 5
   },
   "proposals": [
     {
@@ -40,62 +40,47 @@
     {
       "placeKey": "florinskirche-koblenz",
       "placeName": "Florinskirche Koblenz",
-      "currentLat": 50.359454,
-      "currentLng": 7.596059,
-      "proposedLat": 50.36019,
-      "proposedLng": 7.59628,
+      "currentLat": 50.36019,
+      "currentLng": 7.59628,
+      "proposedLat": 50.359454,
+      "proposedLng": 7.596059,
       "deltaMeters": 84,
-      "proposedSource": "wikidata",
+      "proposedSource": "osm_exact_object",
       "fallbackSource": "osm_direct",
-      "confidenceBucket": "MEDIUM",
-      "proposalReason": "Manual quick-win anchored to known Florinsmarkt church footprint; current point appears offset from the building focus.",
-      "manualCheckHint": "verify marker sits on church body at Florinsmarkt, not on adjacent street segment",
-      "patchText": "Update florinskirche-koblenz from 50.359454, 7.596059 to 50.36019, 7.59628 using wikidata; fallback osm_direct; delta ~84 m; verify marker sits on church body at Florinsmarkt, not on adjacent street segment"
+      "confidenceBucket": "HIGH",
+      "proposalReason": "Exact OSM object rollback: approved quick-win drifted away from the Florinskirche OSM object point.",
+      "manualCheckHint": "OSM exact object only (Florinskirche, osm:way/106344917).",
+      "patchText": "Update florinskirche-koblenz from 50.36019, 7.59628 to 50.359454, 7.596059 using osm_exact_object; fallback osm_direct; delta ~84 m; OSM exact object only (osm:way/106344917)."
     },
     {
       "placeKey": "liebfrauenkirche-koblenz",
       "placeName": "Liebfrauenkirche Koblenz",
-      "currentLat": 50.359206,
-      "currentLng": 7.595373,
-      "proposedLat": 50.35979,
-      "proposedLng": 7.59574,
+      "currentLat": 50.35979,
+      "currentLng": 7.59574,
+      "proposedLat": 50.359206,
+      "proposedLng": 7.595373,
       "deltaMeters": 70,
-      "proposedSource": "wikidata",
+      "proposedSource": "osm_exact_object",
       "fallbackSource": "osm_direct",
-      "confidenceBucket": "MEDIUM",
-      "proposalReason": "Manual quick-win towards the church core in the Altstadt cluster; reduces likely drift to nearby block edge.",
-      "manualCheckHint": "confirm point is centered on Liebfrauenkirche towers/church mass",
-      "patchText": "Update liebfrauenkirche-koblenz from 50.359206, 7.595373 to 50.35979, 7.59574 using wikidata; fallback osm_direct; delta ~70 m; confirm point is centered on Liebfrauenkirche towers/church mass"
+      "confidenceBucket": "HIGH",
+      "proposalReason": "Exact OSM object rollback: approved quick-win drifted away from the Liebfrauenkirche OSM object point.",
+      "manualCheckHint": "OSM exact object only (Liebfrauenkirche, osm:way/153896915).",
+      "patchText": "Update liebfrauenkirche-koblenz from 50.35979, 7.59574 to 50.359206, 7.595373 using osm_exact_object; fallback osm_direct; delta ~70 m; OSM exact object only (osm:way/153896915)."
     },
     {
       "placeKey": "historiensaeule-koblenz",
       "placeName": "Historiensäule Koblenz",
-      "currentLat": 50.359694,
-      "currentLng": 7.595828,
-      "proposedLat": 50.35993,
-      "proposedLng": 7.59599,
+      "currentLat": 50.35993,
+      "currentLng": 7.59599,
+      "proposedLat": 50.359694,
+      "proposedLng": 7.595828,
       "deltaMeters": 29,
-      "proposedSource": "wikidata",
+      "proposedSource": "osm_exact_object",
       "fallbackSource": "osm_direct",
       "confidenceBucket": "HIGH",
-      "proposalReason": "Monument target refined toward Görresplatz column center; small but relevant map-level correction for exact-object display.",
-      "manualCheckHint": "ensure marker lands on the column position within Görresplatz",
-      "patchText": "Update historiensaeule-koblenz from 50.359694, 7.595828 to 50.35993, 7.59599 using wikidata; fallback osm_direct; delta ~29 m; ensure marker lands on the column position within Görresplatz"
-    },
-    {
-      "placeKey": "schaengelbrunnen",
-      "placeName": "Schängelbrunnen",
-      "currentLat": 50.3605,
-      "currentLng": 7.5959,
-      "proposedLat": 50.36027,
-      "proposedLng": 7.59645,
-      "deltaMeters": 46,
-      "proposedSource": "manual_landmark_alignment",
-      "fallbackSource": "osm_nominatim",
-      "confidenceBucket": "MEDIUM",
-      "proposalReason": "Manual quick-win aligned to the Rathaus-front fountain area (Willi-Hörter-Platz) to improve symbolic city landmark placement.",
-      "manualCheckHint": "verify point is on Schängelbrunnen basin at Rathaus side, not on surrounding roadway",
-      "patchText": "Update schaengelbrunnen from 50.3605, 7.5959 to 50.36027, 7.59645 using manual_landmark_alignment; fallback osm_nominatim; delta ~46 m; verify point is on Schängelbrunnen basin at Rathaus side, not on surrounding roadway"
+      "proposalReason": "Exact OSM object rollback: approved quick-win drifted away from the Historiensäule OSM object point.",
+      "manualCheckHint": "OSM exact object only (Historiensäule, osm:node/3787909778).",
+      "patchText": "Update historiensaeule-koblenz from 50.35993, 7.59599 to 50.359694, 7.595828 using osm_exact_object; fallback osm_direct; delta ~29 m; OSM exact object only (osm:node/3787909778)."
     }
   ]
 }

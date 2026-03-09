@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-03-09T10:49:33.766Z",
+  "inputs": {
+    "goldSet": "data/review/koblenz-goldset-v1.json",
+    "comparison": "data/review/koblenz-goldset-source-comparison.json",
+    "priorities": "data/review/koblenz-goldset-review-priorities.json"
+  },
+  "summary": {
+    "totalQuickWinsInPriorities": 0,
+    "worklistCount": 0,
+    "skippedCount": 0
+  },
+  "worklist": [],
+  "skipped": []
+}

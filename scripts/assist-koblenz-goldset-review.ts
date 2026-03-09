@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";

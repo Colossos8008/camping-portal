@@ -1,0 +1,2408 @@
+{
+  "generatedAt": "2026-03-09T07:40:39.773Z",
+  "input": "data/review/koblenz-goldset-v1.json",
+  "total": 28,
+  "options": {
+    "key": null,
+    "status": null,
+    "limit": null,
+    "write": true
+  },
+  "summary": {
+    "consensusCounts": {
+      "STRONG": 0,
+      "MEDIUM": 0,
+      "WEAK": 0,
+      "NONE": 28
+    },
+    "goldCounts": {
+      "GOOD": 5,
+      "OKAY": 1,
+      "BAD": 22
+    },
+    "badWithStrongOrMediumConsensus": 0,
+    "badWithoutUsableConsensus": 22
+  },
+  "results": [
+    {
+      "placeKey": "deutsches-eck",
+      "placeName": "Deutsches Eck",
+      "goldSetReview": {
+        "coordinateStatus": "GOOD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate passt, kein Bild",
+        "targetPointTypeExpected": "VIEWPOINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:node/29160745",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q698646",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "altstadt-koblenz",
+      "placeName": "Altstadt Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "GOOD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate passt, kein Bild",
+        "targetPointTypeExpected": "AREA_ANCHOR"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/34401166",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1045186",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "festung-ehrenbreitstein",
+      "placeName": "Festung Ehrenbreitstein",
+      "goldSetReview": {
+        "coordinateStatus": "OKAY",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate passt einigermaßen",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/41737967",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1438023",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "kurfuerstliches-schloss-koblenz",
+      "placeName": "Kurfürstliches Schloss Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "GOOD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate passt, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/38920860",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q2309636",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "schloss-stolzenfels",
+      "placeName": "Schloss Stolzenfels",
+      "goldSetReview": {
+        "coordinateStatus": "GOOD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "jetzt perfekt",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/100863980",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q694322",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "burg-eltz",
+      "placeName": "Burg Eltz",
+      "goldSetReview": {
+        "coordinateStatus": "GOOD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate perfekt, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/27019170",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q668160",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "kurhaus-bad-ems",
+      "placeName": "Kurhaus Bad Ems",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate unverändert schlecht",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/36908904",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q19865440",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "kurpark-bad-ems",
+      "placeName": "Kurpark Bad Ems",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "AREA_ANCHOR"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "burg-lahneck",
+      "placeName": "Burg Lahneck",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate unverändert schlecht",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/136573940",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1011657",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "seilbahn-koblenz",
+      "placeName": "Seilbahn Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "VISITOR_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "ludwig-museum-koblenz",
+      "placeName": "Ludwig Museum Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "ENTRANCE_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "basilika-st-kastor",
+      "placeName": "Basilika St. Kastor",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "mittelrhein-museum",
+      "placeName": "Mittelrhein-Museum",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "ENTRANCE_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "jesuitenplatz",
+      "placeName": "Jesuitenplatz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "AREA_ANCHOR"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/34401166",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q61788631",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "florinskirche-koblenz",
+      "placeName": "Florinskirche Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/106344917",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1428776",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "historiensaeule-koblenz",
+      "placeName": "Historiensäule Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:node/3787909778",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1585197",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "liebfrauenkirche-koblenz",
+      "placeName": "Liebfrauenkirche Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/153896915",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q1821008",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "schaengelbrunnen",
+      "placeName": "Schängelbrunnen",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "EXACT_OBJECT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "db-museum-koblenz",
+      "placeName": "DB Museum Koblenz",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "ENTRANCE_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "marksburg",
+      "placeName": "Marksburg",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate unverändert schlecht",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/131570312",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q689959",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "garten-der-schmetterlinge-sayn",
+      "placeName": "Garten der Schmetterlinge Schloss Sayn",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "ENTRANCE_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/48838749",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q55257790",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "schloss-sayn",
+      "placeName": "Schloss Sayn",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate unverändert schlecht",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:way/65464883",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q2246760",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "kloster-arnstein",
+      "placeName": "Kloster Arnstein",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "sayner-huette",
+      "placeName": "Sayner Hütte",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "burg-rheinfels",
+      "placeName": "Burg Rheinfels",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "geysir-andernach",
+      "placeName": "Geysir Andernach",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "UNKNOWN",
+        "reviewNote": "Koordinate unverändert schlecht",
+        "targetPointTypeExpected": "VISITOR_POINT"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "osm:node/2604143031",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "Q699893",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "abtei-maria-laach",
+      "placeName": "Abtei Maria Laach",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    },
+    {
+      "placeKey": "burg-rheineck",
+      "placeName": "Burg Rheineck",
+      "goldSetReview": {
+        "coordinateStatus": "BAD",
+        "imageStatus": "BAD",
+        "reviewNote": "Koordinate unverändert schlecht, kein Bild",
+        "targetPointTypeExpected": "COMPLEX_SITE"
+      },
+      "candidates": {
+        "googlePlaces": {
+          "source": "google_places",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "missing",
+          "note": "Missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY"
+        },
+        "osmNominatim": {
+          "source": "osm_nominatim",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "error",
+          "note": "TypeError: fetch failed"
+        },
+        "osmDirect": {
+          "source": "osm_direct",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No direct OSM id available"
+        },
+        "wikidata": {
+          "source": "wikidata",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "No Wikidata id available"
+        },
+        "wikipedia": {
+          "source": "wikipedia",
+          "lat": null,
+          "lng": null,
+          "label": "",
+          "sourceId": "",
+          "rawType": "",
+          "rawClass": "",
+          "confidenceHint": "",
+          "status": "unavailable",
+          "note": "Wikipedia lookup skipped without stable Wikidata base"
+        }
+      },
+      "distances": {
+        "candidateToCandidateMeters": {},
+        "candidateToCenterMeters": {}
+      },
+      "consensus": {
+        "tightClusterCount": 0,
+        "looseClusterCount": 0,
+        "outlierSources": [],
+        "consensusCenterLat": null,
+        "consensusCenterLng": null,
+        "consensusQuality": "NONE",
+        "bestClusterSources": []
+      }
+    }
+  ]
+}

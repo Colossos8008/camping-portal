@@ -2,209 +2,239 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
 
-type NominatimHit = { display_name?: string; lat?: string; lon?: string; class?: string; type?: string; category?: string; addresstype?: string; importance?: number };
-type GoldTarget = { key: string; name: string; query: string; mode: "EXACT" | "AREA_ANCHOR" | "COMPLEX_SITE" | "VIEWPOINT"; sourceNote: string; anchorNote?: string };
-type CliArgs = { key: string | null; pick?: number; apply: boolean; limit: number };
+type CoordinateMode = "EXACT" | "AREA_ANCHOR" | "COMPLEX_SITE" | "VIEWPOINT" | "ENTRANCE_POINT";
+type ReviewState = "AUTO_ACCEPT" | "MANUAL_REVIEW";
+
+type GoldTarget = {
+  key: string;
+  name: string;
+  wikidataId?: string;
+  wikidataLabelHint?: string;
+  googleQuery: string;
+  mode: CoordinateMode;
+  anchorNote?: string;
+};
+
+type Coordinates = { lat: number; lng: number };
+type SourceCandidate = Coordinates & { label: string; sourceId: string };
+type CliArgs = { key: string | null; apply: boolean; online: boolean; limit: number };
+
+type NominatimHit = { display_name?: string; lat?: string; lon?: string; osm_id?: string | number; osm_type?: string; importance?: number };
+type WikidataHit = { id: string; label: string; description?: string };
+type GooglePlaceHit = { id: string; displayName?: { text?: string }; formattedAddress?: string; location?: { latitude?: number; longitude?: number } };
 
 const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
-const REVIEWED = "REVIEWED";
+const PRESET = "nievern-highlights";
+const MAX_DISTANCE_FOR_AUTO_ACCEPT_M = 250;
 
-const KOBLENZ_GOLD_SET: GoldTarget[] = [
-  { key: "deutsches-eck", name: "Deutsches Eck", query: "Deutsches Eck Koblenz", mode: "VIEWPOINT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "festung-ehrenbreitstein", name: "Festung Ehrenbreitstein", query: "Festung Ehrenbreitstein Koblenz", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "altstadt-koblenz", name: "Altstadt Koblenz", query: "Jesuitenplatz Koblenz", mode: "AREA_ANCHOR", sourceNote: "Altstadt anchor via Jesuitenplatz", anchorNote: "Altstadt ist eine Fläche; als stabiler und sichtbarer Anker wird das Platzzentrum Jesuitenplatz genutzt." },
-  { key: "kurfuerstliches-schloss-koblenz", name: "Kurfürstliches Schloss Koblenz", query: "Kurfürstliches Schloss Koblenz", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "schloss-stolzenfels", name: "Schloss Stolzenfels", query: "Schloss Stolzenfels Koblenz", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "marksburg", name: "Marksburg", query: "Marksburg Braubach", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "burg-lahneck", name: "Burg Lahneck", query: "Burg Lahneck Lahnstein", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "liebfrauenkirche-koblenz", name: "Liebfrauenkirche Koblenz", query: "Liebfrauenkirche Koblenz", mode: "EXACT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "florinskirche-koblenz", name: "Florinskirche Koblenz", query: "Florinskirche Koblenz", mode: "EXACT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "jesuitenplatz", name: "Jesuitenplatz", query: "Jesuitenplatz Koblenz", mode: "AREA_ANCHOR", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "historiensaeule-koblenz", name: "Historiensäule Koblenz", query: "Historiensäule Koblenz", mode: "EXACT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "schloss-sayn", name: "Schloss Sayn", query: "Schloss Sayn Bendorf", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "garten-der-schmetterlinge-sayn", name: "Garten der Schmetterlinge Schloss Sayn", query: "Garten der Schmetterlinge Sayn", mode: "EXACT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "kurhaus-bad-ems", name: "Kurhaus Bad Ems", query: "Kurhaus Bad Ems", mode: "EXACT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "geysir-andernach", name: "Geysir Andernach", query: "Geysir Andernach", mode: "VIEWPOINT", sourceNote: "OSM/Nominatim Gold-Set review" },
-  { key: "burg-eltz", name: "Burg Eltz", query: "Burg Eltz Wierschem", mode: "COMPLEX_SITE", sourceNote: "OSM/Nominatim Gold-Set review" },
+const GOLD_SET: GoldTarget[] = [
+  { key: "deutsches-eck", name: "Deutsches Eck", wikidataId: "Q698646", googleQuery: "Deutsches Eck Koblenz", mode: "VIEWPOINT" },
+  { key: "festung-ehrenbreitstein", name: "Festung Ehrenbreitstein", wikidataId: "Q1438023", googleQuery: "Festung Ehrenbreitstein Koblenz", mode: "COMPLEX_SITE" },
+  { key: "altstadt-koblenz", name: "Altstadt Koblenz", wikidataId: "Q1045186", wikidataLabelHint: "Altstadt", googleQuery: "Jesuitenplatz Koblenz", mode: "AREA_ANCHOR", anchorNote: "Altstadt ist eine Fläche; als stabiler Ankerpunkt wird Jesuitenplatz genutzt (kein Fake-Exaktpunkt)." },
+  { key: "kurfuerstliches-schloss-koblenz", name: "Kurfürstliches Schloss Koblenz", wikidataId: "Q2309636", googleQuery: "Kurfürstliches Schloss Koblenz", mode: "COMPLEX_SITE" },
+  { key: "schloss-stolzenfels", name: "Schloss Stolzenfels", wikidataId: "Q694322", googleQuery: "Schloss Stolzenfels Koblenz", mode: "COMPLEX_SITE" },
+  { key: "marksburg", name: "Marksburg", wikidataId: "Q689959", googleQuery: "Marksburg Braubach", mode: "COMPLEX_SITE" },
+  { key: "burg-lahneck", name: "Burg Lahneck", wikidataId: "Q1011657", googleQuery: "Burg Lahneck Lahnstein", mode: "COMPLEX_SITE" },
+  { key: "liebfrauenkirche-koblenz", name: "Liebfrauenkirche Koblenz", wikidataId: "Q1821008", googleQuery: "Liebfrauenkirche Koblenz", mode: "EXACT" },
+  { key: "florinskirche-koblenz", name: "Florinskirche Koblenz", wikidataId: "Q1428776", googleQuery: "Florinskirche Koblenz", mode: "EXACT" },
+  { key: "jesuitenplatz", name: "Jesuitenplatz", wikidataId: "Q61788631", googleQuery: "Jesuitenplatz Koblenz", mode: "AREA_ANCHOR" },
+  { key: "historiensaeule-koblenz", name: "Historiensäule Koblenz", wikidataId: "Q1585197", googleQuery: "Historiensäule Koblenz", mode: "EXACT" },
+  { key: "schloss-sayn", name: "Schloss Sayn", wikidataId: "Q2246760", googleQuery: "Schloss Sayn Bendorf", mode: "COMPLEX_SITE" },
+  { key: "garten-der-schmetterlinge-sayn", name: "Garten der Schmetterlinge Schloss Sayn", wikidataId: "Q55257790", googleQuery: "Garten der Schmetterlinge Sayn", mode: "EXACT" },
+  { key: "kurhaus-bad-ems", name: "Kurhaus Bad Ems", wikidataId: "Q19865440", googleQuery: "Kurhaus Bad Ems", mode: "EXACT" },
+  { key: "geysir-andernach", name: "Geysir Andernach", wikidataId: "Q699893", googleQuery: "Geysir Andernach Besucherzentrum", mode: "VIEWPOINT", anchorNote: "Besuchspunkt (Visitor-/Boots-Start) statt Objektpunkt in der Naturschutzfläche." },
+  { key: "burg-eltz", name: "Burg Eltz", wikidataId: "Q668160", googleQuery: "Burg Eltz", mode: "COMPLEX_SITE" },
 ];
 
-const OFFLINE: Record<string, NominatimHit[]> = {
-  "deutsches-eck": [
-    { display_name: "Deutsches Eck, Koblenz", lat: "50.367088", lon: "7.606152", class: "tourism", type: "attraction", importance: 0.92 },
-    { display_name: "Kaiser-Wilhelm-Denkmal, Koblenz", lat: "50.366993", lon: "7.606258", class: "historic", type: "monument", importance: 0.74 },
-  ],
-  "festung-ehrenbreitstein": [
-    { display_name: "Festung Ehrenbreitstein, Koblenz", lat: "50.365253", lon: "7.613802", class: "historic", type: "fort", importance: 0.89 },
-    { display_name: "Festung Ehrenbreitstein Bergstation, Koblenz", lat: "50.364728", lon: "7.614606", class: "tourism", type: "attraction", importance: 0.62 },
-  ],
-  "altstadt-koblenz": [
-    { display_name: "Jesuitenplatz, Koblenz", lat: "50.358938", lon: "7.595986", class: "highway", type: "pedestrian", importance: 0.68 },
-    { display_name: "Münzplatz, Koblenz", lat: "50.360087", lon: "7.596131", class: "highway", type: "pedestrian", importance: 0.66 },
-  ],
-  "kurfuerstliches-schloss-koblenz": [
-    { display_name: "Kurfürstliches Schloss, Koblenz", lat: "50.350853", lon: "7.603035", class: "historic", type: "castle", importance: 0.8 },
-    { display_name: "Schlossgarten am Kurfürstlichen Schloss, Koblenz", lat: "50.351255", lon: "7.602265", class: "leisure", type: "park", importance: 0.52 },
-  ],
-  "schloss-stolzenfels": [
-    { display_name: "Schloss Stolzenfels, Koblenz", lat: "50.303626", lon: "7.571243", class: "historic", type: "castle", importance: 0.78 },
-    { display_name: "Schlosspark Stolzenfels, Koblenz", lat: "50.303931", lon: "7.570744", class: "leisure", type: "park", importance: 0.49 },
-  ],
-  "marksburg": [
-    { display_name: "Marksburg, Braubach", lat: "50.274444", lon: "7.641706", class: "historic", type: "castle", importance: 0.85 },
-    { display_name: "Braubach Altstadt", lat: "50.275419", lon: "7.642591", class: "place", type: "suburb", importance: 0.44 },
-  ],
-  "burg-lahneck": [
-    { display_name: "Burg Lahneck, Lahnstein", lat: "50.311813", lon: "7.618236", class: "historic", type: "castle", importance: 0.71 },
-    { display_name: "Lahneck Aussichtspunkt", lat: "50.311393", lon: "7.617597", class: "tourism", type: "viewpoint", importance: 0.47 },
-  ],
-  "liebfrauenkirche-koblenz": [
-    { display_name: "Liebfrauenkirche, Koblenz", lat: "50.359206", lon: "7.595373", class: "amenity", type: "place_of_worship", importance: 0.72 },
-    { display_name: "Florinsmarkt, Koblenz", lat: "50.360559", lon: "7.596277", class: "highway", type: "pedestrian", importance: 0.54 },
-  ],
-  "florinskirche-koblenz": [
-    { display_name: "Florinskirche, Koblenz", lat: "50.360640", lon: "7.596327", class: "amenity", type: "place_of_worship", importance: 0.69 },
-    { display_name: "Florinsmarkt, Koblenz", lat: "50.360559", lon: "7.596277", class: "highway", type: "pedestrian", importance: 0.54 },
-  ],
-  "jesuitenplatz": [
-    { display_name: "Jesuitenplatz, Koblenz", lat: "50.358938", lon: "7.595986", class: "highway", type: "pedestrian", importance: 0.68 },
-    { display_name: "Rathaus Koblenz", lat: "50.358791", lon: "7.596126", class: "amenity", type: "townhall", importance: 0.52 },
-  ],
-  "historiensaeule-koblenz": [
-    { display_name: "Historiensäule, Koblenz", lat: "50.358550", lon: "7.596370", class: "tourism", type: "artwork", importance: 0.62 },
-    { display_name: "Görresplatz, Koblenz", lat: "50.358632", lon: "7.596324", class: "highway", type: "pedestrian", importance: 0.58 },
-  ],
-  "schloss-sayn": [
-    { display_name: "Schloss Sayn, Bendorf", lat: "50.437316", lon: "7.576603", class: "historic", type: "castle", importance: 0.74 },
-    { display_name: "Schlosspark Sayn, Bendorf", lat: "50.437050", lon: "7.576850", class: "leisure", type: "park", importance: 0.51 },
-  ],
-  "garten-der-schmetterlinge-sayn": [
-    { display_name: "Garten der Schmetterlinge Schloss Sayn", lat: "50.436574", lon: "7.577309", class: "tourism", type: "attraction", importance: 0.69 },
-    { display_name: "Schlosspark Sayn", lat: "50.437050", lon: "7.576850", class: "leisure", type: "park", importance: 0.51 },
-  ],
-  "kurhaus-bad-ems": [
-    { display_name: "Kurhaus Bad Ems", lat: "50.335515", lon: "7.713234", class: "building", type: "hotel", importance: 0.67 },
-    { display_name: "Kurpark Bad Ems", lat: "50.334700", lon: "7.715800", class: "leisure", type: "park", importance: 0.56 },
-  ],
-  "geysir-andernach": [
-    { display_name: "Geysir-Erlebniszentrum Andernach", lat: "50.434896", lon: "7.404471", class: "tourism", type: "attraction", importance: 0.75 },
-    { display_name: "Namedyer Werth (Geysir-Areal)", lat: "50.446860", lon: "7.452450", class: "natural", type: "islet", importance: 0.52 },
-  ],
-  "burg-eltz": [
-    { display_name: "Burg Eltz, Wierschem", lat: "50.205422", lon: "7.336593", class: "historic", type: "castle", importance: 0.9 },
-    { display_name: "Besucherparkplatz Burg Eltz", lat: "50.207398", lon: "7.340882", class: "amenity", type: "parking", importance: 0.55 },
-  ],
+const OSM_OFFLINE: Record<string, SourceCandidate> = {
+  "deutsches-eck": { lat: 50.367088, lng: 7.606152, label: "Deutsches Eck, Koblenz", sourceId: "osm:node/29160745" },
+  "festung-ehrenbreitstein": { lat: 50.365253, lng: 7.613802, label: "Festung Ehrenbreitstein", sourceId: "osm:way/41737967" },
+  "altstadt-koblenz": { lat: 50.358938, lng: 7.595986, label: "Jesuitenplatz", sourceId: "osm:way/34401166" },
+  "kurfuerstliches-schloss-koblenz": { lat: 50.350853, lng: 7.603035, label: "Kurfürstliches Schloss", sourceId: "osm:way/38920860" },
+  "schloss-stolzenfels": { lat: 50.303626, lng: 7.571243, label: "Schloss Stolzenfels", sourceId: "osm:way/100863980" },
+  "marksburg": { lat: 50.274444, lng: 7.641706, label: "Marksburg", sourceId: "osm:way/131570312" },
+  "burg-lahneck": { lat: 50.311813, lng: 7.618236, label: "Burg Lahneck", sourceId: "osm:way/136573940" },
+  "liebfrauenkirche-koblenz": { lat: 50.359206, lng: 7.595373, label: "Liebfrauenkirche", sourceId: "osm:way/153896915" },
+  "florinskirche-koblenz": { lat: 50.359454, lng: 7.596059, label: "Florinskirche", sourceId: "osm:way/106344917" },
+  "jesuitenplatz": { lat: 50.358938, lng: 7.595986, label: "Jesuitenplatz", sourceId: "osm:way/34401166" },
+  "historiensaeule-koblenz": { lat: 50.359694, lng: 7.595828, label: "Historiensäule", sourceId: "osm:node/3787909778" },
+  "schloss-sayn": { lat: 50.437428, lng: 7.576671, label: "Schloss Sayn", sourceId: "osm:way/65464883" },
+  "garten-der-schmetterlinge-sayn": { lat: 50.436574, lng: 7.577309, label: "Garten der Schmetterlinge", sourceId: "osm:way/48838749" },
+  "kurhaus-bad-ems": { lat: 50.335515, lng: 7.713234, label: "Kurhaus Bad Ems", sourceId: "osm:way/36908904" },
+  "geysir-andernach": { lat: 50.434896, lng: 7.404471, label: "Geysir Andernach", sourceId: "osm:node/2604143031" },
+  "burg-eltz": { lat: 50.205422, lng: 7.336593, label: "Burg Eltz", sourceId: "osm:way/27019170" },
 };
 
 function parseArgs(argv: string[]): CliArgs {
-  const key = String(argv.find((a) => a.startsWith("--key=")) ?? "").replace("--key=", "").trim() || null;
-  const pickRaw = String(argv.find((a) => a.startsWith("--pick=")) ?? "").replace("--pick=", "").trim();
-  const limitRaw = String(argv.find((a) => a.startsWith("--limit=")) ?? "").replace("--limit=", "").trim();
-  const pick = pickRaw ? Number(pickRaw) : undefined;
-  const limit = limitRaw ? Number(limitRaw) : 7;
-  if (pickRaw && (!Number.isInteger(pick) || Number(pick) < 1)) throw new Error("--pick must be positive integer.");
-  if (!Number.isInteger(limit) || limit < 2 || limit > 15) throw new Error("--limit must be 2..15.");
-  return { key, pick, apply: argv.includes("--apply"), limit };
+  const out: CliArgs = { key: null, apply: false, online: false, limit: 5 };
+  for (const arg of argv) {
+    if (arg.startsWith("--key=")) out.key = arg.slice(6).trim() || null;
+    else if (arg === "--apply") out.apply = true;
+    else if (arg === "--online") out.online = true;
+    else if (arg.startsWith("--limit=")) out.limit = Math.max(1, Number(arg.slice(8)) || 5);
+  }
+  return out;
 }
 
-const toRad = (v: number) => (v * Math.PI) / 180;
-const distanceMeters = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-  const R = 6_371_000;
-  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-};
-
-function normalize(s: string): string { return s.normalize("NFKD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim(); }
-function nameSimilarity(a: string, b: string): number {
-  const A = new Set(normalize(a).split(" ").filter((x) => x.length >= 3));
-  const B = new Set(normalize(b).split(" ").filter((x) => x.length >= 3));
-  if (!A.size || !B.size) return 0;
-  let overlap = 0; for (const t of A) if (B.has(t)) overlap += 1;
-  return overlap / new Set([...A, ...B]).size;
+function distanceMeters(a: Coordinates, b: Coordinates): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const p = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(p), Math.sqrt(1 - p));
 }
 
-async function searchOnline(query: string, limit: number): Promise<NominatimHit[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&addressdetails=1&limit=${limit}&accept-language=de`;
-  const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "camping-portal-koblenz-goldset-review/1.0" } });
-  if (!res.ok) throw new Error(`status ${res.status}`);
-  const payload = (await res.json().catch(() => [])) as unknown;
-  return Array.isArray(payload) ? (payload as NominatimHit[]) : [];
+async function searchNominatim(query: string, limit: number): Promise<SourceCandidate[]> {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&accept-language=de&q=${encodeURIComponent(query)}&limit=${limit}`;
+  const res = await fetch(url, { headers: { "user-agent": "camping-portal-koblenz-goldset/1.0", accept: "application/json" } });
+  if (!res.ok) throw new Error(`nominatim status=${res.status}`);
+  const payload = (await res.json().catch(() => [])) as NominatimHit[];
+  return payload.map((hit) => ({
+    lat: Number(hit.lat),
+    lng: Number(hit.lon),
+    label: String(hit.display_name ?? "nominatim"),
+    sourceId: `osm:${String(hit.osm_type ?? "unknown")}/${String(hit.osm_id ?? "unknown")}`,
+  })).filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
 }
 
-const toConfidence = (score: number) => (score >= 0.9 ? 0.98 : score >= 0.8 ? 0.94 : score >= 0.7 ? 0.88 : 0.8);
+async function searchWikidata(target: GoldTarget): Promise<WikidataHit[]> {
+  const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=de&type=item&limit=5&search=${encodeURIComponent(target.name)}`;
+  const res = await fetch(url, { headers: { "user-agent": "camping-portal-koblenz-goldset/1.0", accept: "application/json" } });
+  if (!res.ok) throw new Error(`wikidata status=${res.status}`);
+  const payload = await res.json() as { search?: Array<{ id?: string; label?: string; description?: string }> };
+  return (payload.search ?? []).map((x) => ({ id: String(x.id ?? ""), label: String(x.label ?? ""), description: x.description })).filter((x) => /^Q\d+$/.test(x.id));
+}
+
+async function searchGoogle(query: string): Promise<SourceCandidate[]> {
+  const apiKey = String(process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
+  if (!apiKey) return [];
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+      "x-goog-fieldmask": "places.id,places.displayName,places.formattedAddress,places.location",
+    },
+    body: JSON.stringify({ textQuery: query, languageCode: "de", regionCode: "DE", maxResultCount: 5 }),
+  });
+  if (!res.ok) throw new Error(`google status=${res.status}`);
+  const payload = await res.json() as { places?: GooglePlaceHit[] };
+  return (payload.places ?? []).map((hit) => ({
+    lat: Number(hit.location?.latitude),
+    lng: Number(hit.location?.longitude),
+    label: `${String(hit.displayName?.text ?? "Google Place")} (${String(hit.formattedAddress ?? "")})`.trim(),
+    sourceId: `google_places:${String(hit.id ?? "")}`,
+  })).filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng) && x.sourceId !== "google_places:");
+}
+
 function updateOrInsertField(row: string, field: string, value: string): string {
   const p = new RegExp(`\\b${field}:\\s*[^,}]+`);
   return p.test(row) ? row.replace(p, `${field}: ${value}`) : row.replace(/\s*},\s*$/, `, ${field}: ${value} },`);
 }
 
-function applyRowUpdate(content: string, input: { key: string; lat: number; lng: number; coordinateMode: GoldTarget["mode"]; coordinateSource: string; coordinateConfidence: number; reviewState: string; sourceNotes: string; anchorNote?: string; }) {
-  const key = input.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rowPattern = new RegExp(`^\\s*\\{\\s*key:\\s*"${key}"[^\\n]*$`, "m");
+function applyRowUpdate(content: string, key: string, updates: Record<string, string>): string {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rowPattern = new RegExp(`^\\s*\\{\\s*key:\\s*"${escaped}"[^\\n]*$`, "m");
   const match = content.match(rowPattern)?.[0];
-  if (!match) throw new Error(`Cannot locate curated row: ${input.key}`);
+  if (!match) throw new Error(`Cannot locate curated row: ${key}`);
   let row = match;
-  row = updateOrInsertField(row, "lat", input.lat.toFixed(6));
-  row = updateOrInsertField(row, "lng", input.lng.toFixed(6));
-  row = updateOrInsertField(row, "coordinateMode", JSON.stringify(input.coordinateMode));
-  row = updateOrInsertField(row, "coordinateSource", JSON.stringify(input.coordinateSource));
-  row = updateOrInsertField(row, "coordinateConfidence", input.coordinateConfidence.toFixed(2));
-  row = updateOrInsertField(row, "reviewState", JSON.stringify(input.reviewState));
-  row = updateOrInsertField(row, "sourceNotes", JSON.stringify(input.sourceNotes));
-  if (input.anchorNote) row = updateOrInsertField(row, "anchorNote", JSON.stringify(input.anchorNote));
+  for (const [field, value] of Object.entries(updates)) row = updateOrInsertField(row, field, value);
   return content.replace(rowPattern, row);
 }
 
-async function reviewTarget(target: GoldTarget, curatedPoint: { lat: number; lng: number }, limit: number) {
-  let hits: NominatimHit[] = [];
-  let source = "online-nominatim";
-  try { hits = await searchOnline(target.query, limit); } catch { hits = OFFLINE[target.key] ?? []; source = "offline-fallback"; }
-  if (!hits.length) { hits = OFFLINE[target.key] ?? []; source = "offline-fallback"; }
+async function resolveTarget(target: GoldTarget, current: Coordinates, online: boolean, limit: number) {
+  let wikidata: WikidataHit[] = [];
+  let google: SourceCandidate[] = [];
+  let osm: SourceCandidate[] = [];
+  const warnings: string[] = [];
 
-  const candidates = hits.map((hit, idx) => {
-    const lat = Number(hit.lat), lng = Number(hit.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    const similarity = nameSimilarity(target.name, String(hit.display_name ?? ""));
-    const importance = Number(hit.importance ?? 0);
-    const dist = Math.round(distanceMeters(curatedPoint.lat, curatedPoint.lng, lat, lng));
-    const distScore = Math.max(0, 1 - Math.min(dist, 5000) / 5000);
-    const score = Number((similarity * 0.55 + importance * 0.25 + distScore * 0.2).toFixed(3));
-    return { pick: idx + 1, lat, lng, display_name: String(hit.display_name ?? ""), class: String(hit.class ?? hit.category ?? ""), type: String(hit.type ?? hit.addresstype ?? ""), importance, distance_to_current_m: dist, score, source_notes: `${source}; nameSim=${similarity.toFixed(2)}; dist=${dist}m` };
-  }).filter((x): x is NonNullable<typeof x> => Boolean(x)).sort((a, b) => b.score - a.score || a.distance_to_current_m - b.distance_to_current_m);
+  if (online) {
+    try { wikidata = await searchWikidata(target); } catch (e) { warnings.push(`wikidata-unavailable:${String(e)}`); }
+    try { google = await searchGoogle(target.googleQuery); } catch (e) { warnings.push(`google-unavailable:${String(e)}`); }
+    try { osm = await searchNominatim(target.googleQuery, limit); } catch (e) { warnings.push(`osm-unavailable:${String(e)}`); }
+  }
 
-  return { target, curatedPoint, candidates };
+  if (!osm.length && OSM_OFFLINE[target.key]) osm = [OSM_OFFLINE[target.key]];
+  const wikidataId = target.wikidataId ?? wikidata[0]?.id;
+  const googleBest = google[0] ?? null;
+  const osmBest = osm[0] ?? null;
+
+  const finalPoint = googleBest ?? osmBest;
+  const conflictDistance = googleBest && osmBest ? distanceMeters(googleBest, osmBest) : 0;
+  const confidence = finalPoint ? (googleBest && osmBest && conflictDistance <= MAX_DISTANCE_FOR_AUTO_ACCEPT_M ? 0.95 : googleBest ? 0.82 : 0.7) : 0.35;
+  const reviewState: ReviewState = finalPoint && wikidataId && googleBest && osmBest && conflictDistance <= MAX_DISTANCE_FOR_AUTO_ACCEPT_M ? "AUTO_ACCEPT" : "MANUAL_REVIEW";
+  const coordinateSource = googleBest ? "google_places" : osmBest ? "nominatim-osm" : "unknown";
+  const canonicalSource = wikidataId ? "wikidata" : googleBest ? "google_places" : "nominatim-osm";
+  const canonicalSourceId = wikidataId ?? googleBest?.sourceId ?? osmBest?.sourceId ?? null;
+
+  const reasonParts = [
+    `wikidata=${wikidataId ?? "missing"}`,
+    `google=${googleBest ? googleBest.sourceId : "missing"}`,
+    `osm=${osmBest ? osmBest.sourceId : "missing"}`,
+    googleBest && osmBest ? `google_osm_distance_m=${Math.round(conflictDistance)}` : null,
+    warnings.length ? `warnings=${warnings.join(";")}` : null,
+    target.anchorNote ? `anchor=${target.anchorNote}` : null,
+  ].filter(Boolean);
+
+  return {
+    key: target.key,
+    name: target.name,
+    wikidata: { selectedId: wikidataId ?? null, candidates: wikidata.slice(0, 3) },
+    googleCandidate: googleBest,
+    osmCountercheck: osmBest,
+    finalPoint,
+    governance: {
+      wikidataId: wikidataId ?? null,
+      canonicalSource,
+      canonicalSourceId,
+      coordinateSource,
+      coordinateConfidence: confidence,
+      coordinateMode: target.mode,
+      poiReviewState: reviewState,
+      poiReviewReason: reasonParts.join(" | "),
+    },
+  };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const curated = getCuratedPresetCandidates("nievern-highlights");
+  const curated = getCuratedPresetCandidates(PRESET);
   const byKey = new Map(curated.map((e) => [e.sourceId.split(":").at(-1) ?? "", e]));
-  const targets = args.key ? KOBLENZ_GOLD_SET.filter((t) => t.key === args.key) : KOBLENZ_GOLD_SET;
+  const targets = args.key ? GOLD_SET.filter((t) => t.key === args.key) : GOLD_SET;
   if (!targets.length) throw new Error(`Unknown key=${args.key}`);
 
-  const reviews = [] as Array<Awaited<ReturnType<typeof reviewTarget>>>;
-  for (const t of targets) {
-    const row = byKey.get(t.key); if (!row) throw new Error(`Missing curated key=${t.key}`);
-    reviews.push(await reviewTarget(t, { lat: row.lat, lng: row.lng }, args.limit));
+  const resolved = [];
+  for (const target of targets) {
+    const row = byKey.get(target.key);
+    if (!row) throw new Error(`Missing curated key=${target.key}`);
+    resolved.push(await resolveTarget(target, { lat: row.lat, lng: row.lng }, args.online, args.limit));
   }
 
   if (args.apply) {
-    if (!args.key || args.pick == null) throw new Error("--apply requires --key and --pick");
-    const review = reviews[0];
-    const chosen = review.candidates.find((c) => c.pick === args.pick);
-    if (!chosen) throw new Error(`Pick ${args.pick} invalid for ${args.key}`);
     let content = readFileSync(resolve(CURATED_FILE), "utf8");
-    const confidence = toConfidence(chosen.score);
-    content = applyRowUpdate(content, {
-      key: review.target.key, lat: chosen.lat, lng: chosen.lng, coordinateMode: review.target.mode,
-      coordinateSource: "nominatim-osm", coordinateConfidence: confidence, reviewState: REVIEWED,
-      sourceNotes: `${review.target.sourceNote}; ${chosen.source_notes}`, anchorNote: review.target.anchorNote,
-    });
+    for (const item of resolved) {
+      if (!item.finalPoint) continue;
+      content = applyRowUpdate(content, item.key, {
+        lat: item.finalPoint.lat.toFixed(6),
+        lng: item.finalPoint.lng.toFixed(6),
+        wikidataId: JSON.stringify(item.governance.wikidataId),
+        canonicalSource: JSON.stringify(item.governance.canonicalSource),
+        canonicalSourceId: JSON.stringify(item.governance.canonicalSourceId),
+        coordinateSource: JSON.stringify(item.governance.coordinateSource),
+        coordinateConfidence: item.governance.coordinateConfidence.toFixed(2),
+        coordinateMode: JSON.stringify(item.governance.coordinateMode),
+        reviewState: JSON.stringify(item.governance.poiReviewState),
+        sourceNotes: JSON.stringify(item.governance.poiReviewReason)
+      });
+    }
     writeFileSync(resolve(CURATED_FILE), content, "utf8");
-    console.log(JSON.stringify({ mode: "applied", key: review.target.key, picked: chosen, governance: { coordinateSource: "nominatim-osm", coordinateConfidence: confidence, coordinateMode: review.target.mode, reviewState: REVIEWED, anchorNote: review.target.anchorNote ?? null } }, null, 2));
-    return;
   }
 
-  console.log(JSON.stringify({ mode: "inspect", set: "koblenz-gold-set", reviews: reviews.map((r) => ({ key: r.target.key, name: r.target.name, query: r.target.query, coordinateMode: r.target.mode, curated_point: r.curatedPoint, anchor_note: r.target.anchorNote ?? null, candidates: r.candidates })) }, null, 2));
+  console.log(JSON.stringify({ set: "koblenz-gold-set", online: args.online, apply: args.apply, resolved }, null, 2));
 }
 
-main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

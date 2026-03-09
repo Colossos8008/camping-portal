@@ -22,6 +22,18 @@ type CliArgs = { key: string | null; apply: boolean; online: boolean; limit: num
 type NominatimHit = { display_name?: string; lat?: string; lon?: string; osm_id?: string | number; osm_type?: string; importance?: number };
 type WikidataHit = { id: string; label: string; description?: string };
 type GooglePlaceHit = { id: string; displayName?: { text?: string }; formattedAddress?: string; location?: { latitude?: number; longitude?: number } };
+type GoogleLegacyHit = { place_id?: string; name?: string; formatted_address?: string; geometry?: { location?: { lat?: number; lng?: number } } };
+type GoogleSearchDebug = {
+  hasApiKey: boolean;
+  apiKeySource: "GOOGLE_PLACES_API_KEY" | "GOOGLE_MAPS_API_KEY" | "none";
+  apiVersion: "places-v1" | "legacy-textsearch" | "none";
+  endpoint: string;
+  requestQuery: string;
+  requestPayload: Record<string, unknown> | null;
+  status: number | null;
+  responseBody: string | null;
+  error: string | null;
+};
 
 const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
 const PRESET = "nievern-highlights";
@@ -106,26 +118,130 @@ async function searchWikidata(target: GoldTarget): Promise<WikidataHit[]> {
   return (payload.search ?? []).map((x) => ({ id: String(x.id ?? ""), label: String(x.label ?? ""), description: x.description })).filter((x) => /^Q\d+$/.test(x.id));
 }
 
-async function searchGoogle(query: string): Promise<SourceCandidate[]> {
-  const apiKey = String(process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
-  if (!apiKey) return [];
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+function safeResponseBody(raw: string): string {
+  return raw.length <= 500 ? raw : `${raw.slice(0, 500)}…`;
+}
+
+function parseJsonSafe<T>(raw: string): T {
+  try {
+    return (raw ? JSON.parse(raw) : {}) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+function pickGoogleApiKey(): { apiKey: string; apiKeySource: GoogleSearchDebug["apiKeySource"] } {
+  const places = String(process.env.GOOGLE_PLACES_API_KEY ?? "").trim();
+  if (places) return { apiKey: places, apiKeySource: "GOOGLE_PLACES_API_KEY" };
+  const maps = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
+  if (maps) return { apiKey: maps, apiKeySource: "GOOGLE_MAPS_API_KEY" };
+  return { apiKey: "", apiKeySource: "none" };
+}
+
+async function searchGoogle(query: string): Promise<{ candidates: SourceCandidate[]; debug: GoogleSearchDebug }> {
+  const { apiKey, apiKeySource } = pickGoogleApiKey();
+  if (!apiKey) {
+    return {
+      candidates: [],
+      debug: {
+        hasApiKey: false,
+        apiKeySource,
+        apiVersion: "none",
+        endpoint: "",
+        requestQuery: query,
+        requestPayload: null,
+        status: null,
+        responseBody: null,
+        error: "missing GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY",
+      },
+    };
+  }
+
+  const v1Endpoint = "https://places.googleapis.com/v1/places:searchText";
+  const v1Payload = { textQuery: query, languageCode: "de", regionCode: "DE", maxResultCount: 5 };
+  const v1Res = await fetch(v1Endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-goog-api-key": apiKey,
       "x-goog-fieldmask": "places.id,places.displayName,places.formattedAddress,places.location",
     },
-    body: JSON.stringify({ textQuery: query, languageCode: "de", regionCode: "DE", maxResultCount: 5 }),
+    body: JSON.stringify(v1Payload),
   });
-  if (!res.ok) throw new Error(`google status=${res.status}`);
-  const payload = await res.json() as { places?: GooglePlaceHit[] };
-  return (payload.places ?? []).map((hit) => ({
-    lat: Number(hit.location?.latitude),
-    lng: Number(hit.location?.longitude),
-    label: `${String(hit.displayName?.text ?? "Google Place")} (${String(hit.formattedAddress ?? "")})`.trim(),
-    sourceId: `google_places:${String(hit.id ?? "")}`,
+
+  const v1Body = safeResponseBody(await v1Res.text().catch(() => ""));
+  if (v1Res.ok) {
+    const payload = parseJsonSafe<{ places?: GooglePlaceHit[] }>(v1Body);
+    const candidates = (payload.places ?? []).map((hit) => ({
+      lat: Number(hit.location?.latitude),
+      lng: Number(hit.location?.longitude),
+      label: `${String(hit.displayName?.text ?? "Google Place")} (${String(hit.formattedAddress ?? "")})`.trim(),
+      sourceId: `google_places:${String(hit.id ?? "")}`,
+    })).filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng) && x.sourceId !== "google_places:");
+    return {
+      candidates,
+      debug: {
+        hasApiKey: true,
+        apiKeySource,
+        apiVersion: "places-v1",
+        endpoint: v1Endpoint,
+        requestQuery: query,
+        requestPayload: v1Payload,
+        status: v1Res.status,
+        responseBody: v1Body,
+        error: null,
+      },
+    };
+  }
+
+  const legacyEndpoint = "https://maps.googleapis.com/maps/api/place/textsearch/json";
+  const legacyUrl = new URL(legacyEndpoint);
+  legacyUrl.searchParams.set("query", query);
+  legacyUrl.searchParams.set("language", "de");
+  legacyUrl.searchParams.set("region", "de");
+  legacyUrl.searchParams.set("key", apiKey);
+
+  const legacyRes = await fetch(legacyUrl.toString(), { headers: { accept: "application/json" } });
+  const legacyBody = safeResponseBody(await legacyRes.text().catch(() => ""));
+  if (!legacyRes.ok) {
+    return {
+      candidates: [],
+      debug: {
+        hasApiKey: true,
+        apiKeySource,
+        apiVersion: "legacy-textsearch",
+        endpoint: legacyEndpoint,
+        requestQuery: query,
+        requestPayload: { language: "de", region: "de" },
+        status: legacyRes.status,
+        responseBody: legacyBody,
+        error: `google status=${v1Res.status} (v1) / ${legacyRes.status} (legacy)`,
+      },
+    };
+  }
+
+  const legacyPayload = parseJsonSafe<{ results?: GoogleLegacyHit[]; status?: string; error_message?: string }>(legacyBody);
+  const candidates = (legacyPayload.results ?? []).map((hit) => ({
+    lat: Number(hit.geometry?.location?.lat),
+    lng: Number(hit.geometry?.location?.lng),
+    label: `${String(hit.name ?? "Google Place")} (${String(hit.formatted_address ?? "")})`.trim(),
+    sourceId: `google_places:${String(hit.place_id ?? "")}`,
   })).filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng) && x.sourceId !== "google_places:");
+
+  return {
+    candidates,
+    debug: {
+      hasApiKey: true,
+      apiKeySource,
+      apiVersion: "legacy-textsearch",
+      endpoint: legacyEndpoint,
+      requestQuery: query,
+      requestPayload: { language: "de", region: "de" },
+      status: legacyRes.status,
+      responseBody: legacyBody,
+      error: legacyPayload.status && legacyPayload.status !== "OK" ? `${legacyPayload.status}${legacyPayload.error_message ? `: ${legacyPayload.error_message}` : ""}` : null,
+    },
+  };
 }
 
 function updateOrInsertField(row: string, field: string, value: string): string {
@@ -147,11 +263,30 @@ async function resolveTarget(target: GoldTarget, current: Coordinates, online: b
   let wikidata: WikidataHit[] = [];
   let google: SourceCandidate[] = [];
   let osm: SourceCandidate[] = [];
+  let googleDebug: GoogleSearchDebug = {
+    hasApiKey: false,
+    apiKeySource: "none",
+    apiVersion: "none",
+    endpoint: "",
+    requestQuery: target.googleQuery,
+    requestPayload: null,
+    status: null,
+    responseBody: null,
+    error: null,
+  };
   const warnings: string[] = [];
 
   if (online) {
     try { wikidata = await searchWikidata(target); } catch (e) { warnings.push(`wikidata-unavailable:${String(e)}`); }
-    try { google = await searchGoogle(target.googleQuery); } catch (e) { warnings.push(`google-unavailable:${String(e)}`); }
+    try {
+      const googleResult = await searchGoogle(target.googleQuery);
+      google = googleResult.candidates;
+      googleDebug = googleResult.debug;
+      if (googleDebug.error) warnings.push(`google-unavailable:${googleDebug.error}`);
+    } catch (e) {
+      warnings.push(`google-unavailable:${String(e)}`);
+      googleDebug = { ...googleDebug, error: String(e) };
+    }
     try { osm = await searchNominatim(target.googleQuery, limit); } catch (e) { warnings.push(`osm-unavailable:${String(e)}`); }
   }
 
@@ -182,6 +317,7 @@ async function resolveTarget(target: GoldTarget, current: Coordinates, online: b
     name: target.name,
     wikidata: { selectedId: wikidataId ?? null, candidates: wikidata.slice(0, 3) },
     googleCandidate: googleBest,
+    googleDebug,
     osmCountercheck: osmBest,
     finalPoint,
     governance: {

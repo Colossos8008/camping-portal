@@ -33,7 +33,8 @@
     "verify:curated-priority-coordinates": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-curated-priority-coordinates.ts",
     "assist:curated-priority-osm": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-curated-osm-priority-coordinates.ts",
     "assist:poi-governance-preview": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-poi-governance-preview.ts",
-    "assist:koblenz-goldset-review": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-koblenz-goldset-review.ts"
+    "assist:koblenz-goldset-review": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/assist-koblenz-goldset-review.ts",
+    "verify:koblenz-goldset": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/verify-koblenz-goldset.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

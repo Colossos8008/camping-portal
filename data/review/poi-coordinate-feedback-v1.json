@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "generatedAt": "2026-03-10T00:00:00.000Z",
+  "notes": "Manual coordinate feedback dataset for future ranking/retraining.",
+  "items": [
+    {
+      "placeKey": "ludwig-museum-koblenz",
+      "placeName": "Ludwig Museum Koblenz",
+      "region": "koblenz",
+      "targetPointType": "ENTRANCE_POINT",
+      "decision": "CONFIRMED",
+      "selectedSource": "google_places",
+      "selectedLat": 50.3627774,
+      "selectedLng": 7.605001699999999,
+      "reviewNote": "Manuell bestätigt auf Basis der quickwin-approved Vorschlagskoordinate.",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "basilika-st-kastor",
+      "placeName": "Basilika St. Kastor",
+      "region": "koblenz",
+      "targetPointType": "EXACT_OBJECT",
+      "decision": "CONFIRMED",
+      "selectedSource": "google_places",
+      "selectedLat": 50.362227399999995,
+      "selectedLng": 7.6044446,
+      "reviewNote": "Manuell bestätigt auf Basis der quickwin-approved Vorschlagskoordinate.",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "liebfrauenkirche-koblenz",
+      "placeName": "Liebfrauenkirche Koblenz",
+      "region": "koblenz",
+      "targetPointType": "EXACT_OBJECT",
+      "decision": "REJECTED",
+      "selectedSource": "osm_exact_object",
+      "selectedLat": 50.359206,
+      "selectedLng": 7.595373,
+      "reviewNote": "Als verworfene Auswahl markiert (in UI nicht passend).",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "florinskirche-koblenz",
+      "placeName": "Florinskirche Koblenz",
+      "region": "koblenz",
+      "targetPointType": "EXACT_OBJECT",
+      "decision": "REJECTED",
+      "selectedSource": "osm_exact_object",
+      "selectedLat": 50.359454,
+      "selectedLng": 7.596059,
+      "reviewNote": "Als verworfene Auswahl markiert (in UI nicht passend).",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "historiensaeule-koblenz",
+      "placeName": "Historiensäule Koblenz",
+      "region": "koblenz",
+      "targetPointType": "EXACT_OBJECT",
+      "decision": "REJECTED",
+      "selectedSource": "osm_exact_object",
+      "selectedLat": 50.359694,
+      "selectedLng": 7.595828,
+      "reviewNote": "Als verworfene Auswahl markiert (in UI nicht passend).",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "schaengelbrunnen",
+      "placeName": "Schängelbrunnen",
+      "region": "koblenz",
+      "targetPointType": "EXACT_OBJECT",
+      "decision": "REJECTED",
+      "selectedSource": "osm_nominatim",
+      "selectedLat": 50.36027,
+      "selectedLng": 7.59645,
+      "reviewNote": "Als verworfene Auswahl markiert; genaue Objektverortung weiter offen.",
+      "reviewedBy": "manual",
+      "reviewedAt": "2026-03-10"
+    }
+  ]
+}

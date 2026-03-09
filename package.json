@@ -39,7 +39,9 @@
     "prioritize:koblenz-goldset-review": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/prioritize-koblenz-goldset-review.ts",
     "quickwin:koblenz-goldset": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-koblenz-quickwin-worklist.ts",
     "patch-proposal:koblenz-quickwins": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-koblenz-quickwin-patch-proposal.ts",
-    "apply:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts"
+    "apply:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts",
+    "approve:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/approve-koblenz-quickwin-patch-proposal.ts",
+    "apply-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts --approved"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

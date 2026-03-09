@@ -5,6 +5,7 @@ type CliArgs = {
   apply: boolean;
   key: string | null;
   limit: number | null;
+  approved: boolean;
 };
 
 type Proposal = {
@@ -17,6 +18,10 @@ type Proposal = {
 };
 
 type ProposalFile = {
+  proposals?: Proposal[];
+};
+
+type ApprovedProposalFile = {
   proposals?: Proposal[];
 };
 
@@ -46,10 +51,11 @@ type Outcome = {
 };
 
 const PROPOSAL_FILE = "data/review/koblenz-goldset-quickwin-patch-proposal.json";
+const APPROVED_PROPOSAL_FILE = "data/review/koblenz-goldset-quickwin-patch-proposal-approved.json";
 const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { apply: false, key: null, limit: null };
+  const args: CliArgs = { apply: false, key: null, limit: null, approved: false };
   for (const arg of argv) {
     if (arg === "--apply") {
       args.apply = true;
@@ -62,6 +68,10 @@ function parseArgs(argv: string[]): CliArgs {
     if (arg.startsWith("--limit=")) {
       const value = Number(arg.slice("--limit=".length));
       args.limit = Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+      continue;
+    }
+    if (arg === "--approved") {
+      args.approved = true;
     }
   }
   return args;
@@ -128,7 +138,10 @@ function formatCoord(value: number | undefined): string {
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const proposalFile = readJsonFile<ProposalFile>(PROPOSAL_FILE);
+  const sourceFile = args.approved ? APPROVED_PROPOSAL_FILE : PROPOSAL_FILE;
+  const proposalFile = args.approved
+    ? readJsonFile<ApprovedProposalFile>(sourceFile)
+    : readJsonFile<ProposalFile>(sourceFile);
   const proposalsAll = proposalFile.proposals ?? [];
 
   const byKey = proposalsAll.filter((proposal) => {
@@ -249,6 +262,8 @@ function main(): void {
   const skipped = outcomes.filter((entry) => entry.status === "SKIPPED").length;
 
   console.log(`mode: ${args.apply ? "APPLY" : "DRY_RUN"}`);
+  console.log(`source mode: ${args.approved ? "APPROVED" : "PROPOSAL"}`);
+  console.log(`source file: ${sourceFile}`);
   console.log(`total proposals considered: ${considered.length}`);
   console.log(`applicable: ${applicable}`);
   console.log(`conflicts: ${conflicts}`);

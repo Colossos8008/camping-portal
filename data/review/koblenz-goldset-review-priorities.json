@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T07:57:52.136Z",
+  "generatedAt": "2026-03-09T08:10:50.242Z",
   "inputs": {
     "goldSet": "data/review/koblenz-goldset-v1.json",
     "comparison": "data/review/koblenz-goldset-source-comparison.json"
@@ -9,8 +9,12 @@
     "alreadyGood": 5,
     "quickWin": 0,
     "needsRuleFix": 0,
-    "needsManualReview": 1,
-    "blockedBySourceQuality": 22
+    "needsManualReview": 13,
+    "blockedBySourceQuality": 10,
+    "badStrongOrMediumConsensus": 0,
+    "badWeakOrNoneConsensus": 22,
+    "badComplexTargetTypes": 12,
+    "badLikelySourceRankingIssues": 0
   },
   "results": [
     {
@@ -24,6 +28,7 @@
       "recommendedActionReason": "Gold-Set coordinate status is already acceptable for this POI.",
       "likelyBestSource": "google_places",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "usable=1, consensus=WEAK, bestCluster=google_places, outliers=none",
       "nextStep": "accept_cluster_candidate"
     },
@@ -38,6 +43,7 @@
       "recommendedActionReason": "Gold-Set coordinate status is already acceptable for this POI.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "accept_cluster_candidate"
     },
@@ -49,9 +55,10 @@
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
       "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
-      "recommendedActionReason": "Gold-Set says BAD and this target type typically needs manual anchor/object-point curation.",
+      "recommendedActionReason": "BAD with conflicting or semantically ambiguous source signals; requires curator decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "manual_anchor_definition"
     },
@@ -66,6 +73,7 @@
       "recommendedActionReason": "Gold-Set coordinate status is already acceptable for this POI.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "accept_cluster_candidate"
     },
@@ -80,6 +88,7 @@
       "recommendedActionReason": "Gold-Set coordinate status is already acceptable for this POI.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "accept_cluster_candidate"
     },
@@ -94,6 +103,7 @@
       "recommendedActionReason": "Gold-Set coordinate status is already acceptable for this POI.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "accept_cluster_candidate"
     },
@@ -105,9 +115,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -118,12 +129,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "AREA_ANCHOR",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "burg-lahneck",
@@ -132,12 +144,13 @@
       "goldImageStatus": "UNKNOWN",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "seilbahn-koblenz",
@@ -146,12 +159,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "VISITOR_POINT",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "ludwig-museum-koblenz",
@@ -161,9 +175,10 @@
       "targetPointTypeExpected": "ENTRANCE_POINT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -175,9 +190,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -189,9 +205,10 @@
       "targetPointTypeExpected": "ENTRANCE_POINT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -202,12 +219,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "AREA_ANCHOR",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "florinskirche-koblenz",
@@ -217,9 +235,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -231,9 +250,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -245,9 +265,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -259,9 +280,10 @@
       "targetPointTypeExpected": "EXACT_OBJECT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -273,9 +295,10 @@
       "targetPointTypeExpected": "ENTRANCE_POINT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -286,12 +309,13 @@
       "goldImageStatus": "UNKNOWN",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "garten-der-schmetterlinge-sayn",
@@ -301,9 +325,10 @@
       "targetPointTypeExpected": "ENTRANCE_POINT",
       "consensusQuality": "NONE",
       "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionReason": "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
       "nextStep": "wait_for_better_sources"
     },
@@ -314,12 +339,13 @@
       "goldImageStatus": "UNKNOWN",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "kloster-arnstein",
@@ -328,12 +354,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "sayner-huette",
@@ -342,12 +369,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "burg-rheinfels",
@@ -356,12 +384,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "geysir-andernach",
@@ -370,12 +399,13 @@
       "goldImageStatus": "UNKNOWN",
       "targetPointTypeExpected": "VISITOR_POINT",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "abtei-maria-laach",
@@ -384,12 +414,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     },
     {
       "placeKey": "burg-rheineck",
@@ -398,12 +429,13 @@
       "goldImageStatus": "BAD",
       "targetPointTypeExpected": "COMPLEX_SITE",
       "consensusQuality": "NONE",
-      "recommendedActionClass": "BLOCKED_BY_SOURCE_QUALITY",
-      "recommendedActionReason": "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.",
+      "recommendedActionClass": "NEEDS_MANUAL_REVIEW",
+      "recommendedActionReason": "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.",
       "likelyBestSource": "unknown",
       "likelyOutlierSources": [],
+      "likelySourceRankingIssue": false,
       "sourceAgreementSummary": "No comparison entry found for this placeKey; classification based on gold-set only.",
-      "nextStep": "wait_for_better_sources"
+      "nextStep": "manual_anchor_definition"
     }
   ]
 }

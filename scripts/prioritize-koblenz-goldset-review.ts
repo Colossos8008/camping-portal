@@ -58,6 +58,7 @@ type PriorityResult = {
   recommendedActionReason: string;
   likelyBestSource: LikelyBestSource;
   likelyOutlierSources: SourceName[];
+  likelySourceRankingIssue: boolean;
   sourceAgreementSummary: string;
   nextStep: string;
 };
@@ -113,13 +114,16 @@ function deriveLikelyBestSource(consensus: ComparisonEntry["consensus"], usableS
   return "unknown";
 }
 
-function deriveNextStep(actionClass: RecommendedActionClass, context: { likelyGoogleOutlier: boolean; complexTarget: boolean; consensusQuality: ConsensusQuality }): string {
+function deriveNextStep(
+  actionClass: RecommendedActionClass,
+  context: { likelyGoogleOutlier: boolean; complexTarget: boolean; consensusQuality: ConsensusQuality; weakSourceSignal: boolean }
+): string {
   if (actionClass === "ALREADY_GOOD") return "accept_cluster_candidate";
   if (actionClass === "QUICK_WIN") return "accept_cluster_candidate";
   if (actionClass === "NEEDS_RULE_FIX") return context.likelyGoogleOutlier ? "inspect_google_semantics" : "improve_source_ranking";
   if (actionClass === "BLOCKED_BY_SOURCE_QUALITY") return "wait_for_better_sources";
   if (context.complexTarget) return "manual_anchor_definition";
-  if (context.consensusQuality === "WEAK") return "inspect_osm_object_type";
+  if (context.weakSourceSignal || context.consensusQuality === "WEAK") return "collect_additional_sources";
   return "add_target_point_rule";
 }
 
@@ -137,16 +141,23 @@ function classify(entry: GoldEntry, comparison: ComparisonEntry | undefined): Pr
     .map((c) => c.source)
     .filter((s): s is SourceName => ["google_places", "osm_nominatim", "osm_direct", "wikidata", "wikipedia"].includes(String(s)));
 
-  const outlierSources = ((comparison?.consensus?.outlierSources ?? []).filter((s): s is SourceName => ["google_places", "osm_nominatim", "osm_direct", "wikidata", "wikipedia"].includes(String(s))));
+  const outlierSources = (comparison?.consensus?.outlierSources ?? []).filter((s): s is SourceName =>
+    ["google_places", "osm_nominatim", "osm_direct", "wikidata", "wikipedia"].includes(String(s))
+  );
   const likelyGoogleOutlier = outlierSources.includes("google_places")
     || (usableSources.includes("google_places")
       && (comparison?.consensus?.bestClusterSources ?? []).length > 0
       && !(comparison?.consensus?.bestClusterSources ?? []).includes("google_places"));
 
   const likelyBestSource = deriveLikelyBestSource(comparison?.consensus, usableSources);
-  const complexTarget = ["COMPLEX_SITE", "AREA_ANCHOR", "VISITOR_POINT"].includes(targetPointTypeExpected);
+  const manualTarget = ["AREA_ANCHOR", "VISITOR_POINT"].includes(targetPointTypeExpected);
+  const complexTarget = manualTarget || targetPointTypeExpected === "COMPLEX_SITE";
   const hasCluster = (comparison?.consensus?.tightClusterCount ?? 0) > 0 || (comparison?.consensus?.looseClusterCount ?? 0) > 0;
-  const hasConflicts = outlierSources.length > 0 || usableSources.length >= 2;
+  const strongOrMediumConsensus = consensusQuality === "STRONG" || consensusQuality === "MEDIUM";
+  const weakOrNoneConsensus = consensusQuality === "WEAK" || consensusQuality === "NONE";
+  const weakSourceSignal = usableSources.length <= 1;
+  const likelySourceRankingIssue = goldCoordinateStatus === "BAD"
+    && (likelyGoogleOutlier || (hasCluster && strongOrMediumConsensus && outlierSources.length > 0 && usableSources.length >= 2));
 
   let recommendedActionClass: RecommendedActionClass;
   let recommendedActionReason: string;
@@ -154,27 +165,31 @@ function classify(entry: GoldEntry, comparison: ComparisonEntry | undefined): Pr
   if (goldCoordinateStatus === "GOOD" || (goldCoordinateStatus === "OKAY" && consensusQuality !== "NONE")) {
     recommendedActionClass = "ALREADY_GOOD";
     recommendedActionReason = "Gold-Set coordinate status is already acceptable for this POI.";
-  } else if (goldCoordinateStatus === "BAD" && (consensusQuality === "STRONG" || consensusQuality === "MEDIUM") && hasCluster && !hasConflicts) {
-    recommendedActionClass = "QUICK_WIN";
-    recommendedActionReason = "Gold-Set says BAD, but sources show a usable consensus cluster without major conflicts.";
-  } else if (goldCoordinateStatus === "BAD" && usableSources.length === 0) {
-    recommendedActionClass = "BLOCKED_BY_SOURCE_QUALITY";
-    recommendedActionReason = "Gold-Set says BAD and there is no usable multi-source coordinate signal yet.";
-  } else if (goldCoordinateStatus === "BAD" && (likelyGoogleOutlier || (hasCluster && consensusQuality !== "NONE"))) {
+  } else if (goldCoordinateStatus === "BAD" && likelySourceRankingIssue) {
     recommendedActionClass = "NEEDS_RULE_FIX";
-    recommendedActionReason = "Gold-Set says BAD, but existing source signals suggest ranking/gating rules likely pick the wrong candidate.";
+    recommendedActionReason = "BAD despite cluster/outlier pattern: source ranking is likely selecting the wrong candidate.";
+  } else if (goldCoordinateStatus === "BAD" && strongOrMediumConsensus && hasCluster && !complexTarget) {
+    recommendedActionClass = "QUICK_WIN";
+    recommendedActionReason = "BAD with solid cluster consensus and no complex target-point semantics; likely easy coordinate correction.";
+  } else if (goldCoordinateStatus === "BAD" && strongOrMediumConsensus && hasCluster && targetPointTypeExpected === "COMPLEX_SITE" && outlierSources.length === 0) {
+    recommendedActionClass = "QUICK_WIN";
+    recommendedActionReason = "BAD complex site, but sources converge on one stable cluster; can be fixed with low manual effort.";
+  } else if (goldCoordinateStatus === "BAD" && (manualTarget || (targetPointTypeExpected === "COMPLEX_SITE" && weakOrNoneConsensus))) {
+    recommendedActionClass = "NEEDS_MANUAL_REVIEW";
+    recommendedActionReason = "BAD with anchor/visitor/complex-site semantics that need manual target-point verification.";
+  } else if (goldCoordinateStatus === "BAD" && weakOrNoneConsensus && weakSourceSignal) {
+    recommendedActionClass = "BLOCKED_BY_SOURCE_QUALITY";
+    recommendedActionReason = "BAD and source evidence is too weak (single/no usable coordinate source) for a safe automated decision.";
   } else {
     recommendedActionClass = "NEEDS_MANUAL_REVIEW";
-    recommendedActionReason = complexTarget
-      ? "Gold-Set says BAD and this target type typically needs manual anchor/object-point curation."
-      : "Gold-Set says BAD and source signals are conflicting or semantically unclear.";
+    recommendedActionReason = "BAD with conflicting or semantically ambiguous source signals; requires curator decision.";
   }
 
   const sourceAgreementSummary = comparison
     ? `usable=${usableSources.length}, consensus=${consensusQuality}, bestCluster=${(comparison.consensus?.bestClusterSources ?? []).join("+") || "none"}, outliers=${outlierSources.join("+") || "none"}`
     : "No comparison entry found for this placeKey; classification based on gold-set only.";
 
-  const nextStep = deriveNextStep(recommendedActionClass, { likelyGoogleOutlier, complexTarget, consensusQuality });
+  const nextStep = deriveNextStep(recommendedActionClass, { likelyGoogleOutlier, complexTarget, consensusQuality, weakSourceSignal });
 
   return {
     placeKey,
@@ -187,6 +202,7 @@ function classify(entry: GoldEntry, comparison: ComparisonEntry | undefined): Pr
     recommendedActionReason,
     likelyBestSource,
     likelyOutlierSources: outlierSources,
+    likelySourceRankingIssue,
     sourceAgreementSummary,
     nextStep,
   };
@@ -203,6 +219,7 @@ function main(): void {
     .filter((entry) => (args.key ? entry.placeKey === args.key : true))
     .filter((entry) => (args.actionClass ? entry.recommendedActionClass === args.actionClass : true));
 
+  const badEntries = filtered.filter((x) => x.goldCoordinateStatus === "BAD");
   const summary = {
     total: filtered.length,
     alreadyGood: filtered.filter((x) => x.recommendedActionClass === "ALREADY_GOOD").length,
@@ -210,6 +227,10 @@ function main(): void {
     needsRuleFix: filtered.filter((x) => x.recommendedActionClass === "NEEDS_RULE_FIX").length,
     needsManualReview: filtered.filter((x) => x.recommendedActionClass === "NEEDS_MANUAL_REVIEW").length,
     blockedBySourceQuality: filtered.filter((x) => x.recommendedActionClass === "BLOCKED_BY_SOURCE_QUALITY").length,
+    badStrongOrMediumConsensus: badEntries.filter((x) => x.consensusQuality === "STRONG" || x.consensusQuality === "MEDIUM").length,
+    badWeakOrNoneConsensus: badEntries.filter((x) => x.consensusQuality === "WEAK" || x.consensusQuality === "NONE").length,
+    badComplexTargetTypes: badEntries.filter((x) => ["AREA_ANCHOR", "VISITOR_POINT", "COMPLEX_SITE"].includes(x.targetPointTypeExpected)).length,
+    badLikelySourceRankingIssues: badEntries.filter((x) => x.likelySourceRankingIssue).length,
   };
 
   const output = {
@@ -232,6 +253,10 @@ function main(): void {
   console.log(`count NEEDS_RULE_FIX: ${summary.needsRuleFix}`);
   console.log(`count NEEDS_MANUAL_REVIEW: ${summary.needsManualReview}`);
   console.log(`count BLOCKED_BY_SOURCE_QUALITY: ${summary.blockedBySourceQuality}`);
+  console.log(`count BAD with STRONG/MEDIUM: ${summary.badStrongOrMediumConsensus}`);
+  console.log(`count BAD with WEAK/NONE: ${summary.badWeakOrNoneConsensus}`);
+  console.log(`count BAD complex target types: ${summary.badComplexTargetTypes}`);
+  console.log(`count BAD likely source-ranking issues: ${summary.badLikelySourceRankingIssues}`);
 
   const listByClass = (klass: RecommendedActionClass) => filtered.filter((x) => x.recommendedActionClass === klass).map((x) => x.placeKey);
   console.log(`QUICK_WIN keys: ${listByClass("QUICK_WIN").join(", ") || "-"}`);

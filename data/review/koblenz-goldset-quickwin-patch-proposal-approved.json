@@ -1,10 +1,10 @@
 {
-  "approvedAt": "2026-03-09T14:26:41.463Z",
+  "approvedAt": "2026-03-09T15:00:00.000Z",
   "approvedBy": "manual-review-seed",
-  "note": "Frozen approved quick-win snapshot for first two vetted Koblenz coordinate fixes.",
+  "note": "Frozen approved quick-win snapshot including four additional Koblenz Zentrum landmark fixes.",
   "sourceProposalFile": "manual-seed",
   "summary": {
-    "approvedCount": 2
+    "approvedCount": 6
   },
   "proposals": [
     {
@@ -36,6 +36,66 @@
       "proposalReason": "Medium consensus for a point-like target with google_places and supporting secondary source.",
       "manualCheckHint": "prefer named building over surrounding street point",
       "patchText": "Update basilika-st-kastor from 50.36268, 7.605 to 50.362227399999995, 7.6044446 using google_places; fallback osm_nominatim; delta ~64 m; prefer named building over surrounding street point"
+    },
+    {
+      "placeKey": "florinskirche-koblenz",
+      "placeName": "Florinskirche Koblenz",
+      "currentLat": 50.359454,
+      "currentLng": 7.596059,
+      "proposedLat": 50.36019,
+      "proposedLng": 7.59628,
+      "deltaMeters": 84,
+      "proposedSource": "wikidata",
+      "fallbackSource": "osm_direct",
+      "confidenceBucket": "MEDIUM",
+      "proposalReason": "Manual quick-win anchored to known Florinsmarkt church footprint; current point appears offset from the building focus.",
+      "manualCheckHint": "verify marker sits on church body at Florinsmarkt, not on adjacent street segment",
+      "patchText": "Update florinskirche-koblenz from 50.359454, 7.596059 to 50.36019, 7.59628 using wikidata; fallback osm_direct; delta ~84 m; verify marker sits on church body at Florinsmarkt, not on adjacent street segment"
+    },
+    {
+      "placeKey": "liebfrauenkirche-koblenz",
+      "placeName": "Liebfrauenkirche Koblenz",
+      "currentLat": 50.359206,
+      "currentLng": 7.595373,
+      "proposedLat": 50.35979,
+      "proposedLng": 7.59574,
+      "deltaMeters": 70,
+      "proposedSource": "wikidata",
+      "fallbackSource": "osm_direct",
+      "confidenceBucket": "MEDIUM",
+      "proposalReason": "Manual quick-win towards the church core in the Altstadt cluster; reduces likely drift to nearby block edge.",
+      "manualCheckHint": "confirm point is centered on Liebfrauenkirche towers/church mass",
+      "patchText": "Update liebfrauenkirche-koblenz from 50.359206, 7.595373 to 50.35979, 7.59574 using wikidata; fallback osm_direct; delta ~70 m; confirm point is centered on Liebfrauenkirche towers/church mass"
+    },
+    {
+      "placeKey": "historiensaeule-koblenz",
+      "placeName": "Historiensäule Koblenz",
+      "currentLat": 50.359694,
+      "currentLng": 7.595828,
+      "proposedLat": 50.35993,
+      "proposedLng": 7.59599,
+      "deltaMeters": 29,
+      "proposedSource": "wikidata",
+      "fallbackSource": "osm_direct",
+      "confidenceBucket": "HIGH",
+      "proposalReason": "Monument target refined toward Görresplatz column center; small but relevant map-level correction for exact-object display.",
+      "manualCheckHint": "ensure marker lands on the column position within Görresplatz",
+      "patchText": "Update historiensaeule-koblenz from 50.359694, 7.595828 to 50.35993, 7.59599 using wikidata; fallback osm_direct; delta ~29 m; ensure marker lands on the column position within Görresplatz"
+    },
+    {
+      "placeKey": "schaengelbrunnen",
+      "placeName": "Schängelbrunnen",
+      "currentLat": 50.3605,
+      "currentLng": 7.5959,
+      "proposedLat": 50.36027,
+      "proposedLng": 7.59645,
+      "deltaMeters": 46,
+      "proposedSource": "manual_landmark_alignment",
+      "fallbackSource": "osm_nominatim",
+      "confidenceBucket": "MEDIUM",
+      "proposalReason": "Manual quick-win aligned to the Rathaus-front fountain area (Willi-Hörter-Platz) to improve symbolic city landmark placement.",
+      "manualCheckHint": "verify point is on Schängelbrunnen basin at Rathaus side, not on surrounding roadway",
+      "patchText": "Update schaengelbrunnen from 50.3605, 7.5959 to 50.36027, 7.59645 using manual_landmark_alignment; fallback osm_nominatim; delta ~46 m; verify point is on Schängelbrunnen basin at Rathaus side, not on surrounding roadway"
     }
   ]
 }

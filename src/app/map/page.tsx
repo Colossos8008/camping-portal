@@ -386,17 +386,7 @@ export default function MapPage() {
     return list;
   }, [filteredPlaces, sortMode]);
 
-  const mapPlaces = useMemo(() => {
-    const lat = Number(form.lat);
-    const lng = Number(form.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sortedPlaces;
-    if (selectedId == null) return sortedPlaces;
-
-    return sortedPlaces.map((p) => {
-      if (p.id !== selectedId) return p;
-      return { ...p, lat, lng };
-    });
-  }, [sortedPlaces, form.lat, form.lng, selectedId]);
+  const mapPlaces = useMemo(() => sortedPlaces, [sortedPlaces]);
 
   useEffect(() => {
     if (!selectedPlace) return;
@@ -451,6 +441,44 @@ export default function MapPage() {
   }
 
   function selectPlace(id: number, source: "list" | "map" = "list") {
+    const nextPlace = places.find((p) => p.id === id) ?? null;
+
+    if (nextPlace) {
+      const nextAny = nextPlace as any;
+      setEditingNew(false);
+      setPickMode(false);
+      setMapPickedCoord(null);
+      setErrorMsg("");
+      setStatusMsg("");
+      setUploadMsg("");
+      setPickedFiles([]);
+
+      setForm({
+        id: nextPlace.id,
+        name: nextPlace.name ?? "",
+        type: nextPlace.type,
+        lat: nextPlace.lat,
+        lng: nextPlace.lng,
+        dogAllowed: !!(nextPlace as any).dogAllowed,
+        sanitary: !!(nextPlace as any).sanitary,
+        yearRound: !!(nextPlace as any).yearRound,
+        onlineBooking: !!(nextPlace as any).onlineBooking,
+        gastronomy: !!(nextPlace as any).gastronomy,
+        ratingDetail: (nextPlace.ratingDetail ?? blankRating()) as any,
+        ts2: nextAny?.ts2 ?? null,
+        ts21: nextAny?.ts21 ?? null,
+        images: Array.isArray((nextPlace as any).images) ? (nextPlace as any).images : [],
+        heroImageUrl: (nextPlace as any).heroImageUrl ?? null,
+        thumbnailImageId: (nextPlace as any).thumbnailImageId ?? null,
+        sightseeingTotalScore: nextAny?.sightseeingTotalScore ?? null,
+        sightRelevanceType: nextAny?.sightRelevanceType ?? null,
+        sightVisitModePrimary: nextAny?.sightVisitModePrimary ?? null,
+        sightVisitModeSecondary: nextAny?.sightVisitModeSecondary ?? null,
+        bestVisitHint: nextAny?.bestVisitHint ?? null,
+        summaryWhyItMatches: nextAny?.summaryWhyItMatches ?? null,
+      });
+    }
+
     setSelectedId(id);
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
@@ -477,7 +505,6 @@ export default function MapPage() {
     setPickMode(false);
     setMapPickedCoord(null);
     setErrorMsg("");
-    setStatusMsg("");
     setUploadMsg("");
     setPickedFiles([]);
     setSelectTick((t) => t + 1);

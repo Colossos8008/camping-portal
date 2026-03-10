@@ -49,6 +49,32 @@ function isIOSNow() {
   return isiPhone || isMacTouch;
 }
 
+type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+
+function normalizeCoordinateReviewStatus(v: any): CoordinateReviewStatus {
+  return v === "CORRECTED" || v === "CONFIRMED" ? v : "UNREVIEWED";
+}
+
+function coordinateReviewStatusMeta(v: any): { label: string; className: string } {
+  const status = normalizeCoordinateReviewStatus(v);
+  if (status === "CORRECTED") {
+    return {
+      label: "manuell korrigiert",
+      className: "border-amber-400/40 bg-amber-500/15 text-amber-100",
+    };
+  }
+  if (status === "CONFIRMED") {
+    return {
+      label: "manuell bestätigt",
+      className: "border-emerald-400/40 bg-emerald-500/15 text-emerald-100",
+    };
+  }
+  return {
+    label: "ungeprüft",
+    className: "border-white/20 bg-white/10 text-white/90",
+  };
+}
+
 function safeNum(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -242,6 +268,7 @@ export default function MapPage() {
     images: [],
     heroImageUrl: null,
     thumbnailImageId: null,
+    coordinateReviewStatus: "UNREVIEWED",
   });
 
   const [navOpen, setNavOpen] = useState(false);
@@ -300,7 +327,13 @@ export default function MapPage() {
 
   async function refreshPlaces(keepSelection = true) {
     const data = await fetch("/api/places", { cache: "no-store" }).then((r) => r.json());
-    const arr = safePlacesFromApi(data);
+    const arr = safePlacesFromApi(data).map((p) => {
+      const raw = (Array.isArray(data?.places) ? data.places : Array.isArray(data) ? data : []).find((x: any) => x?.id === p.id);
+      return {
+        ...p,
+        coordinateReviewStatus: normalizeCoordinateReviewStatus(raw?.coordinateReviewStatus),
+      } as any;
+    });
     setPlaces(arr);
 
     if (!keepSelection) {
@@ -426,6 +459,7 @@ export default function MapPage() {
       sightVisitModeSecondary: selectedAny?.sightVisitModeSecondary ?? null,
       bestVisitHint: selectedAny?.bestVisitHint ?? null,
       summaryWhyItMatches: selectedAny?.summaryWhyItMatches ?? null,
+      coordinateReviewStatus: normalizeCoordinateReviewStatus(selectedAny?.coordinateReviewStatus),
     });
   }, [selectedPlace]);
 
@@ -479,6 +513,7 @@ export default function MapPage() {
         sightVisitModeSecondary: nextAny?.sightVisitModeSecondary ?? null,
         bestVisitHint: nextAny?.bestVisitHint ?? null,
         summaryWhyItMatches: nextAny?.summaryWhyItMatches ?? null,
+        coordinateReviewStatus: normalizeCoordinateReviewStatus(nextAny?.coordinateReviewStatus),
       });
     }
 
@@ -541,6 +576,7 @@ export default function MapPage() {
       sightVisitModeSecondary: null,
       bestVisitHint: null,
       summaryWhyItMatches: null,
+      coordinateReviewStatus: "UNREVIEWED",
     });
   }
 
@@ -599,6 +635,13 @@ export default function MapPage() {
       if (Number.isFinite(nextId)) {
         setSelectedId(nextId);
         setSelectTick((t) => t + 1);
+      }
+
+      if (saved) {
+        setForm((prev: any) => ({
+          ...prev,
+          coordinateReviewStatus: normalizeCoordinateReviewStatus(saved?.coordinateReviewStatus),
+        }));
       }
 
       setEditingNew(false);
@@ -938,6 +981,7 @@ export default function MapPage() {
 
   const shouldShowTS = form.type === "CAMPINGPLATZ" || form.type === "STELLPLATZ";
   const shouldShowSightseeing = form.type === "SEHENSWUERDIGKEIT";
+  const reviewStatusMeta = coordinateReviewStatusMeta(form?.coordinateReviewStatus);
 
   // WICHTIG: stabiler JSX-Block (kein inneres Component), damit kein Remount pro Keystroke
   const editorBody = useMemo(() => {
@@ -949,6 +993,13 @@ export default function MapPage() {
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs opacity-70">Sektionen {sectionsHint}</div>
           {editorSectionsToolbar}
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Review-/Lernstatus</div>
+          <div className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-semibold ${reviewStatusMeta.className}`}>
+            {reviewStatusMeta.label}
+          </div>
         </div>
 
         <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(vv) => setSection("BASICS", vv)}>

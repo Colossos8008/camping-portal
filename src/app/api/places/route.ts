@@ -206,6 +206,11 @@ function normalizeHeroImageUrl(v: any): string | null | undefined {
   const raw = asString(v).trim();
   if (!raw) return null;
 
+  if (raw.startsWith("/")) {
+    // Erlaube relative interne Pfade wie /api/places/:id/hero oder /uploads/...
+    return raw;
+  }
+
   try {
     const u = new URL(raw);
     if (u.protocol === "http:" || u.protocol === "https:") return raw;

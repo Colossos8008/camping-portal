@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-10T00:00:00.000Z",
+  "generatedAt": "2026-03-10T05:26:10.108Z",
   "notes": "Manual coordinate feedback dataset for future ranking/retraining.",
   "items": [
     {
@@ -12,8 +12,8 @@
       "selectedSource": "google_places",
       "selectedLat": 50.3627774,
       "selectedLng": 7.605001699999999,
-      "reviewNote": "Manuell bestätigt auf Basis der quickwin-approved Vorschlagskoordinate.",
-      "reviewedBy": "manual",
+      "reviewNote": "Passt in der UI.",
+      "reviewedBy": "manual-cli",
       "reviewedAt": "2026-03-10"
     },
     {

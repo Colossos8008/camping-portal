@@ -44,7 +44,8 @@
     "apply-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/apply-koblenz-quickwin-patch-proposal.ts --approved",
     "seed-approved:koblenz-quickwin-patches": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/seed-koblenz-approved-quickwin-patches.ts",
     "build:poi-coordinate-training-dataset": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-poi-coordinate-training-dataset.ts",
-    "verify:poi-coordinate-feedback": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-poi-coordinate-training-dataset.ts --verify-feedback-only"
+    "verify:poi-coordinate-feedback": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/build-poi-coordinate-training-dataset.ts --verify-feedback-only",
+    "update:poi-coordinate-feedback": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/update-poi-coordinate-feedback.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

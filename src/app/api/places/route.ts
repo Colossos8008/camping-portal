@@ -5,6 +5,8 @@ import { placeSelect } from "@/lib/place-select";
 import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
 import { isHeroDebugPoiName } from "@/lib/hero-debug";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 export const runtime = "nodejs";
 
@@ -54,6 +56,34 @@ type TS21Detail = {
 
   note: string;
 };
+
+type CoordinateReviewDecision = "CORRECTED" | "CONFIRMED";
+type CoordinateReviewStatus = "UNREVIEWED" | "MANUALLY_CORRECTED" | "MANUALLY_CONFIRMED";
+
+type CoordinateFeedbackItem = {
+  placeKey?: string;
+  placeName?: string;
+  region?: string;
+  targetPointType?: string;
+  decision?: string;
+  selectedSource?: string;
+  selectedLat?: number;
+  selectedLng?: number;
+  reviewNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  previousLat?: number;
+  previousLng?: number;
+};
+
+type CoordinateFeedbackFile = {
+  version?: number;
+  generatedAt?: string;
+  notes?: string;
+  items?: CoordinateFeedbackItem[];
+};
+
+const FEEDBACK_FILE = resolve(process.cwd(), "data/review/poi-coordinate-feedback-v1.json");
 
 const TS_DEFAULT: TSValue = "OKAY";
 
@@ -248,6 +278,54 @@ function normalizeScore0to100(v: any): number | null | undefined {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return Math.max(0, Math.min(100, Math.round(n * 10) / 10));
+}
+
+function normalizeReviewDecision(v: any): CoordinateReviewDecision | null {
+  if (v === "CORRECTED" || v === "CONFIRMED") return v;
+  return null;
+}
+
+function normalizeReviewStatus(decision: string | undefined): CoordinateReviewStatus {
+  if (decision === "CORRECTED") return "MANUALLY_CORRECTED";
+  if (decision === "CONFIRMED") return "MANUALLY_CONFIRMED";
+  return "UNREVIEWED";
+}
+
+function toSlug(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+}
+
+function buildPlaceKey(place: { id: number; name?: string | null; sightExternalId?: string | null }): string {
+  const ext = String(place.sightExternalId ?? "").trim();
+  if (ext) return ext;
+
+  const slug = toSlug(String(place.name ?? ""));
+  if (slug) return `${slug}-${place.id}`;
+
+  return `place-${place.id}`;
+}
+
+function readCoordinateFeedback(): CoordinateFeedbackFile {
+  if (!existsSync(FEEDBACK_FILE)) {
+    return {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      notes: "Manual coordinate feedback dataset for future ranking/retraining.",
+      items: [],
+    };
+  }
+
+  return JSON.parse(readFileSync(FEEDBACK_FILE, "utf8")) as CoordinateFeedbackFile;
+}
+
+function writeCoordinateFeedback(payload: CoordinateFeedbackFile): void {
+  writeFileSync(FEEDBACK_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 function normalizeTS21Detail(input: any): TS21Detail {
@@ -538,6 +616,9 @@ export async function PUT(req: NextRequest) {
   if (!Number.isFinite(idNum)) return NextResponse.json({ error: "id fehlt oder ungueltig" }, { status: 400 });
 
   const data: any = {};
+  const explicitDecision = normalizeReviewDecision(body?.coordinateReviewDecision ?? body?.reviewDecision);
+  const reviewSourceRaw = asOptionalString(body?.coordinateReviewSource ?? body?.reviewSource);
+  const reviewNoteRaw = asOptionalString(body?.coordinateReviewNote ?? body?.reviewNote);
 
   const name = asOptionalString(body?.name);
   if (name !== undefined) {
@@ -618,12 +699,15 @@ export async function PUT(req: NextRequest) {
     };
   }
 
+  const existingForUpdate = await prisma.place.findUnique({
+    where: { id: idNum },
+    select: { id: true, type: true, lat: true, lng: true, name: true, sightRegion: true, sightExternalId: true },
+  });
+  if (!existingForUpdate) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const typeFromBody = body?.type != null ? normalizePlaceType(body?.type) : null;
   let finalType: PlaceType | null = typeFromBody;
-  if (!finalType) {
-    const existing = await prisma.place.findUnique({ where: { id: idNum }, select: { type: true } });
-    finalType = existing?.type ?? null;
-  }
+  if (!finalType) finalType = existingForUpdate?.type ?? null;
   const shouldHaveTS = finalType === "CAMPINGPLATZ" || finalType === "STELLPLATZ";
 
   if (finalType === "SEHENSWUERDIGKEIT" && !hasExplicitSightseeingInput(body)) {
@@ -661,9 +745,63 @@ export async function PUT(req: NextRequest) {
       select: placeSelect(canTs21),
     });
 
+    let coordinateReviewStatus: CoordinateReviewStatus = "UNREVIEWED";
+    try {
+      const hadExplicitCoordinates = lat !== undefined && lng !== undefined;
+      const beforeLat = Number(existingForUpdate.lat);
+      const beforeLng = Number(existingForUpdate.lng);
+      const afterLat = Number(updated.lat);
+      const afterLng = Number(updated.lng);
+      const changedCoordinates =
+        hadExplicitCoordinates && (Math.abs(beforeLat - afterLat) > 1e-9 || Math.abs(beforeLng - afterLng) > 1e-9);
+
+      const decision: CoordinateReviewDecision | null = changedCoordinates ? "CORRECTED" : explicitDecision;
+      const placeKey = buildPlaceKey(updated as any);
+
+      const feedback = readCoordinateFeedback();
+      const currentItems = Array.isArray(feedback.items) ? feedback.items : [];
+      const byKey = new Map(currentItems.map((item) => [String(item.placeKey ?? "").trim(), item]));
+      const existingItem = byKey.get(placeKey);
+
+      if (decision) {
+        const reviewedAt = new Date().toISOString().slice(0, 10);
+        const source =
+          String(reviewSourceRaw ?? "").trim() || (changedCoordinates ? "map-picked" : "manual-ui");
+
+        const nextItem: CoordinateFeedbackItem = {
+          placeKey,
+          placeName: String(updated.name ?? "").trim() || existingItem?.placeName || placeKey,
+          region: String((updated as any).sightRegion ?? "").trim() || existingItem?.region || "unknown",
+          targetPointType: existingItem?.targetPointType ?? "UNKNOWN",
+          decision,
+          selectedSource: source,
+          selectedLat: afterLat,
+          selectedLng: afterLng,
+          reviewNote: String(reviewNoteRaw ?? "").trim() || existingItem?.reviewNote || "",
+          reviewedBy: "manual-ui",
+          reviewedAt,
+          previousLat: changedCoordinates ? beforeLat : existingItem?.previousLat,
+          previousLng: changedCoordinates ? beforeLng : existingItem?.previousLng,
+        };
+
+        byKey.set(placeKey, nextItem);
+        writeCoordinateFeedback({
+          ...feedback,
+          generatedAt: new Date().toISOString(),
+          items: Array.from(byKey.values()),
+        });
+        coordinateReviewStatus = normalizeReviewStatus(nextItem.decision);
+      } else {
+        coordinateReviewStatus = normalizeReviewStatus(existingItem?.decision);
+      }
+    } catch (feedbackError) {
+      console.error("coordinate-feedback-update-failed", feedbackError);
+    }
+
     const normalizedUpdated = {
       ...updated,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
+      coordinateReviewStatus,
     };
 
     if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });

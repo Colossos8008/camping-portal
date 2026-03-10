@@ -376,9 +376,8 @@ export default function MapClient(props: Props) {
 
   const tempLayerRef = useRef<L.LayerGroup | null>(null);
   const tempMarkerRef = useRef<L.Marker | null>(null);
+  const pickedCoordRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  const lastTempRef = useRef<{ lat: number; lng: number } | null>(null);
-  const rafMoveRef = useRef<number | null>(null);
 
   const selectedIdRef = useRef<number | null>(props.selectedId);
   const pickModeRef = useRef<boolean>(props.pickMode);
@@ -453,12 +452,6 @@ export default function MapClient(props: Props) {
       map.setView([50.33, 7.6], 11);
     }
 
-    return () => {
-      if (rafMoveRef.current) {
-        cancelAnimationFrame(rafMoveRef.current);
-        rafMoveRef.current = null;
-      }
-    };
   }, []);
 
   function setMarkerVisual(id: number, p: Place) {
@@ -727,7 +720,6 @@ export default function MapClient(props: Props) {
         tempLayerRef.current.remove();
         tempLayerRef.current = null;
       }
-      lastTempRef.current = null;
     }
 
     function ensureTempMarker(lat: number, lng: number) {
@@ -769,6 +761,7 @@ export default function MapClient(props: Props) {
         tempMarkerRef.current = L.marker([lat, lng], {
           icon: makeDivIcon(html, 40),
           interactive: false,
+          zIndexOffset: 2000,
         });
         tempMarkerRef.current.addTo(layer);
       } else {
@@ -777,47 +770,30 @@ export default function MapClient(props: Props) {
       }
     }
 
-    function scheduleMove(lat: number, lng: number) {
-      lastTempRef.current = { lat, lng };
-      if (rafMoveRef.current) return;
-
-      rafMoveRef.current = requestAnimationFrame(() => {
-        rafMoveRef.current = null;
-        const v = lastTempRef.current;
-        if (!v) return;
-        if (!props.pickMode) return;
-        ensureTempMarker(v.lat, v.lng);
-      });
-    }
-
-    function onMouseMove(e: L.LeafletMouseEvent) {
-      if (!props.pickMode) return;
-      scheduleMove(e.latlng.lat, e.latlng.lng);
-    }
-
     function onClick(e: L.LeafletMouseEvent) {
       if (!props.pickMode) return;
       const lat = e.latlng.lat;
       const lng = e.latlng.lng;
+      pickedCoordRef.current = { lat, lng };
       ensureTempMarker(lat, lng);
       props.onPick(lat, lng);
     }
 
     if (props.pickMode) {
-      map.on("mousemove", onMouseMove);
       map.on("click", onClick);
 
-      const c = map.getCenter();
-      ensureTempMarker(c.lat, c.lng);
+      const picked = pickedCoordRef.current;
+      if (picked) ensureTempMarker(picked.lat, picked.lng);
+      map.getContainer().style.cursor = "crosshair";
     } else {
-      map.off("mousemove", onMouseMove);
       map.off("click", onClick);
+      map.getContainer().style.cursor = "";
       clearTempLayer();
     }
 
     return () => {
-      map.off("mousemove", onMouseMove);
       map.off("click", onClick);
+      map.getContainer().style.cursor = "";
     };
   }, [props.pickMode, props.onPick]);
 

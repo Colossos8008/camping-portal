@@ -58,7 +58,7 @@ type TS21Detail = {
 };
 
 type CoordinateReviewDecision = "CORRECTED" | "CONFIRMED";
-type CoordinateReviewStatus = "UNREVIEWED" | "MANUALLY_CORRECTED" | "MANUALLY_CONFIRMED";
+type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
 
 type CoordinateFeedbackItem = {
   placeKey?: string;
@@ -286,8 +286,8 @@ function normalizeReviewDecision(v: any): CoordinateReviewDecision | null {
 }
 
 function normalizeReviewStatus(decision: string | undefined): CoordinateReviewStatus {
-  if (decision === "CORRECTED") return "MANUALLY_CORRECTED";
-  if (decision === "CONFIRMED") return "MANUALLY_CONFIRMED";
+  if (decision === "CORRECTED") return "CORRECTED";
+  if (decision === "CONFIRMED") return "CONFIRMED";
   return "UNREVIEWED";
 }
 
@@ -326,6 +326,20 @@ function readCoordinateFeedback(): CoordinateFeedbackFile {
 
 function writeCoordinateFeedback(payload: CoordinateFeedbackFile): void {
   writeFileSync(FEEDBACK_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function readCoordinateReviewStatusByPlaceKey(): Map<string, CoordinateReviewStatus> {
+  const feedback = readCoordinateFeedback();
+  const items = Array.isArray(feedback.items) ? feedback.items : [];
+  const byKey = new Map<string, CoordinateReviewStatus>();
+
+  for (const item of items) {
+    const placeKey = String(item?.placeKey ?? "").trim();
+    if (!placeKey) continue;
+    byKey.set(placeKey, normalizeReviewStatus(item?.decision));
+  }
+
+  return byKey;
 }
 
 function normalizeTS21Detail(input: any): TS21Detail {
@@ -489,10 +503,23 @@ export async function GET(req: NextRequest) {
     const wantsHeroDebug = heroDebug === "1" || heroDebug === "true";
 
     const places = await findManyPlaces();
-    const normalizedPlaces = places.map((place: any) => ({
-      ...place,
-      heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
-    }));
+    let coordinateReviewStatusByPlaceKey = new Map<string, CoordinateReviewStatus>();
+    try {
+      coordinateReviewStatusByPlaceKey = readCoordinateReviewStatusByPlaceKey();
+    } catch (feedbackError) {
+      console.error("coordinate-feedback-read-failed", feedbackError);
+    }
+
+    const normalizedPlaces = places.map((place: any) => {
+      const placeKey = buildPlaceKey(place);
+      const coordinateReviewStatus = coordinateReviewStatusByPlaceKey.get(placeKey) ?? "UNREVIEWED";
+
+      return {
+        ...place,
+        heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
+        coordinateReviewStatus,
+      };
+    });
     normalizedPlaces.sort((a: any, b: any) => {
       const prioDiff = curatedPriorityScore(b) - curatedPriorityScore(a);
       if (prioDiff !== 0) return prioDiff;

@@ -2,7 +2,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Ts21Editor, { TS21Detail } from "./ts21-editor";
 
 import type { Place, PlaceType, SortMode } from "./_lib/types";
@@ -250,6 +250,10 @@ export default function MapPage() {
 
   const geoWatchIdRef = useRef<number | null>(null);
 
+  const handleMapPick = useCallback((lat: number, lng: number) => {
+    setMapPickedCoord({ lat, lng });
+  }, []);
+
   function scrollEditorTop() {
     requestAnimationFrame(() => {
       try {
@@ -396,7 +400,6 @@ export default function MapPage() {
     setPickMode(false);
     setMapPickedCoord(null);
     setErrorMsg("");
-    setStatusMsg("");
     setUploadMsg("");
     setPickedFiles([]);
 
@@ -1130,6 +1133,10 @@ export default function MapPage() {
 
   const layout = isMobile ? (
     <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4">
+      {statusMsg ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">{statusMsg}</div>
+      ) : null}
+
       <div className="w-full">
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
           <FiltersPanel
@@ -1166,9 +1173,7 @@ export default function MapPage() {
               selectedId={selectedId}
               onSelect={(id: number) => selectPlace(id, "map")}
               pickMode={pickMode}
-              onPick={(lat: number, lng: number) => {
-                setMapPickedCoord({ lat, lng });
-              }}
+              onPick={handleMapPick}
               focusToken={focusToken}
               myPos={myPos}
               myPosFocusToken={myPosFocusToken}
@@ -1229,6 +1234,12 @@ export default function MapPage() {
     </div>
   ) : (
     <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
+      {statusMsg ? (
+        <div className="fixed left-1/2 top-4 z-[1400] w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-center text-sm text-emerald-100 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur">
+          {statusMsg}
+        </div>
+      ) : null}
+
       <div className="w-[320px] shrink-0 lg:min-h-0">
         <PlacesList
           places={mapPlaces as any}
@@ -1252,9 +1263,7 @@ export default function MapPage() {
             selectedId={selectedId}
             onSelect={(id: number) => selectPlace(id, "map")}
             pickMode={pickMode}
-            onPick={(lat: number, lng: number) => {
-              setMapPickedCoord({ lat, lng });
-            }}
+            onPick={handleMapPick}
             focusToken={focusToken}
             myPos={myPos}
             myPosFocusToken={myPosFocusToken}

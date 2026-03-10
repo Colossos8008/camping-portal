@@ -204,6 +204,7 @@ export default function MapPage() {
   const [editingNew, setEditingNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pickMode, setPickMode] = useState(false);
+  const [mapPickedCoord, setMapPickedCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
   const [uploading, setUploading] = useState(false);
@@ -390,6 +391,7 @@ export default function MapPage() {
 
     setEditingNew(false);
     setPickMode(false);
+    setMapPickedCoord(null);
     setErrorMsg("");
     setUploadMsg("");
     setPickedFiles([]);
@@ -459,6 +461,7 @@ export default function MapPage() {
     setEditingNew(true);
     setSelectedId(null);
     setPickMode(false);
+    setMapPickedCoord(null);
     setErrorMsg("");
     setUploadMsg("");
     setPickedFiles([]);
@@ -932,7 +935,11 @@ export default function MapPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setPickMode((v) => !v);
+                  setPickMode((v) => {
+                    const next = !v;
+                    if (!next) setMapPickedCoord(null);
+                    return next;
+                  });
                   setSelectTick((t) => t + 1);
                 }}
                 className={`h-9 shrink-0 rounded-xl border px-3 text-xs hover:opacity-95 ${
@@ -944,6 +951,22 @@ export default function MapPage() {
                 📍 Karte
               </button>
 
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!mapPickedCoord) return;
+                  setForm((f: any) => ({ ...f, lat: mapPickedCoord.lat, lng: mapPickedCoord.lng }));
+                  setMapPickedCoord(null);
+                  setPickMode(false);
+                }}
+                className="h-9 shrink-0 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 text-xs hover:bg-emerald-500/20 disabled:opacity-60"
+                disabled={saving || !mapPickedCoord}
+                title="Ausgewählte Kartenposition übernehmen"
+              >
+                ✅ Übernehmen
+              </button>
+
               <button
                 type="button"
                 onClick={() => setNavOpen(true)}
@@ -953,6 +976,15 @@ export default function MapPage() {
               >
                 🧭 Navi
               </button>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/75">
+              <div>
+                Aktuell: {Number(form.lat).toFixed(6)}, {Number(form.lng).toFixed(6)}
+              </div>
+              <div>
+                Karte: {mapPickedCoord ? `${mapPickedCoord.lat.toFixed(6)}, ${mapPickedCoord.lng.toFixed(6)}` : "noch nicht gewählt"}
+              </div>
             </div>
 
             <input
@@ -1088,9 +1120,7 @@ export default function MapPage() {
               onSelect={(id: number) => selectPlace(id, "map")}
               pickMode={pickMode}
               onPick={(lat: number, lng: number) => {
-                setForm((f: any) => ({ ...f, lat, lng }));
-                setPickMode(false);
-                setSelectTick((t) => t + 1);
+                setMapPickedCoord({ lat, lng });
               }}
               focusToken={focusToken}
               myPos={myPos}
@@ -1176,9 +1206,7 @@ export default function MapPage() {
             onSelect={(id: number) => selectPlace(id, "map")}
             pickMode={pickMode}
             onPick={(lat: number, lng: number) => {
-              setForm((f: any) => ({ ...f, lat, lng }));
-              setPickMode(false);
-              setSelectTick((t) => t + 1);
+              setMapPickedCoord({ lat, lng });
             }}
             focusToken={focusToken}
             myPos={myPos}

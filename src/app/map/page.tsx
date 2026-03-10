@@ -206,6 +206,7 @@ export default function MapPage() {
   const [pickMode, setPickMode] = useState(false);
   const [mapPickedCoord, setMapPickedCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
 
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
@@ -385,6 +386,18 @@ export default function MapPage() {
     return list;
   }, [filteredPlaces, sortMode]);
 
+  const mapPlaces = useMemo(() => {
+    const lat = Number(form.lat);
+    const lng = Number(form.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sortedPlaces;
+    if (selectedId == null) return sortedPlaces;
+
+    return sortedPlaces.map((p) => {
+      if (p.id !== selectedId) return p;
+      return { ...p, lat, lng };
+    });
+  }, [sortedPlaces, form.lat, form.lng, selectedId]);
+
   useEffect(() => {
     if (!selectedPlace) return;
     const selectedAny = selectedPlace as any;
@@ -393,6 +406,7 @@ export default function MapPage() {
     setPickMode(false);
     setMapPickedCoord(null);
     setErrorMsg("");
+    setStatusMsg("");
     setUploadMsg("");
     setPickedFiles([]);
 
@@ -463,6 +477,7 @@ export default function MapPage() {
     setPickMode(false);
     setMapPickedCoord(null);
     setErrorMsg("");
+    setStatusMsg("");
     setUploadMsg("");
     setPickedFiles([]);
     setSelectTick((t) => t + 1);
@@ -502,6 +517,7 @@ export default function MapPage() {
   async function save() {
     setSaving(true);
     setErrorMsg("");
+    setStatusMsg("");
 
     try {
       const isNew = editingNew || !form.id;
@@ -555,6 +571,7 @@ export default function MapPage() {
       }
 
       setEditingNew(false);
+      setStatusMsg("Koordinate gespeichert - manuelle Korrektur vorgemerkt");
     } finally {
       setSaving(false);
     }
@@ -892,6 +909,7 @@ export default function MapPage() {
     return (
       <div className="space-y-3 pt-3">
         {errorMsg ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">{errorMsg}</div> : null}
+        {statusMsg ? <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">{statusMsg}</div> : null}
 
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs opacity-70">Sektionen {sectionsHint}</div>
@@ -956,6 +974,7 @@ export default function MapPage() {
                 type="button"
                 onClick={() => {
                   if (!mapPickedCoord) return;
+                  setStatusMsg("");
                   setForm((f: any) => ({ ...f, lat: mapPickedCoord.lat, lng: mapPickedCoord.lng }));
                   setMapPickedCoord(null);
                   setPickMode(false);
@@ -1068,6 +1087,7 @@ export default function MapPage() {
     );
   }, [
     errorMsg,
+    statusMsg,
     sectionsHint,
     editorSectionsToolbar,
     sectionOpen,
@@ -1115,7 +1135,7 @@ export default function MapPage() {
         <CollapsiblePanel title="Map" icon="🗺️" open={panelMapOpen} onOpenChange={setPanelMapOpen}>
           <div className="relative h-[60svh] min-h-[360px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
             <MapClient
-              places={sortedPlaces as any}
+              places={mapPlaces as any}
               selectedId={selectedId}
               onSelect={(id: number) => selectPlace(id, "map")}
               pickMode={pickMode}
@@ -1164,7 +1184,7 @@ export default function MapPage() {
         <CollapsiblePanel title="Orte" icon="📍" open={panelPlacesOpen} onOpenChange={setPanelPlacesOpen}>
           <div className="h-[70svh] min-h-[420px]">
             <PlacesList
-              places={sortedPlaces as any}
+              places={mapPlaces as any}
               selectedId={selectedId}
               onSelect={(id) => selectPlace(id, "list")}
               sortMode={sortMode}
@@ -1184,7 +1204,7 @@ export default function MapPage() {
     <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
       <div className="w-[320px] shrink-0 lg:min-h-0">
         <PlacesList
-          places={sortedPlaces as any}
+          places={mapPlaces as any}
           selectedId={selectedId}
           onSelect={(id) => selectPlace(id, "list")}
           sortMode={sortMode}
@@ -1201,7 +1221,7 @@ export default function MapPage() {
       <div className="min-h-0 flex-1">
         <div className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
           <MapClient
-            places={sortedPlaces as any}
+            places={mapPlaces as any}
             selectedId={selectedId}
             onSelect={(id: number) => selectPlace(id, "map")}
             pickMode={pickMode}

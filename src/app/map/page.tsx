@@ -544,35 +544,36 @@ export default function MapPage() {
     });
   }
 
-  async function save() {
+  async function save(formOverride?: typeof form) {
     setSaving(true);
     setErrorMsg("");
     setStatusMsg("");
 
     try {
-      const isNew = editingNew || !form.id;
+      const currentForm = formOverride ?? form;
+      const isNew = editingNew || !currentForm.id;
 
       const payload: any = {
-        ...(isNew ? {} : { id: Number(form.id) }),
-        name: String(form.name ?? "").trim(),
-        type: form.type,
-        lat: Number(form.lat),
-        lng: Number(form.lng),
-        dogAllowed: !!form.dogAllowed,
-        sanitary: !!form.sanitary,
-        yearRound: !!form.yearRound,
-        onlineBooking: !!form.onlineBooking,
-        gastronomy: !!form.gastronomy,
+        ...(isNew ? {} : { id: Number(currentForm.id) }),
+        name: String(currentForm.name ?? "").trim(),
+        type: currentForm.type,
+        lat: Number(currentForm.lat),
+        lng: Number(currentForm.lng),
+        dogAllowed: !!currentForm.dogAllowed,
+        sanitary: !!currentForm.sanitary,
+        yearRound: !!currentForm.yearRound,
+        onlineBooking: !!currentForm.onlineBooking,
+        gastronomy: !!currentForm.gastronomy,
         ratingDetail: {
           upsert: {
-            create: { ...(form.ratingDetail ?? blankRating()) },
-            update: { ...(form.ratingDetail ?? blankRating()) },
+            create: { ...(currentForm.ratingDetail ?? blankRating()) },
+            update: { ...(currentForm.ratingDetail ?? blankRating()) },
           },
         },
-        ts2: form.ts2 ?? null,
-        ts21: form.ts21 ?? null,
-        heroImageUrl: typeof form.heroImageUrl === "string" ? form.heroImageUrl.trim() : null,
-        thumbnailImageId: form.thumbnailImageId ?? null,
+        ts2: currentForm.ts2 ?? null,
+        ts21: currentForm.ts21 ?? null,
+        heroImageUrl: typeof currentForm.heroImageUrl === "string" ? currentForm.heroImageUrl.trim() : null,
+        thumbnailImageId: currentForm.thumbnailImageId ?? null,
       };
 
       const url = "/api/places";
@@ -591,7 +592,7 @@ export default function MapPage() {
       }
 
       const saved = await res.json().catch(() => null);
-      const nextId = Number(saved?.id ?? (isNew ? NaN : form.id));
+      const nextId = Number(saved?.id ?? (isNew ? NaN : currentForm.id));
 
       await refreshPlaces(true);
 
@@ -602,6 +603,10 @@ export default function MapPage() {
 
       setEditingNew(false);
       setStatusMsg("Koordinate gespeichert - manuelle Korrektur vorgemerkt");
+      return true;
+    } catch {
+      setErrorMsg("Speichern fehlgeschlagen");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1002,18 +1007,21 @@ export default function MapPage() {
 
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (!mapPickedCoord) return;
-                  setStatusMsg("");
-                  setForm((f: any) => ({ ...f, lat: mapPickedCoord.lat, lng: mapPickedCoord.lng }));
-                  setMapPickedCoord(null);
-                  setPickMode(false);
+                  const nextForm = { ...form, lat: mapPickedCoord.lat, lng: mapPickedCoord.lng };
+                  setForm(nextForm);
+                  const saved = await save(nextForm);
+                  if (saved) {
+                    setMapPickedCoord(null);
+                    setPickMode(false);
+                  }
                 }}
                 className="h-9 shrink-0 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 text-xs hover:bg-emerald-500/20 disabled:opacity-60"
                 disabled={saving || !mapPickedCoord}
-                title="Ausgewählte Kartenposition übernehmen"
+                title="Ausgewählte Kartenposition speichern"
               >
-                ✅ Übernehmen
+                ✅ Koordinate speichern
               </button>
 
               <button

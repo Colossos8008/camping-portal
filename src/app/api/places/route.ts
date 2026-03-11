@@ -705,8 +705,7 @@ export async function PUT(req: NextRequest) {
   const name = asOptionalString(body?.name);
   if (name !== undefined) {
     const trimmed = name.trim();
-    if (!trimmed) return NextResponse.json({ error: "Name fehlt" }, { status: 400 });
-    data.name = trimmed;
+    if (trimmed) data.name = trimmed;
   }
 
   if (body?.type != null) data.type = normalizePlaceType(body?.type);

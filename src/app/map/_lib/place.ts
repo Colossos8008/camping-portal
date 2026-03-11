@@ -179,6 +179,7 @@ export function safePlacesFromApi(input: any): Place[] {
         coordinateReviewStatus: p.coordinateReviewStatus === "CORRECTED" || p.coordinateReviewStatus === "CONFIRMED" ? p.coordinateReviewStatus : "UNREVIEWED",
         coordinateReviewSource: typeof p.coordinateReviewSource === "string" && p.coordinateReviewSource.trim() ? p.coordinateReviewSource.trim() : null,
         coordinateReviewReviewedAt: typeof p.coordinateReviewReviewedAt === "string" && p.coordinateReviewReviewedAt.trim() ? p.coordinateReviewReviewedAt.trim() : null,
+        coordinateReviewNote: typeof p.coordinateReviewNote === "string" ? p.coordinateReviewNote : null,
       } as Place;
     })
     .filter(Boolean) as Place[];

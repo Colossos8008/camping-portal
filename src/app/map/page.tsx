@@ -459,6 +459,7 @@ export default function MapPage() {
       sightVisitModeSecondary: selectedAny?.sightVisitModeSecondary ?? null,
       bestVisitHint: selectedAny?.bestVisitHint ?? null,
       summaryWhyItMatches: selectedAny?.summaryWhyItMatches ?? null,
+      sightDescription: selectedAny?.sightDescription ?? null,
       coordinateReviewStatus: normalizeCoordinateReviewStatus(selectedAny?.coordinateReviewStatus),
     });
   }, [selectedPlace]);
@@ -513,6 +514,7 @@ export default function MapPage() {
         sightVisitModeSecondary: nextAny?.sightVisitModeSecondary ?? null,
         bestVisitHint: nextAny?.bestVisitHint ?? null,
         summaryWhyItMatches: nextAny?.summaryWhyItMatches ?? null,
+        sightDescription: nextAny?.sightDescription ?? null,
         coordinateReviewStatus: normalizeCoordinateReviewStatus(nextAny?.coordinateReviewStatus),
       });
     }
@@ -576,11 +578,18 @@ export default function MapPage() {
       sightVisitModeSecondary: null,
       bestVisitHint: null,
       summaryWhyItMatches: null,
+      sightDescription: null,
       coordinateReviewStatus: "UNREVIEWED",
     });
   }
 
-  async function save(formOverride?: typeof form) {
+  async function save(
+    formOverride?: typeof form,
+    options?: {
+      coordinateReviewDecision?: "CONFIRMED";
+      successMessage?: string;
+    }
+  ) {
     setSaving(true);
     setErrorMsg("");
     setStatusMsg("");
@@ -611,6 +620,10 @@ export default function MapPage() {
         heroImageUrl: typeof currentForm.heroImageUrl === "string" ? currentForm.heroImageUrl.trim() : null,
         thumbnailImageId: currentForm.thumbnailImageId ?? null,
       };
+
+      if (options?.coordinateReviewDecision) {
+        payload.coordinateReviewDecision = options.coordinateReviewDecision;
+      }
 
       const url = "/api/places";
       const method = isNew ? "POST" : "PUT";
@@ -645,7 +658,7 @@ export default function MapPage() {
       }
 
       setEditingNew(false);
-      setStatusMsg("Koordinate gespeichert - manuelle Korrektur vorgemerkt");
+      setStatusMsg(options?.successMessage ?? "Koordinate gespeichert - manuelle Korrektur vorgemerkt");
       return true;
     } catch {
       setErrorMsg("Speichern fehlgeschlagen");
@@ -1095,6 +1108,21 @@ export default function MapPage() {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={async () => {
+                await save(form, {
+                  coordinateReviewDecision: "CONFIRMED",
+                  successMessage: "Koordinate bestätigt - manuell bestätigt gespeichert",
+                });
+              }}
+              className="w-full rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold hover:bg-emerald-500/20 disabled:opacity-60"
+              disabled={saving || editingNew || !form.id}
+              title="Aktuelle Koordinate ohne Änderung als korrekt bestätigen"
+            >
+              Koordinate als korrekt bestätigen
+            </button>
+
             <input
               className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
               placeholder="Hero Image URL"
@@ -1133,6 +1161,10 @@ export default function MapPage() {
                 <span>Score: {typeof (form as any).sightseeingTotalScore === "number" ? `${(form as any).sightseeingTotalScore}/100` : "—"}</span>
                 <span>Relevance: {(form as any).sightRelevanceType ?? "—"}</span>
                 <span>Visit: {(form as any).sightVisitModePrimary ?? "—"}{(form as any).sightVisitModeSecondary ? ` + ${(form as any).sightVisitModeSecondary}` : ""}</span>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Beschreibung</div>
+                <div className="whitespace-pre-wrap opacity-90">{(form as any).sightDescription ?? "Keine Beschreibung vorhanden."}</div>
               </div>
               <div className="opacity-85">{(form as any).bestVisitHint ?? "Kein Visit-Hinweis vorhanden."}</div>
               <div className="opacity-85">{(form as any).summaryWhyItMatches ?? "Noch keine Zusammenfassung vorhanden."}</div>

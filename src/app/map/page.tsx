@@ -285,6 +285,7 @@ export default function MapPage() {
     coordinateReviewStatus: "UNREVIEWED",
     coordinateReviewSource: null,
     coordinateReviewReviewedAt: null,
+    coordinateReviewNote: "",
   });
 
   const [navOpen, setNavOpen] = useState(false);
@@ -350,6 +351,7 @@ export default function MapPage() {
         coordinateReviewStatus: normalizeCoordinateReviewStatus(raw?.coordinateReviewStatus),
         coordinateReviewSource: typeof raw?.coordinateReviewSource === "string" && raw.coordinateReviewSource.trim() ? raw.coordinateReviewSource.trim() : null,
         coordinateReviewReviewedAt: typeof raw?.coordinateReviewReviewedAt === "string" && raw.coordinateReviewReviewedAt.trim() ? raw.coordinateReviewReviewedAt.trim() : null,
+        coordinateReviewNote: typeof raw?.coordinateReviewNote === "string" ? raw.coordinateReviewNote : "",
       } as any;
     });
     setPlaces(arr);
@@ -481,6 +483,7 @@ export default function MapPage() {
       coordinateReviewStatus: normalizeCoordinateReviewStatus(selectedAny?.coordinateReviewStatus),
       coordinateReviewSource: selectedAny?.coordinateReviewSource ?? null,
       coordinateReviewReviewedAt: selectedAny?.coordinateReviewReviewedAt ?? null,
+      coordinateReviewNote: typeof selectedAny?.coordinateReviewNote === "string" ? selectedAny.coordinateReviewNote : "",
     });
   }, [selectedPlace]);
 
@@ -538,6 +541,7 @@ export default function MapPage() {
         coordinateReviewStatus: normalizeCoordinateReviewStatus(nextAny?.coordinateReviewStatus),
         coordinateReviewSource: nextAny?.coordinateReviewSource ?? null,
         coordinateReviewReviewedAt: nextAny?.coordinateReviewReviewedAt ?? null,
+        coordinateReviewNote: typeof nextAny?.coordinateReviewNote === "string" ? nextAny.coordinateReviewNote : "",
       });
     }
 
@@ -604,6 +608,7 @@ export default function MapPage() {
       coordinateReviewStatus: "UNREVIEWED",
       coordinateReviewSource: null,
       coordinateReviewReviewedAt: null,
+      coordinateReviewNote: "",
     });
   }
 
@@ -643,6 +648,7 @@ export default function MapPage() {
         ts21: currentForm.ts21 ?? null,
         heroImageUrl: typeof currentForm.heroImageUrl === "string" ? currentForm.heroImageUrl.trim() : null,
         thumbnailImageId: currentForm.thumbnailImageId ?? null,
+        coordinateReviewNote: typeof currentForm.coordinateReviewNote === "string" ? currentForm.coordinateReviewNote : "",
       };
 
       if (options?.coordinateReviewDecision) {
@@ -680,6 +686,7 @@ export default function MapPage() {
           coordinateReviewStatus: normalizeCoordinateReviewStatus(saved?.coordinateReviewStatus),
           coordinateReviewSource: typeof saved?.coordinateReviewSource === "string" && saved.coordinateReviewSource.trim() ? saved.coordinateReviewSource.trim() : null,
           coordinateReviewReviewedAt: typeof saved?.coordinateReviewReviewedAt === "string" && saved.coordinateReviewReviewedAt.trim() ? saved.coordinateReviewReviewedAt.trim() : null,
+          coordinateReviewNote: typeof saved?.coordinateReviewNote === "string" ? saved.coordinateReviewNote : "",
         }));
       }
 
@@ -1047,6 +1054,14 @@ export default function MapPage() {
               {reviewActionLabel} - Quelle: {reviewSourceLabel} - {reviewDateLabel}
             </div>
           </div>
+          <div className="mt-2">
+            <textarea
+              className="min-h-[68px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              placeholder="Kurze Review-Notiz (z. B. passt in der UI)"
+              value={String(form.coordinateReviewNote ?? "")}
+              onChange={(e) => setForm((f: any) => ({ ...f, coordinateReviewNote: e.target.value }))}
+            />
+          </div>
         </div>
 
         <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(vv) => setSection("BASICS", vv)}>
@@ -1142,7 +1157,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            {normalizeCoordinateReviewStatus(form?.coordinateReviewStatus) !== "CONFIRMED" ? (
+            {normalizeCoordinateReviewStatus(form?.coordinateReviewStatus) === "UNREVIEWED" ? (
               <button
                 type="button"
                 onClick={async () => {

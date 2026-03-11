@@ -83,6 +83,7 @@ export type Place = {
   coordinateReviewStatus?: "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
   coordinateReviewSource?: string | null;
   coordinateReviewReviewedAt?: string | null;
+  coordinateReviewNote?: string | null;
 
   // optional - wird in page.tsx berechnet wenn myPos gesetzt
   distanceKm?: number | null;

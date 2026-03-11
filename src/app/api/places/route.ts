@@ -63,6 +63,7 @@ type CoordinateReviewMeta = {
   status: CoordinateReviewStatus;
   source: string | null;
   reviewedAt: string | null;
+  reviewNote: string;
 };
 
 type CoordinateFeedbackItem = {
@@ -354,6 +355,7 @@ function resolveCoordinateReviewMeta(
     status: "UNREVIEWED",
     source: null,
     reviewedAt: null,
+    reviewNote: "",
   };
 }
 
@@ -386,6 +388,7 @@ function readCoordinateReviewMetaByPlaceKey(): Map<string, CoordinateReviewMeta>
       status: normalizeReviewStatus(item?.decision),
       source: String(item?.selectedSource ?? "").trim() || null,
       reviewedAt: String(item?.reviewedAt ?? "").trim() || null,
+      reviewNote: String(item?.reviewNote ?? "").trim(),
     });
   }
 
@@ -569,6 +572,7 @@ export async function GET(req: NextRequest) {
         coordinateReviewStatus: coordinateReviewMeta.status,
         coordinateReviewSource: coordinateReviewMeta.source,
         coordinateReviewReviewedAt: coordinateReviewMeta.reviewedAt,
+        coordinateReviewNote: coordinateReviewMeta.reviewNote,
       };
     });
     normalizedPlaces.sort((a: any, b: any) => {
@@ -826,6 +830,7 @@ export async function PUT(req: NextRequest) {
     let coordinateReviewStatus: CoordinateReviewStatus = "UNREVIEWED";
     let coordinateReviewSource: string | null = null;
     let coordinateReviewReviewedAt: string | null = null;
+    let coordinateReviewNote = "";
     try {
       const hadExplicitCoordinates = lat !== undefined && lng !== undefined;
       const beforeLat = Number(existingForUpdate.lat);
@@ -843,23 +848,25 @@ export async function PUT(req: NextRequest) {
       const byKey = new Map(currentItems.map((item) => [String(item.placeKey ?? "").trim(), item]));
       const existingItem = byKey.get(placeKey);
 
-      if (decision) {
+      const trimmedReviewNote = String(reviewNoteRaw ?? "").trim();
+
+      if (decision || existingItem) {
         const reviewedAt = new Date().toISOString().slice(0, 10);
         const source =
-          String(reviewSourceRaw ?? "").trim() || (changedCoordinates ? "map-picked" : "manual-ui");
+          String(reviewSourceRaw ?? "").trim() || (changedCoordinates ? "map-picked" : String(existingItem?.selectedSource ?? "").trim() || "manual-ui");
 
         const nextItem: CoordinateFeedbackItem = {
           placeKey,
           placeName: String(updated.name ?? "").trim() || existingItem?.placeName || placeKey,
           region: String((updated as any).sightRegion ?? "").trim() || existingItem?.region || "unknown",
           targetPointType: existingItem?.targetPointType ?? "UNKNOWN",
-          decision,
+          decision: decision ?? (String(existingItem?.decision ?? "").trim() || "CONFIRMED"),
           selectedSource: source,
           selectedLat: afterLat,
           selectedLng: afterLng,
-          reviewNote: String(reviewNoteRaw ?? "").trim() || existingItem?.reviewNote || "",
+          reviewNote: trimmedReviewNote,
           reviewedBy: "manual-ui",
-          reviewedAt,
+          reviewedAt: decision ? reviewedAt : String(existingItem?.reviewedAt ?? "").trim() || reviewedAt,
           previousLat: changedCoordinates ? beforeLat : existingItem?.previousLat,
           previousLng: changedCoordinates ? beforeLng : existingItem?.previousLng,
         };
@@ -872,11 +879,13 @@ export async function PUT(req: NextRequest) {
         });
         coordinateReviewStatus = normalizeReviewStatus(nextItem.decision);
         coordinateReviewSource = source;
-        coordinateReviewReviewedAt = reviewedAt;
+        coordinateReviewReviewedAt = String(nextItem.reviewedAt ?? "").trim() || reviewedAt;
+        coordinateReviewNote = String(nextItem.reviewNote ?? "").trim();
       } else {
         coordinateReviewStatus = normalizeReviewStatus(existingItem?.decision);
         coordinateReviewSource = String(existingItem?.selectedSource ?? "").trim() || null;
         coordinateReviewReviewedAt = String(existingItem?.reviewedAt ?? "").trim() || null;
+        coordinateReviewNote = String(existingItem?.reviewNote ?? "").trim();
       }
     } catch (feedbackError) {
       console.error("coordinate-feedback-update-failed", feedbackError);
@@ -888,6 +897,7 @@ export async function PUT(req: NextRequest) {
       coordinateReviewStatus,
       coordinateReviewSource,
       coordinateReviewReviewedAt,
+      coordinateReviewNote,
     };
 
     if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });

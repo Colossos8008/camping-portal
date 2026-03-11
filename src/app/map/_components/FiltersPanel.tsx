@@ -3,6 +3,8 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
+type CoordinateReviewFilter = "ALL" | "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+
 export default function FiltersPanel(props: {
   filtersOpen: boolean;
   setFiltersOpen: Dispatch<SetStateAction<boolean>>;
@@ -26,6 +28,9 @@ export default function FiltersPanel(props: {
   setFOnline: Dispatch<SetStateAction<boolean>>;
   fGastro: boolean;
   setFGastro: Dispatch<SetStateAction<boolean>>;
+
+  reviewFilter: CoordinateReviewFilter;
+  setReviewFilter: Dispatch<SetStateAction<CoordinateReviewFilter>>;
 
   onRefresh: () => void;
 }) {
@@ -115,6 +120,22 @@ export default function FiltersPanel(props: {
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={props.fGastro} onChange={(e) => props.setFGastro(e.target.checked)} />
               Gastro
+            </label>
+
+            <div className="col-span-2 my-1 h-px bg-white/10" />
+
+            <label className="col-span-2 flex items-center justify-between gap-2">
+              <span>Review</span>
+              <select
+                value={props.reviewFilter}
+                onChange={(e) => props.setReviewFilter(e.target.value as CoordinateReviewFilter)}
+                className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs"
+              >
+                <option value="ALL">alle</option>
+                <option value="UNREVIEWED">ungeprüft</option>
+                <option value="CORRECTED">korrigiert</option>
+                <option value="CONFIRMED">bestätigt</option>
+              </select>
             </label>
           </div>
         </>

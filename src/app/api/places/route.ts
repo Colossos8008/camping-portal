@@ -311,6 +311,43 @@ function buildPlaceKey(place: { id: number; name?: string | null; sightExternalI
   return `place-${place.id}`;
 }
 
+function buildPlaceKeyCandidates(place: { id: number; name?: string | null; sightExternalId?: string | null }): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (value: string) => {
+    const normalized = String(value ?? "").trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  const externalId = String(place.sightExternalId ?? "").trim();
+  if (externalId) push(externalId);
+
+  const slug = toSlug(String(place.name ?? ""));
+  if (slug) {
+    push(slug);
+    push(`${slug}-${place.id}`);
+  }
+
+  push(`place-${place.id}`);
+
+  return candidates;
+}
+
+function resolveCoordinateReviewStatus(
+  place: { id: number; name?: string | null; sightExternalId?: string | null },
+  byPlaceKey: Map<string, CoordinateReviewStatus>
+): CoordinateReviewStatus {
+  const candidates = buildPlaceKeyCandidates(place);
+  for (const key of candidates) {
+    const match = byPlaceKey.get(key);
+    if (match) return match;
+  }
+  return "UNREVIEWED";
+}
+
 function readCoordinateFeedback(): CoordinateFeedbackFile {
   if (!existsSync(FEEDBACK_FILE)) {
     return {
@@ -511,8 +548,7 @@ export async function GET(req: NextRequest) {
     }
 
     const normalizedPlaces = places.map((place: any) => {
-      const placeKey = buildPlaceKey(place);
-      const coordinateReviewStatus = coordinateReviewStatusByPlaceKey.get(placeKey) ?? "UNREVIEWED";
+      const coordinateReviewStatus = resolveCoordinateReviewStatus(place, coordinateReviewStatusByPlaceKey);
 
       return {
         ...place,

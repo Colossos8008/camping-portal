@@ -47,12 +47,13 @@ function ts21ToPoints(v: TS21Value): number {
 }
 
 function reviewBadge(p: Place) {
-  const status = (p as any)?.coordinateReviewStatus;
+  const rawStatus = (p as any)?.coordinateReviewStatus;
+  const status = rawStatus === "CONFIRMED" || rawStatus === "CORRECTED" ? rawStatus : "UNREVIEWED";
 
   if (status === "CONFIRMED") {
     return (
       <span
-        className="inline-flex items-center rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium leading-none text-emerald-200"
+        className="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-emerald-200"
         title="Koordinate bestätigt"
       >
         bestätigt
@@ -63,7 +64,7 @@ function reviewBadge(p: Place) {
   if (status === "CORRECTED") {
     return (
       <span
-        className="inline-flex items-center rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium leading-none text-amber-200"
+        className="inline-flex items-center rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-amber-200"
         title="Koordinate korrigiert"
       >
         korrigiert
@@ -73,7 +74,7 @@ function reviewBadge(p: Place) {
 
   return (
     <span
-      className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-medium leading-none text-white/70"
+      className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-medium leading-none text-white/70"
       title="Koordinate ungeprüft"
     >
       ungeprüft

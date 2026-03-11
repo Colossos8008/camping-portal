@@ -46,6 +46,41 @@ function ts21ToPoints(v: TS21Value): number {
   return 0;
 }
 
+function reviewBadge(p: Place) {
+  const status = (p as any)?.coordinateReviewStatus;
+
+  if (status === "CONFIRMED") {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium leading-none text-emerald-200"
+        title="Koordinate bestätigt"
+      >
+        bestätigt
+      </span>
+    );
+  }
+
+  if (status === "CORRECTED") {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium leading-none text-amber-200"
+        title="Koordinate korrigiert"
+      >
+        korrigiert
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-medium leading-none text-white/70"
+      title="Koordinate ungeprüft"
+    >
+      ungeprüft
+    </span>
+  );
+}
+
 function normTS21Value(v: any): TS21Value {
   return v === "S" || v === "O" || v === "X" ? v : "O";
 }
@@ -174,7 +209,10 @@ export default function PlacesList(props: {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{p.name}</div>
-                  <div className="text-[11px] opacity-70">{p.type}</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <div className="text-[11px] opacity-70">{p.type}</div>
+                    {reviewBadge(p)}
+                  </div>
                   <FeatureIcons {...p} />
                 </div>
 

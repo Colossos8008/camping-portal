@@ -87,11 +87,7 @@ async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[]
       console.warn(
         `[curated-hero] rejected ${candidate.sourceId} (${candidate.name}) kind=${rejectionKind} status=${result.status ?? "-"} content-type=${result.contentType ?? "-"} final=${result.finalUrl ?? "-"}${result.error ? ` error=${result.error}` : ""}`
       );
-      if (rejectionKind === "hard-invalid") {
-        out.push({ ...candidate, heroImageUrl: undefined });
-      } else {
-        out.push(candidate);
-      }
+      out.push(candidate);
       continue;
     }
 

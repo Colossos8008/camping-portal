@@ -75,6 +75,20 @@ function coordinateReviewStatusMeta(v: any): { label: string; className: string 
   };
 }
 
+function reviewStatusActionLabel(v: any): string {
+  const status = normalizeCoordinateReviewStatus(v);
+  if (status === "CORRECTED") return "manuell korrigiert";
+  if (status === "CONFIRMED") return "manuell bestätigt";
+  return "ungeprüft";
+}
+
+function reviewDateShort(v: any): string {
+  const raw = String(v ?? "").trim();
+  if (!raw) return "—";
+  return raw.slice(0, 10);
+}
+
+
 function safeNum(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -269,6 +283,8 @@ export default function MapPage() {
     heroImageUrl: null,
     thumbnailImageId: null,
     coordinateReviewStatus: "UNREVIEWED",
+    coordinateReviewSource: null,
+    coordinateReviewReviewedAt: null,
   });
 
   const [navOpen, setNavOpen] = useState(false);
@@ -332,6 +348,8 @@ export default function MapPage() {
       return {
         ...p,
         coordinateReviewStatus: normalizeCoordinateReviewStatus(raw?.coordinateReviewStatus),
+        coordinateReviewSource: typeof raw?.coordinateReviewSource === "string" && raw.coordinateReviewSource.trim() ? raw.coordinateReviewSource.trim() : null,
+        coordinateReviewReviewedAt: typeof raw?.coordinateReviewReviewedAt === "string" && raw.coordinateReviewReviewedAt.trim() ? raw.coordinateReviewReviewedAt.trim() : null,
       } as any;
     });
     setPlaces(arr);
@@ -461,6 +479,8 @@ export default function MapPage() {
       summaryWhyItMatches: selectedAny?.summaryWhyItMatches ?? null,
       sightDescription: selectedAny?.sightDescription ?? null,
       coordinateReviewStatus: normalizeCoordinateReviewStatus(selectedAny?.coordinateReviewStatus),
+      coordinateReviewSource: selectedAny?.coordinateReviewSource ?? null,
+      coordinateReviewReviewedAt: selectedAny?.coordinateReviewReviewedAt ?? null,
     });
   }, [selectedPlace]);
 
@@ -516,6 +536,8 @@ export default function MapPage() {
         summaryWhyItMatches: nextAny?.summaryWhyItMatches ?? null,
         sightDescription: nextAny?.sightDescription ?? null,
         coordinateReviewStatus: normalizeCoordinateReviewStatus(nextAny?.coordinateReviewStatus),
+        coordinateReviewSource: nextAny?.coordinateReviewSource ?? null,
+        coordinateReviewReviewedAt: nextAny?.coordinateReviewReviewedAt ?? null,
       });
     }
 
@@ -580,6 +602,8 @@ export default function MapPage() {
       summaryWhyItMatches: null,
       sightDescription: null,
       coordinateReviewStatus: "UNREVIEWED",
+      coordinateReviewSource: null,
+      coordinateReviewReviewedAt: null,
     });
   }
 
@@ -654,6 +678,8 @@ export default function MapPage() {
         setForm((prev: any) => ({
           ...prev,
           coordinateReviewStatus: normalizeCoordinateReviewStatus(saved?.coordinateReviewStatus),
+          coordinateReviewSource: typeof saved?.coordinateReviewSource === "string" && saved.coordinateReviewSource.trim() ? saved.coordinateReviewSource.trim() : null,
+          coordinateReviewReviewedAt: typeof saved?.coordinateReviewReviewedAt === "string" && saved.coordinateReviewReviewedAt.trim() ? saved.coordinateReviewReviewedAt.trim() : null,
         }));
       }
 
@@ -995,6 +1021,9 @@ export default function MapPage() {
   const shouldShowTS = form.type === "CAMPINGPLATZ" || form.type === "STELLPLATZ";
   const shouldShowSightseeing = form.type === "SEHENSWUERDIGKEIT";
   const reviewStatusMeta = coordinateReviewStatusMeta(form?.coordinateReviewStatus);
+  const reviewActionLabel = reviewStatusActionLabel(form?.coordinateReviewStatus);
+  const reviewSourceLabel = String(form?.coordinateReviewSource ?? "").trim() || "—";
+  const reviewDateLabel = reviewDateShort(form?.coordinateReviewReviewedAt);
 
   // WICHTIG: stabiler JSX-Block (kein inneres Component), damit kein Remount pro Keystroke
   const editorBody = useMemo(() => {
@@ -1010,8 +1039,13 @@ export default function MapPage() {
 
         <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
           <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Review-/Lernstatus</div>
-          <div className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-semibold ${reviewStatusMeta.className}`}>
-            {reviewStatusMeta.label}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-semibold ${reviewStatusMeta.className}`}>
+              {reviewStatusMeta.label}
+            </div>
+            <div className="text-[11px] text-white/60">
+              {reviewActionLabel} - Quelle: {reviewSourceLabel} - {reviewDateLabel}
+            </div>
           </div>
         </div>
 
@@ -1108,20 +1142,22 @@ export default function MapPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={async () => {
-                await save(form, {
-                  coordinateReviewDecision: "CONFIRMED",
-                  successMessage: "Koordinate bestätigt - manuell bestätigt gespeichert",
-                });
-              }}
-              className="w-full rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold hover:bg-emerald-500/20 disabled:opacity-60"
-              disabled={saving || editingNew || !form.id}
-              title="Aktuelle Koordinate ohne Änderung als korrekt bestätigen"
-            >
-              Koordinate als korrekt bestätigen
-            </button>
+            {normalizeCoordinateReviewStatus(form?.coordinateReviewStatus) !== "CONFIRMED" ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  await save(form, {
+                    coordinateReviewDecision: "CONFIRMED",
+                    successMessage: "Koordinate bestätigt - manuell bestätigt gespeichert",
+                  });
+                }}
+                className="w-full rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold hover:bg-emerald-500/20 disabled:opacity-60"
+                disabled={saving || editingNew || !form.id}
+                title="Aktuelle Koordinate ohne Änderung als korrekt bestätigen"
+              >
+                Koordinate als korrekt bestätigen
+              </button>
+            ) : null}
 
             <input
               className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"

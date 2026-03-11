@@ -80,6 +80,9 @@ export type Place = {
   sightTags?: string[] | null;
   sightRegion?: string | null;
   sightCountry?: string | null;
+  coordinateReviewStatus?: "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+  coordinateReviewSource?: string | null;
+  coordinateReviewReviewedAt?: string | null;
 
   // optional - wird in page.tsx berechnet wenn myPos gesetzt
   distanceKm?: number | null;

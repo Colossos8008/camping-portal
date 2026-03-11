@@ -50,6 +50,7 @@ function isIOSNow() {
 }
 
 type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+type CoordinateReviewFilter = "ALL" | CoordinateReviewStatus;
 
 function normalizeCoordinateReviewStatus(v: any): CoordinateReviewStatus {
   return v === "CORRECTED" || v === "CONFIRMED" ? v : "UNREVIEWED";
@@ -238,6 +239,7 @@ export default function MapPage() {
   const [fYear, setFYear] = useState(false);
   const [fOnline, setFOnline] = useState(false);
   const [fGastro, setFGastro] = useState(false);
+  const [reviewFilter, setReviewFilter] = useState<CoordinateReviewFilter>("ALL");
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -391,6 +393,7 @@ export default function MapPage() {
       if (fYear && !p.yearRound) return false;
       if (fOnline && !p.onlineBooking) return false;
       if (fGastro && !p.gastronomy) return false;
+      if (reviewFilter !== "ALL" && normalizeCoordinateReviewStatus((p as any)?.coordinateReviewStatus) !== reviewFilter) return false;
 
       return true;
     });
@@ -405,6 +408,7 @@ export default function MapPage() {
     fYear,
     fOnline,
     fGastro,
+    reviewFilter,
   ]);
 
   function scoreForListOrSort(p: any): number {
@@ -629,7 +633,6 @@ export default function MapPage() {
 
       const payload: any = {
         ...(isNew ? {} : { id: Number(currentForm.id) }),
-        name: String(currentForm.name ?? "").trim(),
         type: currentForm.type,
         lat: Number(currentForm.lat),
         lng: Number(currentForm.lng),
@@ -650,6 +653,11 @@ export default function MapPage() {
         thumbnailImageId: currentForm.thumbnailImageId ?? null,
         coordinateReviewNote: typeof currentForm.coordinateReviewNote === "string" ? currentForm.coordinateReviewNote : "",
       };
+
+      const trimmedName = String(currentForm.name ?? "").trim();
+      if (trimmedName || isNew) {
+        payload.name = trimmedName;
+      }
 
       if (options?.coordinateReviewDecision) {
         payload.coordinateReviewDecision = options.coordinateReviewDecision;
@@ -1302,6 +1310,8 @@ export default function MapPage() {
             setFOnline={setFOnline}
             fGastro={fGastro}
             setFGastro={setFGastro}
+            reviewFilter={reviewFilter}
+            setReviewFilter={setReviewFilter}
             onRefresh={() => refreshPlaces(true)}
           />
         </div>
@@ -1437,6 +1447,8 @@ export default function MapPage() {
             setFOnline={setFOnline}
             fGastro={fGastro}
             setFGastro={setFGastro}
+            reviewFilter={reviewFilter}
+            setReviewFilter={setReviewFilter}
             onRefresh={() => refreshPlaces(true)}
           />
 

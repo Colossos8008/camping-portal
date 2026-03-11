@@ -840,12 +840,15 @@ export async function PUT(req: NextRequest) {
         hadExplicitCoordinates && (Math.abs(beforeLat - afterLat) > 1e-9 || Math.abs(beforeLng - afterLng) > 1e-9);
 
       const decision: CoordinateReviewDecision | null = changedCoordinates ? "CORRECTED" : explicitDecision;
+      const placeKeyCandidates = buildPlaceKeyCandidates(updated as any);
       const placeKey = buildPlaceKey(updated as any);
 
       const feedback = readCoordinateFeedback();
       const currentItems = Array.isArray(feedback.items) ? feedback.items : [];
       const byKey = new Map(currentItems.map((item) => [String(item.placeKey ?? "").trim(), item]));
-      const existingItem = byKey.get(placeKey);
+      const existingKey = placeKeyCandidates.find((key) => byKey.has(key)) ?? null;
+      const existingItem = existingKey ? byKey.get(existingKey) : undefined;
+      const targetPlaceKey = existingKey ?? placeKey;
 
       const trimmedReviewNote = String(reviewNoteRaw ?? "").trim();
 
@@ -855,7 +858,7 @@ export async function PUT(req: NextRequest) {
           String(reviewSourceRaw ?? "").trim() || (changedCoordinates ? "map-picked" : String(existingItem?.selectedSource ?? "").trim() || "manual-ui");
 
         const nextItem: CoordinateFeedbackItem = {
-          placeKey,
+          placeKey: targetPlaceKey,
           placeName: String(updated.name ?? "").trim() || existingItem?.placeName || placeKey,
           region: String((updated as any).sightRegion ?? "").trim() || existingItem?.region || "unknown",
           targetPointType: existingItem?.targetPointType ?? "UNKNOWN",
@@ -870,7 +873,11 @@ export async function PUT(req: NextRequest) {
           previousLng: changedCoordinates ? beforeLng : existingItem?.previousLng,
         };
 
-        byKey.set(placeKey, nextItem);
+        for (const candidateKey of placeKeyCandidates) {
+          if (candidateKey !== targetPlaceKey) byKey.delete(candidateKey);
+        }
+
+        byKey.set(targetPlaceKey, nextItem);
         writeCoordinateFeedback({
           ...feedback,
           generatedAt: new Date().toISOString(),

@@ -628,7 +628,15 @@ export default function MapPage() {
     setStatusMsg("");
 
     try {
-      const currentForm = formOverride ?? form;
+      const maybeFormOverride = formOverride as any;
+      const hasValidOverride =
+        !!maybeFormOverride &&
+        typeof maybeFormOverride === "object" &&
+        "type" in maybeFormOverride &&
+        "lat" in maybeFormOverride &&
+        "lng" in maybeFormOverride;
+
+      const currentForm = hasValidOverride ? maybeFormOverride : form;
       const isNew = editingNew || !currentForm.id;
 
       const payload: any = {
@@ -1257,7 +1265,7 @@ export default function MapPage() {
 
         <button
           type="button"
-          onClick={save}
+          onClick={() => save()}
           className="mt-1 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
           disabled={saving}
         >

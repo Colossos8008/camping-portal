@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-type Decision = "CONFIRMED" | "REJECTED";
+type Decision = "CONFIRMED" | "CORRECTED" | "REJECTED";
 type ConsensusQuality = "STRONG" | "MEDIUM" | "WEAK" | "NONE";
 
 type GoldSetEntry = {
@@ -128,12 +128,21 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isValidDecision(value: string | undefined): value is Decision {
+  return value === "CONFIRMED" || value === "CORRECTED" || value === "REJECTED";
+}
+
+function isCuratedHighlightKey(key: string): boolean {
+  return key.startsWith("curated:nievern-highlights:");
+}
+
 function sourceFamily(source: string): string {
   if (source.startsWith("google")) return "google";
   if (source.startsWith("osm")) return "osm";
   if (source.startsWith("wiki")) return "wiki";
   if (source.startsWith("approved")) return "approved_snapshot";
   if (source.startsWith("feedback")) return "manual_feedback";
+  if (source.startsWith("curated:")) return "curated";
   return "other";
 }
 
@@ -160,12 +169,19 @@ function validateFeedback(feedbackItems: FeedbackItem[], goldByKey: Map<string, 
     if (seenKeys.has(key)) warnings.push(`Duplicate feedback for placeKey=${key}; latest entry will win.`);
     seenKeys.add(key);
 
-    if (item.decision !== "CONFIRMED" && item.decision !== "REJECTED") errors.push(`Invalid decision for ${key}: ${String(item.decision)}`);
+    if (!isValidDecision(item.decision)) {
+      errors.push(`Invalid decision for ${key}: ${String(item.decision)}`);
+    }
+
     if (!item.selectedSource) errors.push(`Missing selectedSource for ${key}.`);
+
     if (!isFiniteNumber(item.selectedLat) || !isFiniteNumber(item.selectedLng)) {
       errors.push(`Missing/invalid selected coordinates for ${key}.`);
     }
-    if (!goldByKey.has(key)) warnings.push(`Feedback key ${key} not found in gold set.`);
+
+    if (!goldByKey.has(key) && !isCuratedHighlightKey(key)) {
+      warnings.push(`Feedback key ${key} not found in gold set.`);
+    }
   }
 
   return { errors, warnings };
@@ -273,7 +289,7 @@ function main(): void {
         region: String(feedback?.region ?? "koblenz"),
         goldCoordinateStatus: String(goldEntry?.coordinateStatus ?? comparison?.goldSetReview?.coordinateStatus ?? "UNKNOWN"),
         targetPointTypeExpected,
-        feedbackDecision: feedback?.decision === "CONFIRMED" || feedback?.decision === "REJECTED" ? feedback.decision : "NONE",
+        feedbackDecision: isValidDecision(feedback?.decision) ? feedback.decision : "NONE",
         feedbackSelectedSource: selectedSource,
         candidateSource: candidate.source,
         candidateLat: candidate.lat,
@@ -298,6 +314,7 @@ function main(): void {
     places: new Set(rows.map((row) => row.placeKey)).size,
     candidateRows: rows.length,
     confirmedPlaces: new Set(rows.filter((row) => row.feedbackDecision === "CONFIRMED").map((row) => row.placeKey)).size,
+    correctedPlaces: new Set(rows.filter((row) => row.feedbackDecision === "CORRECTED").map((row) => row.placeKey)).size,
     rejectedPlaces: new Set(rows.filter((row) => row.feedbackDecision === "REJECTED").map((row) => row.placeKey)).size,
   };
 
@@ -316,6 +333,7 @@ function main(): void {
   console.log(`places: ${summary.places}`);
   console.log(`candidateRows: ${summary.candidateRows}`);
   console.log(`confirmedPlaces: ${summary.confirmedPlaces}`);
+  console.log(`correctedPlaces: ${summary.correctedPlaces}`);
   console.log(`rejectedPlaces: ${summary.rejectedPlaces}`);
   if (!comparisonPayload.results || comparisonPayload.results.length === 0) {
     console.log("note: comparison dataset missing/empty, fallback candidate logic used.");

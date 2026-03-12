@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
 
 export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
@@ -49,6 +50,11 @@ type WebsiteImageCandidate = {
   width?: number;
   height?: number;
   reason: string;
+};
+
+type CandidateSignature = {
+  candidate: HeroCandidateRecord;
+  signature: string | null;
 };
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -250,6 +256,28 @@ async function fetchText(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<str
   }
 }
 
+async function fetchBuffer(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Buffer> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "image/*,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (compatible; camping-portal/1.0; +https://camping-portal.vercel.app)",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function resolveMaybeRelativeUrl(baseUrl: string, raw: string): string | null {
   const value = String(raw ?? "").trim();
   if (!value) return null;
@@ -275,20 +303,43 @@ function extractMetaContent(html: string, names: string[]): string | null {
   return null;
 }
 
-async function fetchWebsiteImageCandidate(websiteUrl: string, placeName: string): Promise<WebsiteImageCandidate | null> {
+function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
+  const matches = new Set<string>();
+  const metaImage =
+    extractMetaContent(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]) ??
+    extractMetaContent(html, ["og:image:url"]);
+
+  const metaResolved = resolveMaybeRelativeUrl(websiteUrl, String(metaImage ?? ""));
+  if (metaResolved) matches.add(metaResolved);
+
+  const imageRegex = /<(img|source)[^>]+(?:src|data-src|data-lazy-src|srcset)=["']([^"']+)["'][^>]*>/gi;
+  for (const match of html.matchAll(imageRegex)) {
+    const raw = String(match[2] ?? "").trim();
+    if (!raw) continue;
+    const first = raw.split(",")[0]?.trim().split(/\s+/)[0]?.trim() ?? "";
+    const resolved = resolveMaybeRelativeUrl(websiteUrl, first);
+    if (!resolved) continue;
+    const lower = resolved.toLowerCase();
+    if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+    if (hasBadHints(lower)) continue;
+    matches.add(resolved);
+    if (matches.size >= 12) break;
+  }
+
+  return Array.from(matches.values());
+}
+
+async function fetchWebsiteImageCandidates(websiteUrl: string, placeName: string): Promise<WebsiteImageCandidate[]> {
   try {
     const html = await fetchText(websiteUrl, 12000);
-    const image =
-      extractMetaContent(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]) ??
-      extractMetaContent(html, ["og:image:url"]);
-    const resolved = resolveMaybeRelativeUrl(websiteUrl, String(image ?? ""));
-    if (!resolved || hasBadHints(resolved)) return null;
-    return {
-      url: resolved,
-      reason: `Website image for '${placeName}'`,
-    };
+    return parseHtmlImageCandidates(html, websiteUrl)
+      .slice(0, 8)
+      .map((url, index) => ({
+        url,
+        reason: index === 0 ? `Website image for '${placeName}'` : `Website gallery image ${index + 1} for '${placeName}'`,
+      }));
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -599,15 +650,15 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
     }
 
     if (item.websiteUri) {
-      const websiteImage = await fetchWebsiteImageCandidate(item.websiteUri, candidateName);
-      if (websiteImage) {
+      const websiteImages = await fetchWebsiteImageCandidates(item.websiteUri, candidateName);
+      for (const [index, websiteImage] of websiteImages.slice(0, relaxed ? 4 : 5).entries()) {
         out.push({
           source: "website",
           url: websiteImage.url,
           thumbUrl: websiteImage.url,
           width: websiteImage.width,
           height: websiteImage.height,
-          score: score + 6 + scoreLandscape(websiteImage.width, websiteImage.height),
+          score: score + 12 + scoreLandscape(websiteImage.width, websiteImage.height) - index * 3,
           reason: `${websiteImage.reason} via ${candidateName}`,
           rank: 0,
         });
@@ -669,6 +720,80 @@ function injectExistingHero(place: HeroCandidateInput, candidates: HeroCandidate
   ];
 }
 
+function entityKeyFromCandidate(candidate: HeroCandidateRecord): string {
+  const quoted = String(candidate.reason ?? "").match(/'([^']+)'/);
+  if (quoted?.[1]) return `${candidate.source}:${normalize(quoted[1])}`;
+  try {
+    const parsed = new URL(candidate.url);
+    return `${candidate.source}:${parsed.hostname.toLowerCase()}`;
+  } catch {
+    return `${candidate.source}:${normalize(candidate.reason)}`;
+  }
+}
+
+function entityCap(candidate: HeroCandidateRecord): number {
+  if (candidate.source === "google") return 2;
+  if (candidate.source === "website") return 3;
+  return 2;
+}
+
+async function buildVisualSignature(url: string): Promise<string | null> {
+  try {
+    const buffer = await fetchBuffer(url, 10000);
+    const raw = await sharp(buffer).rotate().resize(8, 8, { fit: "fill" }).grayscale().raw().toBuffer();
+    if (!raw.length) return null;
+    const avg = raw.reduce((sum, value) => sum + value, 0) / raw.length;
+    return Array.from(raw, (value) => (value >= avg ? "1" : "0")).join("");
+  } catch {
+    return null;
+  }
+}
+
+function signatureDistance(a: string, b: string): number {
+  const length = Math.min(a.length, b.length);
+  let distance = Math.abs(a.length - b.length);
+  for (let i = 0; i < length; i += 1) {
+    if (a[i] !== b[i]) distance += 1;
+  }
+  return distance;
+}
+
+async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Promise<HeroCandidateRecord[]> {
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const topForSignature = sorted.slice(0, Math.min(24, sorted.length));
+  const signatures = await Promise.all(
+    topForSignature.map(async (candidate) => ({
+      candidate,
+      signature: await buildVisualSignature(String(candidate.thumbUrl ?? candidate.url ?? "").trim()),
+    }))
+  );
+  const signatureMap = new Map<string, string | null>(signatures.map((entry) => [dedupeKey(entry.candidate), entry.signature]));
+
+  const kept: HeroCandidateRecord[] = [];
+  const keptSignatures: CandidateSignature[] = [];
+  const entityCounts = new Map<string, number>();
+
+  for (const candidate of sorted) {
+    const entityKey = entityKeyFromCandidate(candidate);
+    const currentCount = entityCounts.get(entityKey) ?? 0;
+    if (currentCount >= entityCap(candidate)) continue;
+
+    const signature = signatureMap.get(dedupeKey(candidate)) ?? null;
+    if (
+      signature &&
+      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 6)
+    ) {
+      continue;
+    }
+
+    kept.push(candidate);
+    entityCounts.set(entityKey, currentCount + 1);
+    keptSignatures.push({ candidate, signature });
+  }
+
+  return kept;
+}
+
 export async function discoverHeroCandidates(
   place: HeroCandidateInput,
   options?: { googleKey?: string; limit?: number }
@@ -701,8 +826,9 @@ export async function discoverHeroCandidates(
   }
 
   all = injectExistingHero(place, all);
+  const visuallyDeduped = await dedupeCandidatesVisually(uniqueBy(all, (candidate) => dedupeKey(candidate)));
 
-  return uniqueBy(all, (candidate) => dedupeKey(candidate))
+  return visuallyDeduped
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((candidate, index) => ({ ...candidate, rank: index + 1 }));

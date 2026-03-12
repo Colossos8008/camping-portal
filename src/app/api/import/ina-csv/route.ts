@@ -473,7 +473,7 @@ export async function POST(req: Request) {
       }
 
       if (canTs21 && shouldHaveTS && ts21Parsed) {
-        const ts21WithImportedNote = importedNote && !String(ts21Parsed.note ?? "").trim()
+        const ts21WithImportedNote = importedNote
           ? { ...ts21Parsed, note: importedNote }
           : ts21Parsed;
         patchUpdate.ts21 = {

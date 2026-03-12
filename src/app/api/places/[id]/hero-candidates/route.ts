@@ -11,7 +11,7 @@ function parsePlaceId(ctx: { params: Promise<{ id: string }> | { id: string } })
 function normalizeStoredCandidates(items: any[]): HeroCandidateRecord[] {
   return items.map((item: any, index: number) => ({
     id: typeof item.id === "number" ? item.id : undefined,
-    source: item.source === "google" ? "google" : "wikimedia",
+    source: item.source === "google" || item.source === "website" ? item.source : "wikimedia",
     url: String(item.url ?? ""),
     thumbUrl: String(item.thumbUrl ?? "").trim() || undefined,
     width: typeof item.width === "number" ? item.width : undefined,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const place = await prisma.place.findUnique({
     where: { id: placeId },
-    select: { id: true, name: true, type: true, lat: true, lng: true },
+    select: { id: true, name: true, type: true, lat: true, lng: true, heroImageUrl: true },
   });
 
   if (!place) return NextResponse.json({ error: "Place not found" }, { status: 404 });
@@ -72,6 +72,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       type: place.type as PlaceType,
       lat: place.lat,
       lng: place.lng,
+      heroImageUrl: place.heroImageUrl,
     },
     { googleKey, limit }
   );

@@ -1,4 +1,3 @@
-// src/app/map/_components/EditorHeader.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -19,6 +18,7 @@ export default function EditorHeader(props: {
   heroImage: { filename: string } | null;
   placeId: number | null;
   headerImages: { id: number; filename: string }[];
+  heroCandidateImages: { id?: number; filename: string; source: string }[];
 
   imagesCount: number;
   selectedPlace: Place | null;
@@ -26,6 +26,7 @@ export default function EditorHeader(props: {
   distanceKm: number | null;
 
   onOpenLightbox: (index: number) => void;
+  onOpenCandidateLightbox: (index: number) => void;
   onSave: () => void;
   onDelete: () => void;
   onNew: () => void;
@@ -40,9 +41,7 @@ export default function EditorHeader(props: {
 
   const [heroRetry, setHeroRetry] = useState(0);
   const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");
-  const heroSrc = heroRetry > 0 && heroBaseSrc
-    ? `${heroBaseSrc}${heroBaseSrc.includes("?") ? "&" : "?"}ui_retry=${heroRetry}`
-    : heroBaseSrc;
+  const heroSrc = heroRetry > 0 && heroBaseSrc ? `${heroBaseSrc}${heroBaseSrc.includes("?") ? "&" : "?"}ui_retry=${heroRetry}` : heroBaseSrc;
 
   const canRenderHero = useMemo(() => {
     if (!heroSrc.length) return false;
@@ -87,9 +86,7 @@ export default function EditorHeader(props: {
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
             <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">{props.formType}</span>
-            {props.imagesCount ? (
-              <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">{props.imagesCount} Bilder</span>
-            ) : null}
+            {props.imagesCount ? <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">{props.imagesCount} Bilder</span> : null}
             {dist ? <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">📏 {dist}</span> : null}
           </div>
 
@@ -139,24 +136,48 @@ export default function EditorHeader(props: {
           </div>
 
           <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-            {props.headerImages.length ? (
-              props.headerImages.slice(0, 12).map((img: any, idx: number) => {
-                const src = getSupabasePublicUrl(String(img.filename ?? ""));
-                return (
-                  <button key={img.id} type="button" onClick={() => props.onOpenLightbox(idx)} className="shrink-0" title="Bild öffnen">
-                    {src ? (
-                      <img
-                        src={src}
-                        alt=""
-                        className={`h-10 w-10 rounded-lg object-cover ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className={`h-10 w-10 rounded-lg bg-black/30 ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`} />
-                    )}
-                  </button>
-                );
-              })
+            {props.headerImages.length || props.heroCandidateImages.length ? (
+              <>
+                {props.headerImages.slice(0, 12).map((img, idx) => {
+                  const src = getSupabasePublicUrl(String(img.filename ?? ""));
+                  return (
+                    <button key={img.id} type="button" onClick={() => props.onOpenLightbox(idx)} className="shrink-0" title="Bild öffnen">
+                      {src ? (
+                        <img
+                          src={src}
+                          alt=""
+                          className={`h-10 w-10 rounded-lg object-cover ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className={`h-10 w-10 rounded-lg bg-black/30 ${idx === 0 ? "ring-2 ring-white/50" : "ring-0"}`} />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {props.heroCandidateImages.slice(0, 12).map((img, idx) => {
+                  const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
+                  return (
+                    <button
+                      key={`candidate-${img.id ?? idx}-${img.filename}`}
+                      type="button"
+                      onClick={() => props.onOpenCandidateLightbox(idx)}
+                      className="relative shrink-0"
+                      title="Vorschlag öffnen"
+                    >
+                      {src ? (
+                        <img src={src} alt="" className="h-10 w-10 rounded-lg object-cover ring-1 ring-sky-300/40" loading="lazy" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-black/30 ring-1 ring-sky-300/40" />
+                      )}
+                      <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] uppercase text-white/80">
+                        {String(img.source ?? "").slice(0, 3)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
             ) : (
               <div className="h-10 w-10 shrink-0 rounded-lg border border-white/10 bg-black/30" />
             )}

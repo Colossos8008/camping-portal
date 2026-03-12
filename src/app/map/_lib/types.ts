@@ -39,7 +39,7 @@ export type PlaceImage = {
 
 export type PlaceHeroCandidate = {
   id?: number;
-  source: "google" | "wikimedia";
+  source: "google" | "wikimedia" | "website";
   url: string;
   thumbUrl?: string | null;
   width?: number | null;

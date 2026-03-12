@@ -954,6 +954,16 @@ export default function MapPage() {
       ? headerImages[0]
       : null;
 
+  const heroCandidateHeaderImages = useMemo(
+    () =>
+      heroCandidates.map((candidate) => ({
+        id: candidate.id,
+        filename: String(candidate.thumbUrl ?? candidate.url ?? "").trim(),
+        source: candidate.source,
+      })),
+    [heroCandidates]
+  );
+
   const lbImages = useMemo<LightboxImage[]>(() => {
     const heroFilename = String(form.heroImageUrl ?? "").trim();
     const galleryImages = Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
@@ -1477,10 +1487,12 @@ export default function MapPage() {
               heroImage={heroImage ? { filename: heroImage.filename } : null}
               placeId={typeof form.id === "number" ? form.id : null}
               headerImages={headerImages}
+              heroCandidateImages={heroCandidateHeaderImages}
               imagesCount={Array.isArray(form.images) ? form.images.length : 0}
               selectedPlace={selectedPlace}
               distanceKm={selectedDistanceKm}
               onOpenLightbox={openLightbox}
+              onOpenCandidateLightbox={openCandidateLightbox}
               onSave={save}
               onDelete={del}
               onNew={newPlace}
@@ -1593,10 +1605,12 @@ export default function MapPage() {
                 heroImage={heroImage ? { filename: heroImage.filename } : null}
                 placeId={typeof form.id === "number" ? form.id : null}
                 headerImages={headerImages}
+                heroCandidateImages={heroCandidateHeaderImages}
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}
                 selectedPlace={selectedPlace}
                 distanceKm={selectedDistanceKm}
                 onOpenLightbox={openLightbox}
+                onOpenCandidateLightbox={openCandidateLightbox}
                 onSave={save}
                 onDelete={del}
                 onNew={newPlace}

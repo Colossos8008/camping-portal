@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-12T05:28:03.066Z",
+  "generatedAt": "2026-03-12T05:47:22.297Z",
   "notes": "Manual coordinate feedback dataset for future ranking/retraining.",
   "items": [
     {
@@ -350,6 +350,19 @@
       "reviewedAt": "2026-03-12",
       "previousLat": 50.274444,
       "previousLng": 7.641706
+    },
+    {
+      "placeKey": "knaus-campingpark-rhein-mosel-koblenz-1265",
+      "placeName": "KNAUS Campingpark Rhein-Mosel Koblenz",
+      "region": "unknown",
+      "targetPointType": "UNKNOWN",
+      "decision": "CONFIRMED",
+      "selectedSource": "manual-ui",
+      "selectedLat": 50.367666,
+      "selectedLng": 7.606398,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12"
     }
   ]
 }

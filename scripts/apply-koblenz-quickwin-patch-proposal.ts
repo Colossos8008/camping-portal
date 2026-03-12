@@ -209,7 +209,23 @@ function main(): void {
       continue;
     }
 
-    if (row.lat !== proposal.currentLat || row.lng !== proposal.currentLng) {
+    const currentLat = row.lat;
+    const currentLng = row.lng;
+    if (!Number.isFinite(currentLat) || !Number.isFinite(currentLng)) {
+      outcomes.push({
+        key,
+        oldLat: row.latRaw,
+        oldLng: row.lngRaw,
+        newLat: String(proposedLat),
+        newLng: String(proposedLng),
+        deltaMeters: 0,
+        status: "CONFLICT",
+        reason: "currentLat/currentLng missing",
+      });
+      continue;
+    }
+
+    if (currentLat !== proposal.currentLat || currentLng !== proposal.currentLng) {
       outcomes.push({
         key,
         oldLat: row.latRaw,
@@ -218,7 +234,7 @@ function main(): void {
         newLng: String(proposedLng),
         deltaMeters: Number.isFinite(proposal.deltaMeters)
           ? Math.round(Number(proposal.deltaMeters))
-          : haversineMeters(row.lat, row.lng, proposedLat, proposedLng),
+          : haversineMeters(currentLat, currentLng, proposedLat, proposedLng),
         status: "CONFLICT",
         reason: `currentLat/currentLng mismatch (proposal ${formatCoord(proposal.currentLat)},${formatCoord(proposal.currentLng)})`,
       });
@@ -227,7 +243,7 @@ function main(): void {
 
     const deltaMeters = Number.isFinite(proposal.deltaMeters)
       ? Math.round(Number(proposal.deltaMeters))
-      : haversineMeters(row.lat, row.lng, proposedLat, proposedLng);
+      : haversineMeters(currentLat, currentLng, proposedLat, proposedLng);
 
     if (row.lat === proposedLat && row.lng === proposedLng) {
       outcomes.push({

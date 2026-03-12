@@ -209,6 +209,9 @@ function main(): void {
       continue;
     }
 
+    const safeProposedLat: number = proposedLat;
+    const safeProposedLng: number = proposedLng;
+
     const currentLat = row.lat;
     const currentLng = row.lng;
     if (typeof currentLat !== "number" || typeof currentLng !== "number" || !Number.isFinite(currentLat) || !Number.isFinite(currentLng)) {
@@ -216,8 +219,8 @@ function main(): void {
         key,
         oldLat: row.latRaw,
         oldLng: row.lngRaw,
-        newLat: String(proposedLat),
-        newLng: String(proposedLng),
+        newLat: String(safeProposedLat),
+        newLng: String(safeProposedLng),
         deltaMeters: 0,
         status: "CONFLICT",
         reason: "currentLat/currentLng missing",
@@ -233,11 +236,11 @@ function main(): void {
         key,
         oldLat: row.latRaw,
         oldLng: row.lngRaw,
-        newLat: String(proposedLat),
-        newLng: String(proposedLng),
+        newLat: String(safeProposedLat),
+        newLng: String(safeProposedLng),
         deltaMeters: Number.isFinite(proposal.deltaMeters)
           ? Math.round(Number(proposal.deltaMeters))
-          : haversineMeters(safeCurrentLat, safeCurrentLng, proposedLat, proposedLng),
+          : haversineMeters(safeCurrentLat, safeCurrentLng, safeProposedLat, safeProposedLng),
         status: "CONFLICT",
         reason: `currentLat/currentLng mismatch (proposal ${formatCoord(proposal.currentLat)},${formatCoord(proposal.currentLng)})`,
       });
@@ -246,15 +249,15 @@ function main(): void {
 
     const deltaMeters = Number.isFinite(proposal.deltaMeters)
       ? Math.round(Number(proposal.deltaMeters))
-      : haversineMeters(safeCurrentLat, safeCurrentLng, proposedLat, proposedLng);
+      : haversineMeters(safeCurrentLat, safeCurrentLng, safeProposedLat, safeProposedLng);
 
-    if (row.lat === proposedLat && row.lng === proposedLng) {
+    if (row.lat === safeProposedLat && row.lng === safeProposedLng) {
       outcomes.push({
         key,
         oldLat: row.latRaw,
         oldLng: row.lngRaw,
-        newLat: String(proposedLat),
-        newLng: String(proposedLng),
+        newLat: String(safeProposedLat),
+        newLng: String(safeProposedLng),
         deltaMeters,
         status: "SKIPPED",
         reason: "already at proposed coordinates",
@@ -266,14 +269,14 @@ function main(): void {
       key,
       oldLat: row.latRaw,
       oldLng: row.lngRaw,
-      newLat: String(proposedLat),
-      newLng: String(proposedLng),
+      newLat: String(safeProposedLat),
+      newLng: String(safeProposedLng),
       deltaMeters,
       status: "WOULD_APPLY",
     });
 
-    replacements.push({ start: row.latStart, end: row.latEnd, value: String(proposedLat) });
-    replacements.push({ start: row.lngStart, end: row.lngEnd, value: String(proposedLng) });
+    replacements.push({ start: row.latStart, end: row.latEnd, value: String(safeProposedLat) });
+    replacements.push({ start: row.lngStart, end: row.lngEnd, value: String(safeProposedLng) });
   }
 
   const applicable = outcomes.filter((entry) => entry.status === "WOULD_APPLY").length;

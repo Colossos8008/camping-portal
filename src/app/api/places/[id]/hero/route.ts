@@ -15,6 +15,10 @@ function parsePlaceId(req: NextRequest): number {
   return Number(idStr);
 }
 
+function isHeroProxyPath(input: string | null | undefined): boolean {
+  return /^\/api\/places\/\d+\/hero(?:\?.*)?$/.test(String(input ?? "").trim());
+}
+
 function isHttpUrl(input: string | null | undefined): boolean {
   try {
     const value = String(input ?? "").trim();
@@ -185,6 +189,12 @@ export async function GET(req: NextRequest) {
     } catch {
       // keep existing fallback behavior
     }
+  }
+
+  if (heroImageUrl && isHeroProxyPath(heroImageUrl)) {
+    const placeholder = String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER;
+    if (placeholder.startsWith("/")) return appendDecisionHeaders(redirectTo(req, placeholder, 3600 * 24), { placeId, source: "placeholder-self-proxy-guard", targeted: targetedDebugPoi, usedPlaceholder: true, placeUpdatedAt: place.updatedAt });
+    if (isHttpUrl(placeholder)) return appendDecisionHeaders(redirectTo(req, placeholder, 3600 * 24), { placeId, source: "placeholder-self-proxy-guard", targeted: targetedDebugPoi, usedPlaceholder: true, placeUpdatedAt: place.updatedAt });
   }
 
   if (heroImageUrl) {

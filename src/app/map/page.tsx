@@ -283,6 +283,7 @@ export default function MapPage() {
     ts21: null,
     images: [],
     heroImageUrl: null,
+    datasetHeroImageUrl: null,
     thumbnailImageId: null,
     coordinateReviewStatus: "UNREVIEWED",
     coordinateReviewSource: null,
@@ -476,6 +477,7 @@ export default function MapPage() {
       ts21: selectedAny?.ts21 ?? null,
       images: Array.isArray((selectedPlace as any).images) ? (selectedPlace as any).images : [],
       heroImageUrl: (selectedPlace as any).heroImageUrl ?? null,
+      datasetHeroImageUrl: (selectedPlace as any).datasetHeroImageUrl ?? null,
       thumbnailImageId: (selectedPlace as any).thumbnailImageId ?? null,
       sightseeingTotalScore: selectedAny?.sightseeingTotalScore ?? null,
       sightRelevanceType: selectedAny?.sightRelevanceType ?? null,
@@ -534,6 +536,7 @@ export default function MapPage() {
         ts21: nextAny?.ts21 ?? null,
         images: Array.isArray((nextPlace as any).images) ? (nextPlace as any).images : [],
         heroImageUrl: (nextPlace as any).heroImageUrl ?? null,
+        datasetHeroImageUrl: (nextPlace as any).datasetHeroImageUrl ?? null,
         thumbnailImageId: (nextPlace as any).thumbnailImageId ?? null,
         sightseeingTotalScore: nextAny?.sightseeingTotalScore ?? null,
         sightRelevanceType: nextAny?.sightRelevanceType ?? null,
@@ -601,6 +604,7 @@ export default function MapPage() {
       ts21: null,
       images: [],
       heroImageUrl: null,
+      datasetHeroImageUrl: null,
       thumbnailImageId: null,
       sightseeingTotalScore: null,
       sightRelevanceType: null,
@@ -657,7 +661,12 @@ export default function MapPage() {
         },
         ts2: currentForm.ts2 ?? null,
         ts21: currentForm.ts21 ?? null,
-        heroImageUrl: typeof currentForm.heroImageUrl === "string" ? currentForm.heroImageUrl.trim() : null,
+        heroImageUrl:
+          typeof currentForm.datasetHeroImageUrl === "string" && currentForm.datasetHeroImageUrl.trim()
+            ? currentForm.datasetHeroImageUrl.trim()
+            : typeof currentForm.heroImageUrl === "string"
+              ? currentForm.heroImageUrl.trim()
+              : null,
         thumbnailImageId: currentForm.thumbnailImageId ?? null,
         coordinateReviewNote: typeof currentForm.coordinateReviewNote === "string" ? currentForm.coordinateReviewNote : "",
       };
@@ -907,6 +916,7 @@ export default function MapPage() {
       setForm((f: any) => ({
         ...f,
         thumbnailImageId: updated?.thumbnailImageId ?? null,
+        datasetHeroImageUrl: updated?.datasetHeroImageUrl ?? f?.datasetHeroImageUrl ?? null,
         images: Array.isArray(updated?.images) ? updated.images : f.images,
       }));
 

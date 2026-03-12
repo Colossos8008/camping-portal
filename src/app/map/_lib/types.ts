@@ -57,6 +57,7 @@ export type Place = {
 
   images?: PlaceImage[];
   heroImageUrl?: string | null;
+  datasetHeroImageUrl?: string | null;
   thumbnailImageId?: number | null;
 
   natureScore?: number | null;

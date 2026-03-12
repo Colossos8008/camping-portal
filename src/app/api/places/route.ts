@@ -235,6 +235,11 @@ function normalizeTS21Scores(raw: any): TS21Scores {
 }
 
 
+function isHeroProxyPath(raw: string): boolean {
+  return /^\/api\/places\/\d+\/hero(?:\?.*)?$/.test(String(raw ?? "").trim());
+}
+
+
 function normalizeHeroImageUrl(v: any): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -242,8 +247,9 @@ function normalizeHeroImageUrl(v: any): string | null | undefined {
   const raw = asString(v).trim();
   if (!raw) return null;
 
+  if (isHeroProxyPath(raw)) return null;
+
   if (raw.startsWith("/")) {
-    // Erlaube relative interne Pfade wie /api/places/:id/hero oder /uploads/...
     return raw;
   }
 
@@ -570,6 +576,7 @@ export async function GET(req: NextRequest) {
       return {
         ...place,
         heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
+        datasetHeroImageUrl: String(place?.heroImageUrl ?? "").trim() || null,
         coordinateReviewStatus: coordinateReviewMeta.status,
         coordinateReviewSource: coordinateReviewMeta.source,
         coordinateReviewReviewedAt: coordinateReviewMeta.reviewedAt,
@@ -682,6 +689,7 @@ export async function POST(req: NextRequest) {
     const normalizedCreated = {
       ...created,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(created?.id, (created as any)?.heroImageUrl),
+      datasetHeroImageUrl: String((created as any)?.heroImageUrl ?? "").trim() || null,
     };
 
     if (!canTs21) return NextResponse.json({ ...normalizedCreated, ts21: null });
@@ -901,6 +909,7 @@ export async function PUT(req: NextRequest) {
     const normalizedUpdated = {
       ...updated,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
+      datasetHeroImageUrl: String((updated as any)?.heroImageUrl ?? "").trim() || null,
       coordinateReviewStatus,
       coordinateReviewSource,
       coordinateReviewReviewedAt,

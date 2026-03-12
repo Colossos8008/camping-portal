@@ -190,12 +190,18 @@ function normalizeTS21Scores(raw: any): TS21Scores {
 }
 
 
+function isHeroProxyPath(raw: string): boolean {
+  return /^\/api\/places\/\d+\/hero(?:\?.*)?$/.test(String(raw ?? "").trim());
+}
+
 function normalizeHeroImageUrl(v: any): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
 
   const raw = asString(v).trim();
   if (!raw) return null;
+
+  if (isHeroProxyPath(raw)) return null;
 
   try {
     const u = new URL(raw);
@@ -387,6 +393,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({
       ...place,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, (place as any)?.heroImageUrl),
+      datasetHeroImageUrl: String((place as any)?.heroImageUrl ?? "").trim() || null,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
@@ -528,6 +535,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const normalizedUpdated = {
       ...updated,
       heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
+      datasetHeroImageUrl: String((updated as any)?.heroImageUrl ?? "").trim() || null,
     };
 
     if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });

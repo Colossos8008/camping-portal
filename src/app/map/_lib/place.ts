@@ -154,6 +154,7 @@ export function safePlacesFromApi(input: any): Place[] {
 
         images: Array.isArray(p.images) ? p.images : [],
         heroImageUrl: typeof p.heroImageUrl === "string" && p.heroImageUrl.trim() ? p.heroImageUrl.trim() : null,
+        datasetHeroImageUrl: typeof p.datasetHeroImageUrl === "string" && p.datasetHeroImageUrl.trim() ? p.datasetHeroImageUrl.trim() : null,
         thumbnailImageId: typeof p.thumbnailImageId === "number" ? p.thumbnailImageId : null,
 
         natureScore: asNullableNumber(p.natureScore),

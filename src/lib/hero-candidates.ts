@@ -709,6 +709,9 @@ function shouldKeepWikiCandidate(place: HeroCandidateInput, candidate: Wikimedia
   const overlap = tokenOverlap(place.name, candidate.title);
   const nameScore = similarity(place.name, candidate.title);
   const hasSignal = hasSpecificNameSignal(place.name, candidate.title);
+  if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && !looksCampingLike(`${candidate.title} ${candidate.url}`)) {
+    return false;
+  }
   if (place.type === "SEHENSWUERDIGKEIT" && containsHint(candidate.title, EXCLUDED_SIGHTSEEING_HINTS) && !relaxed) return false;
   if (place.type !== "SEHENSWUERDIGKEIT" && containsHint(candidate.title, EXCLUDED_CAMPING_HINTS) && !relaxed) return false;
   return relaxed ? overlap >= 0.15 || nameScore >= 0.18 || hasSignal : overlap >= 0.3 || nameScore >= 0.35 || hasSignal;

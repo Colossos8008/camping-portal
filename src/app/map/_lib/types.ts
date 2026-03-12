@@ -37,6 +37,18 @@ export type PlaceImage = {
   updatedAt?: string;
 };
 
+export type PlaceHeroCandidate = {
+  id?: number;
+  source: "google" | "wikimedia";
+  url: string;
+  thumbUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+  score: number;
+  reason: string;
+  rank: number;
+};
+
 export type Place = {
   id: number;
   name: string;

@@ -130,6 +130,7 @@ model Place {
   ts21             PlaceTS21?
 
   images           Image[]
+  heroCandidates   PlaceHeroCandidate[]
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @default(now()) @updatedAt
@@ -139,6 +140,26 @@ model Place {
   @@index([osmType, osmId])
   @@index([coordinateMode, coordinateConfidence])
   @@index([poiReviewState])
+}
+
+model PlaceHeroCandidate {
+  id          Int      @id @default(autoincrement())
+  placeId      Int
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  source      String
+  url         String
+  thumbUrl    String?
+  width       Int?
+  height      Int?
+  score       Int?
+  reason      String?
+  rank        Int?
+  isRejected  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([placeId, rank])
+  @@index([placeId, isRejected])
 }
 
 model PlaceRating {

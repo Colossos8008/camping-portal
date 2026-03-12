@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Ts21Editor, { TS21Detail } from "./ts21-editor";
 
-import type { Place, PlaceType, SortMode } from "./_lib/types";
+import type { Place, PlaceHeroCandidate, PlaceType, SortMode } from "./_lib/types";
 import { distanceKm } from "./_lib/geo";
 import { safePlacesFromApi } from "./_lib/place";
 import { blankRating } from "./_lib/rating";
@@ -15,6 +15,7 @@ import PlacesList from "./_components/PlacesList";
 import TogglePill from "./_components/TogglePill";
 import EditorHeader from "./_components/EditorHeader";
 import ImagesPanel from "./_components/ImagesPanel";
+import HeroCandidatesPanel from "./_components/HeroCandidatesPanel";
 import Lightbox from "./_components/Lightbox";
 import CollapsiblePanel from "./_components/CollapsiblePanel";
 
@@ -257,6 +258,10 @@ export default function MapPage() {
 
   const [lbOpen, setLbOpen] = useState(false);
   const [lbIndex, setLbIndex] = useState(0);
+  const [lbOverrideImages, setLbOverrideImages] = useState<LightboxImage[] | null>(null);
+  const [heroCandidates, setHeroCandidates] = useState<PlaceHeroCandidate[]>([]);
+  const [heroCandidatesLoading, setHeroCandidatesLoading] = useState(false);
+  const [heroCandidatesError, setHeroCandidatesError] = useState("");
 
   const [isMobile, setIsMobile] = useState<boolean>(() => (typeof window === "undefined" ? false : isMobileNow()));
 
@@ -461,6 +466,8 @@ export default function MapPage() {
     setErrorMsg("");
     setUploadMsg("");
     setPickedFiles([]);
+    setHeroCandidates([]);
+    setHeroCandidatesError("");
 
     setForm({
       id: selectedPlace.id,
@@ -520,6 +527,8 @@ export default function MapPage() {
       setStatusMsg("");
       setUploadMsg("");
       setPickedFiles([]);
+      setHeroCandidates([]);
+      setHeroCandidatesError("");
 
       setForm({
         id: nextPlace.id,
@@ -954,7 +963,93 @@ export default function MapPage() {
     return [{ id: -1, filename: heroFilename }, ...uniqueGalleryImages];
   }, [form.heroImageUrl, form.images, headerImages]);
 
+  const activeLightboxImages = lbOverrideImages ?? lbImages;
+
+  async function loadStoredHeroCandidates(placeId: number) {
+    setHeroCandidatesLoading(true);
+    setHeroCandidatesError("");
+    try {
+      const res = await fetch(`/api/places/${placeId}/hero-candidates`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error ?? "Hero-Vorschläge konnten nicht geladen werden."));
+      setHeroCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
+    } catch (error: any) {
+      setHeroCandidates([]);
+      setHeroCandidatesError(String(error?.message ?? "Hero-Vorschläge konnten nicht geladen werden."));
+    } finally {
+      setHeroCandidatesLoading(false);
+    }
+  }
+
+  async function fetchHeroCandidates(force = true) {
+    if (!form.id || form.type === "HVO_TANKSTELLE") return;
+    setHeroCandidatesLoading(true);
+    setHeroCandidatesError("");
+    try {
+      const res = await fetch(`/api/places/${form.id}/hero-candidates`, {
+        method: force ? "POST" : "GET",
+        headers: force ? { "Content-Type": "application/json" } : undefined,
+        body: force ? JSON.stringify({ limit: 8 }) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error ?? "Hero-Vorschläge konnten nicht geladen werden."));
+      setHeroCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
+      if (force) setStatusMsg(`Hero-Vorschläge geladen: ${Array.isArray(data?.candidates) ? data.candidates.length : 0}`);
+    } catch (error: any) {
+      setHeroCandidatesError(String(error?.message ?? "Hero-Vorschläge konnten nicht geladen werden."));
+    } finally {
+      setHeroCandidatesLoading(false);
+    }
+  }
+
+  async function chooseHeroCandidate(index: number) {
+    const candidate = heroCandidates[index];
+    if (!candidate?.id || !form.id) return;
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch(`/api/places/${form.id}/hero-candidates/${candidate.id}/select`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error ?? "Hero-Bild konnte nicht gesetzt werden."));
+      const nextHero = String(data?.heroImageUrl ?? candidate.url ?? "").trim() || null;
+      setForm((f: any) => ({
+        ...f,
+        heroImageUrl: nextHero,
+        datasetHeroImageUrl: nextHero,
+      }));
+      setStatusMsg("Hero-Bild aktualisiert");
+      await refreshPlaces(true);
+    } catch (error: any) {
+      setErrorMsg(String(error?.message ?? "Hero-Bild konnte nicht gesetzt werden."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openCandidateLightbox(index: number) {
+    if (!heroCandidates.length) return;
+    const images = heroCandidates.map((candidate) => ({
+      id: candidate.id ?? undefined,
+      filename: String(candidate.url ?? "").trim(),
+    }));
+    setLbOverrideImages(images);
+    setLbIndex(Math.max(0, Math.min(index, images.length - 1)));
+    setLbOpen(true);
+  }
+
+  useEffect(() => {
+    if (!selectedPlace?.id || selectedPlace.type === "HVO_TANKSTELLE") {
+      setHeroCandidates([]);
+      setHeroCandidatesError("");
+      return;
+    }
+    loadStoredHeroCandidates(selectedPlace.id).catch(() => {
+      setHeroCandidates([]);
+    });
+  }, [selectedPlace?.id, selectedPlace?.type]);
+
   function openLightbox(index: number) {
+    setLbOverrideImages(null);
     if (!lbImages.length) return;
     const idx = Math.max(0, Math.min(index, lbImages.length - 1));
     setLbIndex(idx);
@@ -969,16 +1064,17 @@ export default function MapPage() {
 
   function closeLightbox() {
     setLbOpen(false);
+    setLbOverrideImages(null);
   }
 
   function lbPrev() {
-    if (!lbImages.length) return;
-    setLbIndex((i) => (i - 1 + lbImages.length) % lbImages.length);
+    if (!activeLightboxImages.length) return;
+    setLbIndex((i) => (i - 1 + activeLightboxImages.length) % activeLightboxImages.length);
   }
 
   function lbNext() {
-    if (!lbImages.length) return;
-    setLbIndex((i) => (i + 1) % lbImages.length);
+    if (!activeLightboxImages.length) return;
+    setLbIndex((i) => (i + 1) % activeLightboxImages.length);
   }
 
   const selectedDistanceKm = useMemo(() => {
@@ -1257,6 +1353,22 @@ export default function MapPage() {
           onOpenChange={(vv) => setSection("IMAGES", vv)}
           rightHint={<span className="opacity-80">{Array.isArray(form.images) ? form.images.length : 0}</span>}
         >
+          <HeroCandidatesPanel
+            placeId={form.id ? Number(form.id) : null}
+            placeType={String(form.type ?? "CAMPINGPLATZ")}
+            candidates={heroCandidates}
+            loading={heroCandidatesLoading}
+            error={heroCandidatesError}
+            onLoad={() => {
+              void fetchHeroCandidates(true);
+            }}
+            onSelect={openCandidateLightbox}
+            onChooseHero={(index) => {
+              void chooseHeroCandidate(index);
+            }}
+            activeHeroUrl={typeof form.datasetHeroImageUrl === "string" && form.datasetHeroImageUrl.trim() ? form.datasetHeroImageUrl : form.heroImageUrl}
+          />
+
           <ImagesPanel
             placeId={form.id ? Number(form.id) : null}
             images={Array.isArray(form.images) ? form.images : []}
@@ -1564,7 +1676,15 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      <Lightbox open={lbOpen} index={lbIndex} images={lbImages as any} placeId={typeof form.id === "number" ? form.id : null} onClose={closeLightbox} onPrev={lbPrev} onNext={lbNext} />
+      <Lightbox
+        open={lbOpen}
+        index={lbIndex}
+        images={activeLightboxImages as any}
+        placeId={typeof form.id === "number" ? form.id : null}
+        onClose={closeLightbox}
+        onPrev={lbPrev}
+        onNext={lbNext}
+      />
     </div>
   );
 }

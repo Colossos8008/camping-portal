@@ -4,6 +4,10 @@ import { buildPlaceHeroProxyPath, isGooglePhotoReference, isGooglePlacesPhotoUrl
 
 const SUPABASE_BUCKET = "place-images";
 
+function buildRemoteImageProxyPath(url: string): string {
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 function normalizeUnsafeRemoteImageUrl(path: string, placeId?: number | null): string {
   const cleanPath = String(path ?? "").trim();
   if (!cleanPath) return "";
@@ -11,6 +15,10 @@ function normalizeUnsafeRemoteImageUrl(path: string, placeId?: number | null): s
   if (isGooglePhotoReference(cleanPath) || isGooglePlacesPhotoUrl(cleanPath)) {
     const proxyPath = buildPlaceHeroProxyPath(placeId);
     return proxyPath ?? "";
+  }
+
+  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+    return buildRemoteImageProxyPath(cleanPath);
   }
 
   return cleanPath;

@@ -50,6 +50,12 @@ type WebsiteImageCandidate = {
   width?: number;
   height?: number;
   reason: string;
+  pageUrl?: string;
+};
+
+type SearchResultPage = {
+  url: string;
+  title: string;
 };
 
 type CandidateSignature = {
@@ -70,6 +76,7 @@ const MAX_WIKIMEDIA_CANDIDATES = 16;
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
 const GOOGLE_THUMB_WIDTH = 480;
 const MIN_TARGET_RESULTS = 6;
+const MAX_SEARCH_RESULT_PAGES = 8;
 const BAD_HINTS = [
   "logo",
   "icon",
@@ -92,9 +99,14 @@ const BAD_HINTS = [
   "stern",
   "button",
   "favicon",
+  "open graph",
+  "opengraph",
+  "share image",
+  "social share",
 ];
 const EXCLUDED_CAMPING_HINTS = ["hotel", "cottage", "bedroom", "spa", "apartment", "ferienwohnung", "guesthouse", "villa", "lodge", "resort", "hostel"];
 const EXCLUDED_SIGHTSEEING_HINTS = ["selfie", "portrait", "logo", "plan", "map"];
+const GALLERY_LINK_HINTS = ["galerie", "gallery", "bilder", "photos", "fotos", "camping", "camp", "accommodation", "hebergement"];
 const GENERIC_TOKENS = new Set([
   "the",
   "and",
@@ -228,6 +240,20 @@ function dedupeKey(candidate: HeroCandidateRecord): string {
   return `${candidate.source}:${direct}`;
 }
 
+function isHttpUrl(input: string): boolean {
+  try {
+    const parsed = new URL(String(input ?? "").trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyImageUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return /\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) || lower.includes("/image") || lower.includes("/media");
+}
+
 async function fetchJsonRequest<T>(
   url: string,
   method: "GET" | "POST",
@@ -333,6 +359,66 @@ function extractMetaContent(html: string, names: string[]): string | null {
   return null;
 }
 
+function parseHtmlPageLinks(html: string, baseUrl: string): string[] {
+  const matches = new Set<string>();
+  const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
+  for (const match of html.matchAll(linkRegex)) {
+    const resolved = resolveMaybeRelativeUrl(baseUrl, String(match[1] ?? ""));
+    if (!resolved || !isHttpUrl(resolved)) continue;
+    matches.add(resolved);
+    if (matches.size >= 60) break;
+  }
+  return Array.from(matches);
+}
+
+function shouldKeepSearchResultUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const full = `${host}${parsed.pathname}`.toLowerCase();
+    if (host.includes("duckduckgo.com")) return false;
+    if (host.includes("google.") || host.includes("bing.com")) return false;
+    if (host.includes("facebook.com") || host.includes("instagram.com") || host.includes("youtube.com")) return false;
+    if (host.includes("tripadvisor.") || host.includes("booking.com") || host.includes("airbnb.")) return false;
+    if (host.includes("wikipedia.org") || host.includes("wikimedia.org")) return false;
+    if (full.includes("/logo") || full.includes("/icon")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shouldKeepInternalGalleryLink(baseUrl: string, url: string): boolean {
+  try {
+    const base = new URL(baseUrl);
+    const parsed = new URL(url);
+    if (parsed.hostname !== base.hostname) return false;
+    const normalizedPath = normalize(parsed.pathname);
+    if (!normalizedPath || normalizedPath === normalize(base.pathname)) return false;
+    return GALLERY_LINK_HINTS.some((hint) => normalizedPath.includes(normalize(hint)));
+  } catch {
+    return false;
+  }
+}
+
+function decodeDuckDuckGoTarget(raw: string): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  try {
+    const parsed = new URL(value, "https://duckduckgo.com");
+    const uddg = parsed.searchParams.get("uddg");
+    if (uddg) return decodeURIComponent(uddg);
+    if (parsed.hostname !== "duckduckgo.com") return parsed.toString();
+  } catch {
+    // fall through
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
   const matches = new Set<string>();
   const metaImage =
@@ -350,7 +436,7 @@ function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
     const resolved = resolveMaybeRelativeUrl(websiteUrl, first);
     if (!resolved) continue;
     const lower = resolved.toLowerCase();
-    if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+    if (!isLikelyImageUrl(lower)) continue;
     if (hasBadHints(lower)) continue;
     matches.add(resolved);
     if (matches.size >= 12) break;
@@ -361,7 +447,7 @@ function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
     const resolved = resolveMaybeRelativeUrl(websiteUrl, String(match[2] ?? ""));
     if (!resolved) continue;
     const lower = resolved.toLowerCase();
-    if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+    if (!isLikelyImageUrl(lower)) continue;
     if (hasBadHints(lower)) continue;
     matches.add(resolved);
     if (matches.size >= 16) break;
@@ -375,7 +461,7 @@ function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
       const resolved = resolveMaybeRelativeUrl(websiteUrl, url);
       if (!resolved) continue;
       const lower = resolved.toLowerCase();
-      if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+      if (!isLikelyImageUrl(lower)) continue;
       if (hasBadHints(lower)) continue;
       matches.add(resolved);
       if (matches.size >= 16) break;
@@ -386,18 +472,128 @@ function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
   return Array.from(matches.values());
 }
 
-async function fetchWebsiteImageCandidates(websiteUrl: string, placeName: string): Promise<WebsiteImageCandidate[]> {
+function mapWebsiteImages(urls: string[], placeName: string, reasonPrefix: string, pageUrl?: string): WebsiteImageCandidate[] {
+  return urls.slice(0, 12).map((url, index) => ({
+    url,
+    pageUrl,
+    reason: index === 0 ? `${reasonPrefix} image for '${placeName}'` : `${reasonPrefix} gallery image ${index + 1} for '${placeName}'`,
+  }));
+}
+
+async function fetchWebsiteImageCandidates(
+  websiteUrl: string,
+  placeName: string,
+  options?: { reasonPrefix?: string; includeLinkedPages?: boolean }
+): Promise<WebsiteImageCandidate[]> {
   try {
     const html = await fetchText(websiteUrl, 12000);
-    return parseHtmlImageCandidates(html, websiteUrl)
-      .slice(0, 12)
-      .map((url, index) => ({
-        url,
-        reason: index === 0 ? `Website image for '${placeName}'` : `Website gallery image ${index + 1} for '${placeName}'`,
-      }));
+    const reasonPrefix = String(options?.reasonPrefix ?? "Website").trim() || "Website";
+    const includeLinkedPages = options?.includeLinkedPages !== false;
+    const directImages = mapWebsiteImages(parseHtmlImageCandidates(html, websiteUrl), placeName, reasonPrefix, websiteUrl);
+
+    if (!includeLinkedPages) {
+      return directImages;
+    }
+
+    const internalPages = parseHtmlPageLinks(html, websiteUrl)
+      .filter((url) => shouldKeepInternalGalleryLink(websiteUrl, url))
+      .slice(0, 4);
+
+    if (!internalPages.length) {
+      return directImages;
+    }
+
+    const linkedImageGroups = await Promise.allSettled(
+      internalPages.map(async (pageUrl) => {
+        const pageHtml = await fetchText(pageUrl, 10000);
+        return mapWebsiteImages(parseHtmlImageCandidates(pageHtml, pageUrl), placeName, reasonPrefix, pageUrl);
+      })
+    );
+
+    return uniqueBy(
+      [
+        ...directImages,
+        ...linkedImageGroups.flatMap((group) => (group.status === "fulfilled" ? group.value : [])),
+      ],
+      (candidate) => candidate.url
+    );
   } catch {
     return [];
   }
+}
+
+async function discoverPagesFromDuckDuckGo(place: HeroCandidateInput): Promise<SearchResultPage[]> {
+  const queries = uniqueBy(
+    [
+      place.name,
+      `${place.name} ${place.type === "SEHENSWUERDIGKEIT" ? "official photos" : "official camping photos"}`,
+      `${place.name} site officiel photos`,
+      `${place.name} galerie`,
+    ],
+    (value) => normalize(value)
+  );
+
+  const discovered: SearchResultPage[] = [];
+
+  for (const query of queries) {
+    if (discovered.length >= MAX_SEARCH_RESULT_PAGES) break;
+    try {
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const html = await fetchText(searchUrl, 12000);
+      const resultRegex = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      for (const match of html.matchAll(resultRegex)) {
+        if (discovered.length >= MAX_SEARCH_RESULT_PAGES) break;
+        const target = decodeDuckDuckGoTarget(String(match[1] ?? ""));
+        if (!target || !shouldKeepSearchResultUrl(target)) continue;
+        const title = String(match[2] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (!title) continue;
+        discovered.push({ url: target, title });
+      }
+    } catch {
+      // skip failed query
+    }
+  }
+
+  return uniqueBy(discovered, (entry) => entry.url).slice(0, MAX_SEARCH_RESULT_PAGES);
+}
+
+async function findDiscoveredWebsiteCandidates(place: HeroCandidateInput): Promise<HeroCandidateRecord[]> {
+  const pages = await discoverPagesFromDuckDuckGo(place);
+  if (!pages.length) return [];
+
+  const pageGroups = await Promise.allSettled(
+    pages.map(async (page, pageIndex) => {
+      const images = await fetchWebsiteImageCandidates(page.url, place.name, {
+        reasonPrefix: "Web search",
+        includeLinkedPages: false,
+      });
+      return images.slice(0, 6).map((image, imageIndex) => {
+        const pageOverlap = tokenOverlap(place.name, `${page.title} ${page.url}`);
+        const pageSimilarity = similarity(place.name, `${page.title} ${page.url}`);
+        const hasSignal = hasSpecificNameSignal(place.name, `${page.title} ${page.url}`);
+        let score = 24 + Math.round(pageOverlap * 30) + Math.round(pageSimilarity * 24) - pageIndex * 4 - imageIndex * 2;
+        if (hasSignal) score += 8;
+        if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && looksCampingLike(`${page.title} ${page.url}`)) {
+          score += 6;
+        }
+        return {
+          source: "website" as const,
+          url: image.url,
+          thumbUrl: image.url,
+          width: image.width,
+          height: image.height,
+          score,
+          reason: `${image.reason} via ${new URL(page.url).hostname}`,
+          rank: 0,
+        };
+      });
+    })
+  );
+
+  return uniqueBy(
+    pageGroups.flatMap((group) => (group.status === "fulfilled" ? group.value : [])),
+    (candidate) => dedupeKey(candidate)
+  );
 }
 
 async function findPageIdBySearch(placeName: string): Promise<number | null> {
@@ -712,7 +908,10 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
     }
 
     if (item.websiteUri) {
-      const websiteImages = await fetchWebsiteImageCandidates(item.websiteUri, candidateName);
+      const websiteImages = await fetchWebsiteImageCandidates(item.websiteUri, candidateName, {
+        reasonPrefix: "Official website",
+        includeLinkedPages: true,
+      });
       for (const [index, websiteImage] of websiteImages.slice(0, relaxed ? 4 : 5).entries()) {
         out.push({
           source: "website",
@@ -769,6 +968,15 @@ async function findWikimediaHeroCandidates(place: HeroCandidateInput, relaxed = 
 }
 
 function entityKeyFromCandidate(candidate: HeroCandidateRecord): string {
+  if (candidate.source === "website") {
+    try {
+      const parsed = new URL(candidate.url);
+      const firstSegment = parsed.pathname.split("/").filter(Boolean)[0] ?? "";
+      return `${candidate.source}:${parsed.hostname.toLowerCase()}:${normalize(firstSegment)}`;
+    } catch {
+      return `${candidate.source}:${normalize(candidate.url)}`;
+    }
+  }
   const quoted = String(candidate.reason ?? "").match(/'([^']+)'/);
   if (quoted?.[1]) {
     const tokens = tokenizeMeaningful(quoted[1]).sort().join("-");
@@ -783,9 +991,9 @@ function entityKeyFromCandidate(candidate: HeroCandidateRecord): string {
 }
 
 function entityCap(candidate: HeroCandidateRecord): number {
-  if (candidate.source === "google") return 1;
-  if (candidate.source === "website") return 3;
-  return 1;
+  if (candidate.source === "google") return 2;
+  if (candidate.source === "website") return 4;
+  return 2;
 }
 
 async function inspectImage(url: string): Promise<ImageInspection> {
@@ -819,7 +1027,7 @@ function signatureDistance(a: string, b: string): number {
 
 async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Promise<HeroCandidateRecord[]> {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
-  const topForSignature = sorted.slice(0, Math.min(40, sorted.length));
+  const topForSignature = sorted.slice(0, Math.min(64, sorted.length));
   const inspections = await Promise.all(
     topForSignature.map(async (candidate) => ({
       candidate,
@@ -853,7 +1061,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     const signature = inspection?.signature ?? null;
     if (
       signature &&
-      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 12)
+      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 16)
     ) {
       continue;
     }
@@ -885,15 +1093,22 @@ export async function discoverHeroCandidates(
     ...(strictWiki.status === "fulfilled" ? strictWiki.value : []),
   ];
 
+  if (all.length < limit) {
+    const discoveredPages = await findDiscoveredWebsiteCandidates(place).catch(() => []);
+    all = [...all, ...discoveredPages];
+  }
+
   if (all.length < Math.min(MIN_TARGET_RESULTS, limit)) {
-    const [relaxedGoogle, relaxedWiki] = await Promise.allSettled([
+    const [relaxedGoogle, relaxedWiki, relaxedDiscovered] = await Promise.allSettled([
       findGoogleCandidates(place, googleKey, true),
       findWikimediaHeroCandidates(place, true),
+      findDiscoveredWebsiteCandidates(place),
     ]);
     all = [
       ...all,
       ...(relaxedGoogle.status === "fulfilled" ? relaxedGoogle.value : []),
       ...(relaxedWiki.status === "fulfilled" ? relaxedWiki.value : []),
+      ...(relaxedDiscovered.status === "fulfilled" ? relaxedDiscovered.value : []),
     ];
   }
 

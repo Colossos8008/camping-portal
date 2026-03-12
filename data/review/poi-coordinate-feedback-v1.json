@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-10T05:26:10.108Z",
+  "generatedAt": "2026-03-12T04:06:58.777Z",
   "notes": "Manual coordinate feedback dataset for future ranking/retraining.",
   "items": [
     {
@@ -80,6 +80,92 @@
       "reviewNote": "Als verworfene Auswahl markiert; genaue Objektverortung weiter offen.",
       "reviewedBy": "manual",
       "reviewedAt": "2026-03-10"
+    },
+    {
+      "placeKey": "camping-beachclub-fachbach-an-der-lahn-1263",
+      "placeName": "Camping Beachclub Fachbach an der Lahn",
+      "region": "unknown",
+      "targetPointType": "UNKNOWN",
+      "decision": "CONFIRMED",
+      "selectedSource": "manual-ui",
+      "selectedLat": 50.336747,
+      "selectedLng": 7.69148,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12"
+    },
+    {
+      "placeKey": "camping-wolfsm-hle-1270",
+      "placeName": "Camping Wolfsmühle",
+      "region": "unknown",
+      "targetPointType": "UNKNOWN",
+      "decision": "CONFIRMED",
+      "selectedSource": "manual-ui",
+      "selectedLat": 50.31512,
+      "selectedLng": 7.633002,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12"
+    },
+    {
+      "placeKey": "curated:nievern-highlights:kurhaus-bad-ems",
+      "placeName": "Kurhaus Bad Ems",
+      "region": "bad-ems",
+      "targetPointType": "UNKNOWN",
+      "decision": "CORRECTED",
+      "selectedSource": "map-picked",
+      "selectedLat": 50.3304960922476,
+      "selectedLng": 7.72901190582464,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12",
+      "previousLat": 50.335515,
+      "previousLng": 7.713234
+    },
+    {
+      "placeKey": "curated:nievern-highlights:kurpark-bad-ems",
+      "placeName": "Kurpark Bad Ems",
+      "region": "bad-ems",
+      "targetPointType": "UNKNOWN",
+      "decision": "CORRECTED",
+      "selectedSource": "map-picked",
+      "selectedLat": 50.331715310238,
+      "selectedLng": 7.71943890874156,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12",
+      "previousLat": 50.3347,
+      "previousLng": 7.7158
+    },
+    {
+      "placeKey": "campingplatz-bad-ems-1262",
+      "placeName": "Campingplatz Bad Ems",
+      "region": "unknown",
+      "targetPointType": "UNKNOWN",
+      "decision": "CORRECTED",
+      "selectedSource": "map-picked",
+      "selectedLat": 50.3185794790843,
+      "selectedLng": 7.73616373909349,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12",
+      "previousLat": 50.318718,
+      "previousLng": 7.736132
+    },
+    {
+      "placeKey": "curated:nievern-highlights:burg-lahneck",
+      "placeName": "Burg Lahneck",
+      "region": "lahnstein",
+      "targetPointType": "UNKNOWN",
+      "decision": "CORRECTED",
+      "selectedSource": "map-picked",
+      "selectedLat": 50.3063426905907,
+      "selectedLng": 7.61200950074718,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12",
+      "previousLat": 50.311813,
+      "previousLng": 7.618236
     }
   ]
 }

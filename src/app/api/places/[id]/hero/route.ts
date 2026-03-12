@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName, isWikimediaSpecialFilePathUrl } from "@/lib/hero-image";
+import {
+  buildGooglePhotoMediaUrl,
+  buildGoogleStreetViewImageUrl,
+  extractGooglePhotoResourceName,
+  extractGoogleStreetViewLocation,
+  isWikimediaSpecialFilePathUrl,
+} from "@/lib/hero-image";
 import { isHeroDebugPoiName } from "@/lib/hero-debug";
 
 export const runtime = "nodejs";
@@ -46,6 +52,42 @@ async function streamGooglePhoto(photoResourceName: string, apiKey: string): Pro
     method: "GET",
     headers: {
       "X-Goog-Api-Key": apiKey,
+      Accept: "image/*,*/*;q=0.8",
+    },
+    cache: "no-store",
+    redirect: "follow",
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return null;
+  }
+
+  const contentType = upstream.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("image/")) {
+    return null;
+  }
+
+  const headers = new Headers();
+  headers.set("Content-Type", contentType.split(";")[0]?.trim() || "image/jpeg");
+  headers.set("Cache-Control", cacheControl(3600 * 24 * 7));
+
+  return new Response(upstream.body, { status: 200, headers });
+}
+
+async function streamGoogleStreetView(
+  lat: number,
+  lng: number,
+  apiKey: string
+): Promise<Response | null> {
+  const streetViewUrl = buildGoogleStreetViewImageUrl(lat, lng, apiKey, {
+    width: 1600,
+    height: 900,
+    fov: 90,
+    pitch: 0,
+  });
+  const upstream = await fetch(streetViewUrl, {
+    method: "GET",
+    headers: {
       Accept: "image/*,*/*;q=0.8",
     },
     cache: "no-store",
@@ -128,6 +170,7 @@ export async function GET(req: NextRequest) {
   const heroImageUrl = String(place.heroImageUrl ?? "").trim();
   const targetedDebugPoi = isHeroDebugPoiName(place.name);
   const googlePhotoResource = extractGooglePhotoResourceName(heroImageUrl);
+  const googleStreetViewLocation = extractGoogleStreetViewLocation(heroImageUrl);
   const googleApiKey = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
   const debug = getDebugFlag(req);
 
@@ -160,6 +203,9 @@ export async function GET(req: NextRequest) {
     if (googlePhotoResource && googleApiKey) {
       await probe(buildGooglePhotoMediaUrl(googlePhotoResource, GOOGLE_PHOTO_MAX_WIDTH));
     }
+    if (googleStreetViewLocation && googleApiKey) {
+      await probe(buildGoogleStreetViewImageUrl(googleStreetViewLocation.lat, googleStreetViewLocation.lng, googleApiKey));
+    }
     if (heroImageUrl && isHttpUrl(heroImageUrl)) {
       await probe(heroImageUrl);
     }
@@ -171,6 +217,7 @@ export async function GET(req: NextRequest) {
       placeUpdatedAt: place.updatedAt ? new Date(place.updatedAt).toISOString() : null,
       heroImageUrl: heroImageUrl || null,
       googlePhotoResource,
+      googleStreetViewLocation,
       hasGoogleApiKey: Boolean(googleApiKey),
       placeholder: String(process.env.HERO_IMAGE_PLACEHOLDER_URL ?? "").trim() || DEFAULT_PLACEHOLDER,
       cacheRequestHeaders: {
@@ -186,6 +233,15 @@ export async function GET(req: NextRequest) {
     try {
       const response = await streamGooglePhoto(googlePhotoResource, googleApiKey);
       if (response) return appendDecisionHeaders(response, { placeId, source: "google-photo", targeted: targetedDebugPoi, usedPlaceholder: false, placeUpdatedAt: place.updatedAt });
+    } catch {
+      // keep existing fallback behavior
+    }
+  }
+
+  if (googleStreetViewLocation && googleApiKey) {
+    try {
+      const response = await streamGoogleStreetView(googleStreetViewLocation.lat, googleStreetViewLocation.lng, googleApiKey);
+      if (response) return appendDecisionHeaders(response, { placeId, source: "google-streetview", targeted: targetedDebugPoi, usedPlaceholder: false, placeUpdatedAt: place.updatedAt });
     } catch {
       // keep existing fallback behavior
     }

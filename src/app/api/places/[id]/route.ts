@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
-import { normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { isGoogleStreetViewReference, normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
 
 export const runtime = "nodejs";
@@ -202,6 +202,8 @@ function normalizeHeroImageUrl(v: any): string | null | undefined {
   if (!raw) return null;
 
   if (isHeroProxyPath(raw)) return null;
+
+  if (isGoogleStreetViewReference(raw)) return raw;
 
   try {
     const u = new URL(raw);

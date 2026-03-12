@@ -6,7 +6,6 @@ import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
 import { getSupabasePublicUrl } from "../_lib/image-url";
-import { isHeroDebugPoiId } from "@/lib/hero-debug";
 
 export default function EditorHeader(props: {
   editingNew: boolean;
@@ -41,7 +40,6 @@ export default function EditorHeader(props: {
 
   const [heroRetry, setHeroRetry] = useState(0);
   const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");
-  const heroDebugEnabled = isHeroDebugPoiId(props.placeId);
   const heroSrc = heroRetry > 0 && heroBaseSrc
     ? `${heroBaseSrc}${heroBaseSrc.includes("?") ? "&" : "?"}ui_retry=${heroRetry}`
     : heroBaseSrc;
@@ -69,7 +67,6 @@ export default function EditorHeader(props: {
               className="h-36 w-full object-cover"
               loading="lazy"
               onError={() => {
-                if (heroDebugEnabled) console.info("[hero-debug][editor] onError", { placeId: props.placeId, heroSrc, heroRetry });
                 if (heroRetry === 0 && heroBaseSrc) {
                   setHeroRetry(1);
                   return;
@@ -81,14 +78,6 @@ export default function EditorHeader(props: {
         ) : (
           <div className="h-36 w-full bg-black/30" />
         )}
-        {heroDebugEnabled ? (
-          <div className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)] rounded bg-black/80 px-2 py-1 text-[10px] leading-tight text-white/90">
-            <div>id={String(props.placeId ?? "-")}</div>
-            <div>src={heroSrc || "(empty)"}</div>
-            <div>failed={heroFailedSrc ? "1" : "0"}</div>
-            <div>fallback={canRenderHero ? "0" : "1"}</div>
-          </div>
-        ) : null}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
       </div>
 

@@ -47,6 +47,62 @@ const MAX_WIKIMEDIA_CANDIDATES = 12;
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
 const GOOGLE_THUMB_WIDTH = 480;
 const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
+const GENERIC_TOKENS = new Set([
+  "the",
+  "and",
+  "der",
+  "die",
+  "das",
+  "de",
+  "du",
+  "des",
+  "la",
+  "le",
+  "les",
+  "of",
+  "am",
+  "an",
+  "im",
+  "in",
+  "bei",
+  "zum",
+  "zur",
+  "camping",
+  "campingplatz",
+  "campground",
+  "rv",
+  "park",
+  "aire",
+  "wohnmobil",
+  "stellplatz",
+  "sehenswurdigkeit",
+  "museum",
+  "kirche",
+  "church",
+  "fortress",
+  "castle",
+  "schloss",
+  "burg",
+  "altstadt",
+  "stadt",
+]);
+const EXCLUDED_CAMPING_HINTS = [
+  "hotel",
+  "cottage",
+  "bedroom",
+  "spa",
+  "apartment",
+  "ferienwohnung",
+  "guesthouse",
+  "villa",
+  "lodge",
+  "resort",
+  "hostel",
+  "maison",
+  "gite",
+  "chambre",
+];
+const EXCLUDED_SIGHTSEEING_HINTS = ["selfie", "portrait", "logo", "plan", "map", "interior", "inside"];
 
 function normalize(value: string): string {
   return String(value ?? "")
@@ -67,6 +123,53 @@ function similarity(a: string, b: string): number {
     if (bb.has(token)) overlap += 1;
   }
   return overlap / Math.max(aa.size, bb.size);
+}
+
+function tokenizeMeaningful(value: string): string[] {
+  return normalize(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !GENERIC_TOKENS.has(token));
+}
+
+function tokenOverlap(a: string, b: string): number {
+  const aa = new Set(tokenizeMeaningful(a));
+  const bb = new Set(tokenizeMeaningful(b));
+  if (!aa.size || !bb.size) return 0;
+  let overlap = 0;
+  for (const token of aa) {
+    if (bb.has(token)) overlap += 1;
+  }
+  return overlap / Math.max(aa.size, bb.size);
+}
+
+function containsExcludedHint(text: string, hints: string[]): boolean {
+  const lower = normalize(text);
+  return hints.some((hint) => lower.includes(normalize(hint)));
+}
+
+function hasSpecificNameSignal(placeName: string, candidateName: string): boolean {
+  const placeTokens = tokenizeMeaningful(placeName);
+  const candidateTokens = new Set(tokenizeMeaningful(candidateName));
+  if (!placeTokens.length || !candidateTokens.size) return false;
+  return placeTokens.some((token) => candidateTokens.has(token));
+}
+
+function looksCampingLike(name: string): boolean {
+  const normalized = normalize(name);
+  return (
+    normalized.includes("camp") ||
+    normalized.includes("rv") ||
+    normalized.includes("stellplatz") ||
+    normalized.includes("wohnmobil") ||
+    normalized.includes("caravan")
+  );
+}
+
+function dedupeKey(candidate: HeroCandidateRecord): string {
+  const direct = String(candidate.thumbUrl ?? candidate.url ?? "").trim();
+  if (!direct) return `${candidate.source}:${candidate.reason}`;
+  return `${candidate.source}:${direct}`;
 }
 
 function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -311,27 +414,32 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
         : null;
 
     const nameSimilarity = similarity(place.name, candidateName);
-    const normalizedCandidate = normalize(candidateName);
-    const looksCampingLike =
-      normalizedCandidate.includes("camp") ||
-      normalizedCandidate.includes("rv") ||
-      normalizedCandidate.includes("stellplatz") ||
-      normalizedCandidate.includes("wohnmobil") ||
-      normalizedCandidate.includes("caravan");
+    const overlap = tokenOverlap(place.name, candidateName);
+    const campingLike = looksCampingLike(candidateName);
+    const hasSpecificSignal = hasSpecificNameSignal(place.name, candidateName);
+    const isCamping = place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ";
 
-    if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && !looksCampingLike && nameSimilarity < 0.18) {
-      continue;
-    }
-    if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && distance !== null && distance > 5000 && nameSimilarity < 0.3) {
-      continue;
+    if (isCamping) {
+      if (containsExcludedHint(place.name, EXCLUDED_CAMPING_HINTS)) continue;
+      if (!campingLike && overlap < 0.45 && nameSimilarity < 0.55) continue;
+      if (!hasSpecificSignal && distance !== null && distance > 400) continue;
+      if (distance !== null && distance > 1500 && overlap < 0.6 && nameSimilarity < 0.7) continue;
+      if (distance !== null && distance > 3000) continue;
+    } else {
+      if (containsExcludedHint(candidateName, EXCLUDED_SIGHTSEEING_HINTS)) continue;
+      if (!hasSpecificSignal && overlap < 0.35 && nameSimilarity < 0.45) continue;
+      if (distance !== null && distance > 2000 && overlap < 0.5 && nameSimilarity < 0.6) continue;
     }
 
-    let score = Math.round(nameSimilarity * 40);
+    let score = Math.round(nameSimilarity * 34) + Math.round(overlap * 28);
+    if (hasSpecificSignal) score += 8;
+    if (campingLike && isCamping) score += 6;
     if (distance !== null) {
-      if (distance <= 200) score += 12;
-      else if (distance <= 800) score += 8;
-      else if (distance <= 2500) score += 4;
-      else score -= 6;
+      if (distance <= 120) score += 14;
+      else if (distance <= 350) score += 10;
+      else if (distance <= 800) score += 5;
+      else if (distance <= 1500) score += 1;
+      else score -= 10;
     }
     score += scoreLandscape(photo.widthPx, photo.heightPx);
 
@@ -352,8 +460,21 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
 
 async function findWikimediaHeroCandidates(place: HeroCandidateInput): Promise<HeroCandidateRecord[]> {
   const wiki = await findWikimediaCandidates(place.name);
-  return wiki.map((candidate) => {
-    const base = 8 + Math.round(similarity(place.name, candidate.title) * 18) + scoreLandscape(candidate.width, candidate.height);
+  return wiki
+    .filter((candidate) => {
+      if (place.type === "SEHENSWUERDIGKEIT") {
+        if (containsExcludedHint(candidate.title, EXCLUDED_SIGHTSEEING_HINTS)) return false;
+      }
+      const overlap = tokenOverlap(place.name, candidate.title);
+      const nameScore = similarity(place.name, candidate.title);
+      return overlap >= 0.35 || nameScore >= 0.45 || hasSpecificNameSignal(place.name, candidate.title);
+    })
+    .map((candidate) => {
+      const overlap = tokenOverlap(place.name, candidate.title);
+      const nameScore = similarity(place.name, candidate.title);
+      let base = 8 + Math.round(nameScore * 18) + Math.round(overlap * 16) + scoreLandscape(candidate.width, candidate.height);
+      if (hasSpecificNameSignal(place.name, candidate.title)) base += 5;
+      if (candidate.width && candidate.height && candidate.width >= 1000 && candidate.height >= 700) base += 3;
     return {
       source: "wikimedia",
       url: candidate.url,
@@ -363,8 +484,8 @@ async function findWikimediaHeroCandidates(place: HeroCandidateInput): Promise<H
       score: base,
       reason: `Wikimedia '${candidate.title}'`,
       rank: 0,
-    };
-  });
+      };
+    });
 }
 
 export async function discoverHeroCandidates(
@@ -386,7 +507,7 @@ export async function discoverHeroCandidates(
     ...(wikimedia.status === "fulfilled" ? wikimedia.value : []),
   ];
 
-  const deduped = Array.from(new Map(all.map((candidate) => [candidate.url, candidate])).values())
+  const deduped = Array.from(new Map(all.map((candidate) => [dedupeKey(candidate), candidate])).values())
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((candidate, index) => ({ ...candidate, rank: index + 1 }));

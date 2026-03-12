@@ -393,6 +393,54 @@ function similarity(a: string, b: string): number {
   return overlap / Math.max(aa.size, bb.size);
 }
 
+function sanitizePlaceNameForMatching(value: string): string {
+  return String(value ?? "")
+    .replace(/<!\[CDATA\[|\]\]>/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(pkw|lkw|truck|icon|klicken|lesen|bitte|rückinfo|unklar|evtl|oldere|ältere|neuere|adapter)\b/gi, " ")
+    .replace(/[=>/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractBrandLikeTokens(value: string): string[] {
+  const generic = new Set([
+    "gas",
+    "station",
+    "service",
+    "petrol",
+    "fuel",
+    "energy",
+    "truck",
+    "car",
+    "express",
+    "de",
+    "du",
+    "la",
+    "le",
+    "el",
+    "the",
+    "and",
+    "und",
+    "orange",
+  ]);
+
+  return normalize(sanitizePlaceNameForMatching(value))
+    .split(" ")
+    .filter((token) => token.length >= 3 && !generic.has(token));
+}
+
+function brandTokenOverlapScore(a: string, b: string): number {
+  const aa = new Set(extractBrandLikeTokens(a));
+  const bb = new Set(extractBrandLikeTokens(b));
+  if (aa.size === 0 || bb.size === 0) return 0;
+  let overlap = 0;
+  for (const token of aa) {
+    if (bb.has(token)) overlap += 1;
+  }
+  return overlap / Math.max(aa.size, bb.size);
+}
+
 function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371000;
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -627,6 +675,10 @@ async function findGoogleMatch(
     }>;
   };
 
+  const isHvo = place.type === "HVO_TANKSTELLE";
+  const effectiveRadius = isHvo ? Math.max(radiusMeters, 1200) : radiusMeters;
+  const cleanedPlaceName = sanitizePlaceNameForMatching(place.name);
+
   const data = await fetchJsonRequest<NearbyNewResponse>(
     "https://places.googleapis.com/v1/places:searchNearby",
     "POST",
@@ -637,10 +689,11 @@ async function findGoogleMatch(
     },
     {
       maxResultCount: 20,
+      ...(isHvo ? { includedTypes: ["gas_station"] } : {}),
       locationRestriction: {
         circle: {
           center: { latitude: place.lat, longitude: place.lng },
-          radius: radiusMeters,
+          radius: effectiveRadius,
         },
       },
     }
@@ -670,13 +723,16 @@ async function findGoogleMatch(
   let bestScore = -999;
 
   for (const c of candidates) {
-    const nameSim = similarity(place.name, c.name);
-    let score = nameSim * 10;
+    const cleanedCandidateName = sanitizePlaceNameForMatching(c.name);
+    const nameSim = similarity(cleanedPlaceName, cleanedCandidateName);
+    const brandSim = brandTokenOverlapScore(cleanedPlaceName, cleanedCandidateName);
+    let score = isHvo ? nameSim * 8 + brandSim * 18 : nameSim * 10;
     if (typeof c.distanceMeters === "number") {
-      if (c.distanceMeters <= radiusMeters) score += 5;
+      if (c.distanceMeters <= effectiveRadius) score += 5;
       else score -= 5;
-      score += Math.max(0, 3 - c.distanceMeters / Math.max(100, radiusMeters));
+      score += Math.max(0, isHvo ? 6 - c.distanceMeters / Math.max(100, effectiveRadius / 2) : 3 - c.distanceMeters / Math.max(100, effectiveRadius));
     }
+    if (isHvo && (c.photos?.length ?? 0) > 0) score += 3;
 
     if (score > bestScore) {
       bestScore = score;
@@ -685,9 +741,17 @@ async function findGoogleMatch(
   }
 
   if (!best) return { match: null, reason: "No Google candidate" };
-  const bestNameSim = similarity(place.name, best.name);
-  const far = typeof best.distanceMeters === "number" && best.distanceMeters > radiusMeters * 1.5;
-  if (bestNameSim < 0.45 || far) {
+  const bestNameSim = similarity(cleanedPlaceName, sanitizePlaceNameForMatching(best.name));
+  const bestBrandSim = brandTokenOverlapScore(cleanedPlaceName, sanitizePlaceNameForMatching(best.name));
+  const far = typeof best.distanceMeters === "number" && best.distanceMeters > effectiveRadius * 1.5;
+  const weakHvoMatch =
+    isHvo &&
+    bestBrandSim <= 0 &&
+    bestNameSim < 0.2 &&
+    typeof best.distanceMeters === "number" &&
+    best.distanceMeters > 120;
+
+  if ((!isHvo && bestNameSim < 0.45) || far || weakHvoMatch) {
     return { match: null, reason: "No confident Google place match" };
   }
 

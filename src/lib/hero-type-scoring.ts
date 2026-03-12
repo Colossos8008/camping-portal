@@ -213,25 +213,25 @@ export function scoreVisionByPlaceType(placeType: PlaceType, input: VisionSignal
     }
   } else if (placeType === "HVO_TANKSTELLE") {
     if (signal.station || signal.outdoor || signal.building) {
-      score += 8;
-      positives.push("station/exterior +8");
+      score += 14;
+      positives.push("station/exterior +14");
     }
     if (signal.nature || signal.water) {
-      score += 3;
-      positives.push("minor-nature +3");
+      score += 2;
+      positives.push("minor-nature +2");
     }
     if (signal.vehicle) {
-      score += 2;
-      positives.push("vehicle-neutral +2");
+      score += 4;
+      positives.push("vehicle-neutral +4");
     }
 
     if (signal.logoText) {
-      score -= 16;
-      negatives.push("logo/text -16");
+      score -= 6;
+      negatives.push("logo/text -6");
     }
     if (signal.station) {
-      score -= 12;
-      negatives.push("fuel-dispenser penalty -12");
+      score -= 4;
+      negatives.push("fuel-dispenser closeup -4");
     }
     if (signal.indoor) {
       score -= 20;

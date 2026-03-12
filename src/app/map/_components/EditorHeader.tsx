@@ -6,7 +6,6 @@ import FeatureIcons from "./FeatureIcons";
 import { formatDistanceKm } from "../_lib/geo";
 import type { Place } from "../_lib/types";
 import { getSupabasePublicUrl } from "../_lib/image-url";
-import { isGooglePhotoReference } from "@/lib/hero-image";
 import { isHeroDebugPoiId } from "@/lib/hero-debug";
 
 export default function EditorHeader(props: {
@@ -38,11 +37,7 @@ export default function EditorHeader(props: {
   const dist = formatDistanceKm(props.distanceKm);
 
   const heroFilename = String(props.heroImage?.filename ?? "").trim();
-  const heroBaseSrc = heroFilename
-    ? isGooglePhotoReference(heroFilename) && props.placeId
-      ? `/api/places/${props.placeId}/hero`
-      : getSupabasePublicUrl(heroFilename, { placeId: props.placeId })
-    : "";
+  const heroBaseSrc = heroFilename ? getSupabasePublicUrl(heroFilename, { placeId: props.placeId }) : "";
 
   const [heroRetry, setHeroRetry] = useState(0);
   const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");

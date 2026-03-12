@@ -69,6 +69,14 @@ function round6(n: number) {
   return Number(n.toFixed(6));
 }
 
+function preferOptionalText(...values: any[]): string | undefined {
+  for (const value of values) {
+    const text = asOptionalString(value);
+    if (text) return text;
+  }
+  return undefined;
+}
+
 function normNameKey(s: string) {
   return String(s ?? "")
     .trim()
@@ -423,6 +431,12 @@ export async function POST(req: Request) {
       const yearRound = asBool(getCsv(r, "yearRound", "winterOpen"));
       const onlineBooking = asBool(getCsv(r, "onlineBooking"));
       const gastronomy = asBool(getCsv(r, "gastronomy"));
+      const importedNote = preferOptionalText(
+        getCsv(r, "notes"),
+        getCsv(r, "description"),
+        getCsv(r, "desc"),
+        getCsv(r, "note")
+      );
 
       const latR = round6(lat);
       const lngR = round6(lng);
@@ -446,15 +460,30 @@ export async function POST(req: Request) {
       const patchUpdate: any = { ...basePatch };
       const patchCreate: any = { ...basePatch };
 
+      if (importedNote) {
+        patchUpdate.ratingDetail = {
+          upsert: {
+            create: { note: importedNote },
+            update: { note: importedNote },
+          },
+        };
+        patchCreate.ratingDetail = {
+          create: { note: importedNote },
+        };
+      }
+
       if (canTs21 && shouldHaveTS && ts21Parsed) {
+        const ts21WithImportedNote = importedNote && !String(ts21Parsed.note ?? "").trim()
+          ? { ...ts21Parsed, note: importedNote }
+          : ts21Parsed;
         patchUpdate.ts21 = {
           upsert: {
-            create: { ...ts21Parsed },
-            update: { ...ts21Parsed },
+            create: { ...ts21WithImportedNote },
+            update: { ...ts21WithImportedNote },
           },
         };
         patchCreate.ts21 = {
-          create: { ...ts21Parsed },
+          create: { ...ts21WithImportedNote },
         };
       }
 

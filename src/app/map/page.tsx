@@ -116,6 +116,7 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
 }
 
 type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES";
+type LightboxImage = { id?: number; filename: string };
 
 function collapsedSections(): Record<EditorSectionId, boolean> {
   return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
@@ -944,22 +945,25 @@ export default function MapPage() {
       ? headerImages[0]
       : null;
 
-  function lbList() {
-    return Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
-  }
+  const lbImages = useMemo<LightboxImage[]>(() => {
+    const heroFilename = String(form.heroImageUrl ?? "").trim();
+    const galleryImages = Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
+    const uniqueGalleryImages = galleryImages.filter((img: any) => String(img?.filename ?? "").trim() !== heroFilename);
+
+    if (!heroFilename) return uniqueGalleryImages;
+    return [{ id: -1, filename: heroFilename }, ...uniqueGalleryImages];
+  }, [form.heroImageUrl, form.images, headerImages]);
 
   function openLightbox(index: number) {
-    const imgs = lbList();
-    if (!imgs.length) return;
-    const idx = Math.max(0, Math.min(index, imgs.length - 1));
+    if (!lbImages.length) return;
+    const idx = Math.max(0, Math.min(index, lbImages.length - 1));
     setLbIndex(idx);
     setLbOpen(true);
   }
 
   function openLightboxById(imageId: number) {
-    const imgs = lbList();
-    if (!imgs.length) return;
-    const idx = imgs.findIndex((x: any) => Number(x.id) === Number(imageId));
+    if (!lbImages.length) return;
+    const idx = lbImages.findIndex((x: any) => Number(x.id) === Number(imageId));
     openLightbox(idx >= 0 ? idx : 0);
   }
 
@@ -968,18 +972,14 @@ export default function MapPage() {
   }
 
   function lbPrev() {
-    const imgs = lbList();
-    if (!imgs.length) return;
-    setLbIndex((i) => (i - 1 + imgs.length) % imgs.length);
+    if (!lbImages.length) return;
+    setLbIndex((i) => (i - 1 + lbImages.length) % lbImages.length);
   }
 
   function lbNext() {
-    const imgs = lbList();
-    if (!imgs.length) return;
-    setLbIndex((i) => (i + 1) % imgs.length);
+    if (!lbImages.length) return;
+    setLbIndex((i) => (i + 1) % lbImages.length);
   }
-
-  const lbImages = useMemo(() => lbList(), [form.images, headerImages]);
 
   const selectedDistanceKm = useMemo(() => {
     if (!myPos || !selectedPlace) return null;

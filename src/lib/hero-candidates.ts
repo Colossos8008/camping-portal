@@ -356,6 +356,33 @@ function parseHtmlImageCandidates(html: string, websiteUrl: string): string[] {
     if (matches.size >= 12) break;
   }
 
+  const styleRegex = /url\((['"]?)(https?:\/\/[^'")]+|\/[^'")]+)\1\)/gi;
+  for (const match of html.matchAll(styleRegex)) {
+    const resolved = resolveMaybeRelativeUrl(websiteUrl, String(match[2] ?? ""));
+    if (!resolved) continue;
+    const lower = resolved.toLowerCase();
+    if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+    if (hasBadHints(lower)) continue;
+    matches.add(resolved);
+    if (matches.size >= 16) break;
+  }
+
+  const jsonImageRegex = /"image"\s*:\s*(\[[^\]]+\]|"[^"]+")/gi;
+  for (const match of html.matchAll(jsonImageRegex)) {
+    const raw = String(match[1] ?? "");
+    const urls = Array.from(raw.matchAll(/https?:\/\/[^"'\\\]]+/gi)).map((item) => item[0]);
+    for (const url of urls) {
+      const resolved = resolveMaybeRelativeUrl(websiteUrl, url);
+      if (!resolved) continue;
+      const lower = resolved.toLowerCase();
+      if (!/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) && !lower.includes("/image") && !lower.includes("/media")) continue;
+      if (hasBadHints(lower)) continue;
+      matches.add(resolved);
+      if (matches.size >= 16) break;
+    }
+    if (matches.size >= 16) break;
+  }
+
   return Array.from(matches.values());
 }
 
@@ -363,7 +390,7 @@ async function fetchWebsiteImageCandidates(websiteUrl: string, placeName: string
   try {
     const html = await fetchText(websiteUrl, 12000);
     return parseHtmlImageCandidates(html, websiteUrl)
-      .slice(0, 8)
+      .slice(0, 12)
       .map((url, index) => ({
         url,
         reason: index === 0 ? `Website image for '${placeName}'` : `Website gallery image ${index + 1} for '${placeName}'`,
@@ -741,26 +768,12 @@ async function findWikimediaHeroCandidates(place: HeroCandidateInput, relaxed = 
     });
 }
 
-function injectExistingHero(place: HeroCandidateInput, candidates: HeroCandidateRecord[]): HeroCandidateRecord[] {
-  const current = String(place.heroImageUrl ?? "").trim();
-  if (!current) return candidates;
-  if (candidates.some((candidate) => String(candidate.url ?? "").trim() === current)) return candidates;
-  return [
-    ...candidates,
-    {
-      source: "website",
-      url: current,
-      thumbUrl: current,
-      score: 6,
-      reason: "Aktuelles Hero-Bild als Fallback",
-      rank: 0,
-    },
-  ];
-}
-
 function entityKeyFromCandidate(candidate: HeroCandidateRecord): string {
   const quoted = String(candidate.reason ?? "").match(/'([^']+)'/);
-  if (quoted?.[1]) return `${candidate.source}:${normalize(quoted[1])}`;
+  if (quoted?.[1]) {
+    const tokens = tokenizeMeaningful(quoted[1]).sort().join("-");
+    return `${candidate.source}:${tokens || normalize(quoted[1])}`;
+  }
   try {
     const parsed = new URL(candidate.url);
     return `${candidate.source}:${parsed.hostname.toLowerCase()}`;
@@ -806,7 +819,7 @@ function signatureDistance(a: string, b: string): number {
 
 async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Promise<HeroCandidateRecord[]> {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
-  const topForSignature = sorted.slice(0, Math.min(24, sorted.length));
+  const topForSignature = sorted.slice(0, Math.min(40, sorted.length));
   const inspections = await Promise.all(
     topForSignature.map(async (candidate) => ({
       candidate,
@@ -831,6 +844,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     if (width && height && (width < 500 || height < 320)) continue;
     if (width && height && width / Math.max(1, height) < 0.7) continue;
     if (format === "png" && hasAlpha) continue;
+    if (!inspection?.signature) continue;
 
     const entityKey = entityKeyFromCandidate(candidate);
     const currentCount = entityCounts.get(entityKey) ?? 0;
@@ -839,7 +853,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     const signature = inspection?.signature ?? null;
     if (
       signature &&
-      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 10)
+      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 12)
     ) {
       continue;
     }
@@ -883,7 +897,6 @@ export async function discoverHeroCandidates(
     ];
   }
 
-  all = injectExistingHero(place, all);
   const visuallyDeduped = await dedupeCandidatesVisually(uniqueBy(all, (candidate) => dedupeKey(candidate)));
 
   return visuallyDeduped

@@ -316,11 +316,22 @@ async function fetchBuffer(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<B
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    let originHeaders: Record<string, string> = {};
+    try {
+      const parsed = new URL(url);
+      originHeaders = {
+        Referer: `${parsed.protocol}//${parsed.host}/`,
+        Origin: `${parsed.protocol}//${parsed.host}`,
+      };
+    } catch {
+      // keep generic headers only
+    }
     const res = await fetch(url, {
       method: "GET",
       headers: {
         Accept: "image/*,*/*;q=0.8",
         "User-Agent": "Mozilla/5.0 (compatible; camping-portal/1.0; +https://camping-portal.vercel.app)",
+        ...originHeaders,
       },
       signal: controller.signal,
       cache: "no-store",
@@ -1052,11 +1063,17 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     if (width && height && (width < 500 || height < 320)) continue;
     if (width && height && width / Math.max(1, height) < 0.7) continue;
     if (format === "png" && hasAlpha) continue;
-    if (!inspection?.signature) continue;
-
     const entityKey = entityKeyFromCandidate(candidate);
     const currentCount = entityCounts.get(entityKey) ?? 0;
     if (currentCount >= entityCap(candidate)) continue;
+
+    if (!inspection?.signature) {
+      if (candidate.source !== "website") continue;
+      kept.push({ ...candidate, score: candidate.score - 10 });
+      entityCounts.set(entityKey, currentCount + 1);
+      keptSignatures.push({ candidate, signature: null });
+      continue;
+    }
 
     const signature = inspection?.signature ?? null;
     if (

@@ -22,11 +22,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const parsed = new URL(target);
     const upstream = await fetch(target, {
       method: "GET",
       headers: {
         Accept: "image/*,*/*;q=0.8",
         "User-Agent": "Mozilla/5.0 (compatible; camping-portal/image-proxy; +https://camping-portal.vercel.app)",
+        Referer: `${parsed.protocol}//${parsed.host}/`,
+        Origin: `${parsed.protocol}//${parsed.host}`,
       },
       cache: "no-store",
       redirect: "follow",

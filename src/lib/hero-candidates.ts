@@ -879,6 +879,8 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
     if (isCamping) {
       if (!looksCampingLike(candidateName)) return false;
       if (!hasSignal && distance !== null && distance > 1500) return false;
+    } else if (requiredSharedTokens >= 2 && sharedTokens < requiredSharedTokens) {
+      return false;
     }
     return hasSignal || nameScore >= 0.18 || overlap >= 0.18 || (distance !== null && distance < 1200);
   }
@@ -940,7 +942,11 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
       });
     }
 
-    if (item.websiteUri) {
+    if (
+      item.websiteUri &&
+      (place.type !== "SEHENSWUERDIGKEIT" ||
+        sharedMeaningfulTokenCount(place.name, candidateName) >= Math.min(2, tokenizeMeaningful(place.name).length))
+    ) {
       const websiteImages = await fetchWebsiteImageCandidates(item.websiteUri, candidateName, {
         reasonPrefix: "Official website",
         includeLinkedPages: true,

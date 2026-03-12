@@ -3,13 +3,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
 const { PrismaClient } = prismaPkg as unknown as { PrismaClient: new (options?: unknown) => any };
+type PrismaClientInstance = InstanceType<typeof PrismaClient>;
 
 declare global {
   // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
+  var prisma: PrismaClientInstance | undefined;
 }
 
-function createMissingDbProxy(): PrismaClient {
+function createMissingDbProxy(): PrismaClientInstance {
   const message = 'Missing env DATABASE_URL. Put it into ".env.local".';
   return new Proxy(
     {},
@@ -18,7 +19,7 @@ function createMissingDbProxy(): PrismaClient {
         throw new Error(message);
       },
     }
-  ) as PrismaClient;
+  ) as PrismaClientInstance;
 }
 
 function createClient() {

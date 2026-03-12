@@ -195,7 +195,7 @@ function main(): void {
       continue;
     }
 
-    if (!Number.isFinite(proposedLat) || !Number.isFinite(proposedLng)) {
+    if (typeof proposedLat !== "number" || typeof proposedLng !== "number" || !Number.isFinite(proposedLat) || !Number.isFinite(proposedLng)) {
       outcomes.push({
         key,
         oldLat: row.latRaw,

@@ -889,10 +889,10 @@ export async function PUT(req: NextRequest) {
         coordinateReviewReviewedAt = String(nextItem.reviewedAt ?? "").trim() || reviewedAt;
         coordinateReviewNote = String(nextItem.reviewNote ?? "").trim();
       } else {
-        coordinateReviewStatus = normalizeReviewStatus(existingItem?.decision);
-        coordinateReviewSource = String(existingItem?.selectedSource ?? "").trim() || null;
-        coordinateReviewReviewedAt = String(existingItem?.reviewedAt ?? "").trim() || null;
-        coordinateReviewNote = String(existingItem?.reviewNote ?? "").trim();
+        coordinateReviewStatus = "UNREVIEWED";
+        coordinateReviewSource = null;
+        coordinateReviewReviewedAt = null;
+        coordinateReviewNote = "";
       }
     } catch (feedbackError) {
       console.error("coordinate-feedback-update-failed", feedbackError);

@@ -623,14 +623,14 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
   if (relaxed) {
     if (distance !== null && distance > 25000 && nameScore < 0.2 && overlap < 0.2) return false;
     if (isCamping) {
-      if (!looksCampingLike(candidateName) && !hasSignal && nameScore < 0.3 && overlap < 0.3) return false;
+      if (!looksCampingLike(candidateName)) return false;
       if (!hasSignal && distance !== null && distance > 1500) return false;
     }
     return hasSignal || nameScore >= 0.18 || overlap >= 0.18 || (distance !== null && distance < 1200);
   }
 
   if (isCamping) {
-    if (!looksCampingLike(candidateName) && !hasSignal && nameScore < 0.45 && overlap < 0.4) return false;
+    if (!looksCampingLike(candidateName)) return false;
     if (!hasSignal && distance !== null && distance > 1200) return false;
     if (distance !== null && distance > 6000 && nameScore < 0.55 && overlap < 0.5) return false;
     return hasSignal || (looksCampingLike(candidateName) && (distance === null || distance <= 500));

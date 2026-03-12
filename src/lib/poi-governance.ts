@@ -4,7 +4,7 @@ export type CoordinateMode = (typeof COORDINATE_MODES)[number];
 export const POI_REVIEW_STATES = ["PENDING", "AUTO_ACCEPT", "AUTO_REJECT", "MANUAL_REVIEW"] as const;
 export type PoiReviewState = (typeof POI_REVIEW_STATES)[number];
 
-import { decidePoiGovernancePolicy } from "./poi-source-decision-tree.ts";
+import { decidePoiGovernancePolicy } from "./poi-source-decision-tree";
 
 type OsmLikeElement = {
   type: "node" | "way" | "relation";

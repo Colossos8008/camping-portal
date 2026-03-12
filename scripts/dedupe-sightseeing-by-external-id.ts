@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma.ts";
+import { prisma } from "../src/lib/prisma";
 
 type CandidateRow = {
   id: number;

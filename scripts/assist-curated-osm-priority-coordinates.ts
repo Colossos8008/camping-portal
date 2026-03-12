@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
+import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets";
 
 type NominatimHit = {
   place_id?: number;
@@ -28,7 +28,7 @@ type CliArgs = {
   limit: number;
 };
 
-const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
+const CURATED_FILE = "src/lib/curated-sightseeing-presets";
 
 const PRIORITY_TARGETS: CuratedTarget[] = [
   { key: "marksburg", name: "Marksburg", query: "Marksburg Braubach" },

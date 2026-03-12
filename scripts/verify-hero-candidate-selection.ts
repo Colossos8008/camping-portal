@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { selectHeroCandidateByThreshold, type HeroCandidate } from "../src/lib/hero-candidate-selection.ts";
-import { scoreVisionByPlaceType, type PlaceType, type VisionLabel } from "../src/lib/hero-type-scoring.ts";
+import { selectHeroCandidateByThreshold, type HeroCandidate } from "../src/lib/hero-candidate-selection";
+import { scoreVisionByPlaceType, type PlaceType, type VisionLabel } from "../src/lib/hero-type-scoring";
 
 type Scenario = {
   name: string;

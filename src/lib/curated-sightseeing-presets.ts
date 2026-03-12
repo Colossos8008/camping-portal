@@ -1,4 +1,4 @@
-import type { SightseeingCandidate } from "./sightseeing-seed-import.ts";
+import type { SightseeingCandidate } from "./sightseeing-seed-import";
 
 type CuratedPresetKey = "nievern-highlights";
 

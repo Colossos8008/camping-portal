@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma.ts";
-import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets.ts";
-import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
-import { normalizeName } from "../src/lib/sightseeing-seed-import.ts";
+import { prisma } from "../src/lib/prisma";
+import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets";
+import { validateHeroUrl } from "../src/lib/hero-url-validation";
+import { normalizeName } from "../src/lib/sightseeing-seed-import";
 
 type CuratedPlace = {
   id: number;

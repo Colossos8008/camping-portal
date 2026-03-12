@@ -1,5 +1,5 @@
-import { derivePoiGovernanceFromOsmElement } from "../src/lib/poi-governance.ts";
-import { parseOverpassElements, normalizeCandidate, REGION_CONFIGS } from "../src/lib/sightseeing-seed-import.ts";
+import { derivePoiGovernanceFromOsmElement } from "../src/lib/poi-governance";
+import { parseOverpassElements, normalizeCandidate, REGION_CONFIGS } from "../src/lib/sightseeing-seed-import";
 
 type CliArgs = {
   region: keyof typeof REGION_CONFIGS;

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
+import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets";
 
 type CoordinateStatus = "GOOD" | "OKAY" | "BAD";
 type ImageStatus = "GOOD" | "BAD" | "UNKNOWN";

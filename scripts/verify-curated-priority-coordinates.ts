@@ -1,4 +1,4 @@
-import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
+import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets";
 
 const PRIORITY_KEYS = [
   "deutsches-eck",

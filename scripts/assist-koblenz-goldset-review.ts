@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
+import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets";
 
 type CoordinateMode = "EXACT" | "AREA_ANCHOR" | "COMPLEX_SITE" | "VIEWPOINT" | "ENTRANCE_POINT";
 type ReviewState = "AUTO_ACCEPT" | "MANUAL_REVIEW";
@@ -36,7 +36,7 @@ type GoogleSearchDebug = {
   error: string | null;
 };
 
-const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
+const CURATED_FILE = "src/lib/curated-sightseeing-presets";
 const PRESET = "nievern-highlights";
 type TargetCategory = "MONUMENT" | "COMPLEX_SITE" | "NATURE_ANCHOR";
 type DistanceGate = { autoAcceptMaxM: number; manualReviewMaxM: number };

@@ -1,5 +1,5 @@
-import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets.ts";
-import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
+import { getCuratedPresetCandidates } from "../src/lib/curated-sightseeing-presets";
+import { validateHeroUrl } from "../src/lib/hero-url-validation";
 
 type Result = {
   key: string;

@@ -52,7 +52,7 @@ type Outcome = {
 
 const PROPOSAL_FILE = "data/review/koblenz-goldset-quickwin-patch-proposal.json";
 const APPROVED_PROPOSAL_FILE = "data/review/koblenz-goldset-quickwin-patch-proposal-approved.json";
-const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
+const CURATED_FILE = "src/lib/curated-sightseeing-presets";
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = { apply: false, key: null, limit: null, approved: false };

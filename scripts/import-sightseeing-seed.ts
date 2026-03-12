@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { prisma } from "../src/lib/prisma.ts";
+import { prisma } from "../src/lib/prisma";
 import {
   areLikelySamePlace,
   buildOverpassQuery,
@@ -18,9 +18,9 @@ import {
   type RegionConfig,
   type SightseeingCandidate,
   type TargetRegion,
-} from "../src/lib/sightseeing-seed-import.ts";
-import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets.ts";
-import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
+} from "../src/lib/sightseeing-seed-import";
+import { getCuratedPresetCandidates, listCuratedPresetKeys } from "../src/lib/curated-sightseeing-presets";
+import { validateHeroUrl } from "../src/lib/hero-url-validation";
 
 const REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";

@@ -1,4 +1,4 @@
-import { derivePoiGovernanceFromOsmElement } from "./poi-governance.ts";
+import { derivePoiGovernanceFromOsmElement } from "./poi-governance";
 
 export type TargetRegion = "normandie" | "bretagne";
 

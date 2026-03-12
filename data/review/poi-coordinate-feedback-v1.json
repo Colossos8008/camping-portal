@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-12T05:54:53.286Z",
+  "generatedAt": "2026-03-12T05:55:27.625Z",
   "notes": "Manual coordinate feedback dataset for future ranking/retraining.",
   "items": [
     {
@@ -591,6 +591,21 @@
       "reviewedAt": "2026-03-12",
       "previousLat": 50.41604,
       "previousLng": 7.27445
+    },
+    {
+      "placeKey": "curated:nievern-highlights:burg-rheineck",
+      "placeName": "Burg Rheineck",
+      "region": "bad-breisig",
+      "targetPointType": "UNKNOWN",
+      "decision": "CORRECTED",
+      "selectedSource": "map-picked",
+      "selectedLat": 50.4958928263919,
+      "selectedLng": 7.31300780735583,
+      "reviewNote": "",
+      "reviewedBy": "manual-ui",
+      "reviewedAt": "2026-03-12",
+      "previousLat": 50.4633,
+      "previousLng": 7.2615
     }
   ]
 }

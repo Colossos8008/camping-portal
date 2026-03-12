@@ -30,7 +30,7 @@ function run() {
     "Wikimedia URL should pass through"
   );
 
-  const imageUrlHelperSource = fs.readFileSync("src/app/map/_lib/image-url.ts", "utf8");
+  const imageUrlHelperSource = fs.readFileSync("src/app/map/_lib/image-url", "utf8");
 
   assert.equal(
     imageUrlHelperSource.includes(

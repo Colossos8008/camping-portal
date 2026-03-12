@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { scoreVisionByPlaceType, type VisionLabel } from "../src/lib/hero-type-scoring.ts";
+import { scoreVisionByPlaceType, type VisionLabel } from "../src/lib/hero-type-scoring";
 
 type PlaceType = "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
 

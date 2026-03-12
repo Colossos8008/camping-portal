@@ -42,7 +42,7 @@ type Proposal = {
 };
 
 const WORKLIST_FILE = "data/review/koblenz-goldset-quickwin-worklist.json";
-const CURATED_FILE = "src/lib/curated-sightseeing-presets.ts";
+const CURATED_FILE = "src/lib/curated-sightseeing-presets";
 const OUTPUT_FILE = "data/review/koblenz-goldset-quickwin-patch-proposal.json";
 
 function parseArgs(argv: string[]): CliArgs {

@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma.ts";
-import { validateHeroUrl } from "../src/lib/hero-url-validation.ts";
+import { prisma } from "../src/lib/prisma";
+import { validateHeroUrl } from "../src/lib/hero-url-validation";
 
 const PRIORITY_KEYS = [
   "deutsches-eck",

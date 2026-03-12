@@ -1,5 +1,5 @@
 async function loadRatingModule() {
-  return import(new URL("../src/lib/sightseeing-rating.ts", import.meta.url).href);
+  return import(new URL("../src/lib/sightseeing-rating", import.meta.url).href);
 }
 
 function assert(condition: boolean, message: string) {

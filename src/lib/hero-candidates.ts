@@ -310,12 +310,28 @@ async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string
         ? distanceMeters(place.lat, place.lng, item.location.latitude, item.location.longitude)
         : null;
 
-    let score = Math.round(similarity(place.name, candidateName) * 20) + 10;
+    const nameSimilarity = similarity(place.name, candidateName);
+    const normalizedCandidate = normalize(candidateName);
+    const looksCampingLike =
+      normalizedCandidate.includes("camp") ||
+      normalizedCandidate.includes("rv") ||
+      normalizedCandidate.includes("stellplatz") ||
+      normalizedCandidate.includes("wohnmobil") ||
+      normalizedCandidate.includes("caravan");
+
+    if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && !looksCampingLike && nameSimilarity < 0.18) {
+      continue;
+    }
+    if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && distance !== null && distance > 5000 && nameSimilarity < 0.3) {
+      continue;
+    }
+
+    let score = Math.round(nameSimilarity * 40);
     if (distance !== null) {
-      if (distance <= 200) score += 15;
-      else if (distance <= 800) score += 10;
-      else if (distance <= 2500) score += 5;
-      else score -= 4;
+      if (distance <= 200) score += 12;
+      else if (distance <= 800) score += 8;
+      else if (distance <= 2500) score += 4;
+      else score -= 6;
     }
     score += scoreLandscape(photo.widthPx, photo.heightPx);
 

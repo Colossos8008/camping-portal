@@ -80,7 +80,7 @@ export type Place = {
   sightTags?: string[] | null;
   sightRegion?: string | null;
   sightCountry?: string | null;
-  coordinateReviewStatus?: "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+  coordinateReviewStatus?: "UNREVIEWED" | "CORRECTED" | "CONFIRMED" | "REJECTED";
   coordinateReviewSource?: string | null;
   coordinateReviewReviewedAt?: string | null;
   coordinateReviewNote?: string | null;

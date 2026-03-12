@@ -61,6 +61,19 @@ function makeDivIcon(html: string, size: number) {
   });
 }
 
+function typeGlyphHtml(t: PlaceType, pixelSize: number) {
+  if (t === "SEHENSWUERDIGKEIT") {
+    return `<img
+      src="/icons/sehenswuerdigkeit-marker.svg"
+      alt="Sehenswuerdigkeit"
+      draggable="false"
+      style="width:${pixelSize}px;height:${pixelSize}px;display:block;filter:drop-shadow(0 6px 12px rgba(0,0,0,0.22));"
+    />`;
+  }
+
+  return `<span style="font-size:${pixelSize}px;line-height:1;display:block;">${typeEmoji(t)}</span>`;
+}
+
 function typeEmoji(t: PlaceType) {
   if (t === "STELLPLATZ") return "🅿️";
   if (t === "CAMPINGPLATZ") return "⛺";
@@ -122,7 +135,18 @@ function markerSize(v: MarkerVariant) {
 }
 
 function markerHtml(p: Place, v: MarkerVariant) {
-  const emoji = typeEmoji(p.type);
+  const glyph = typeGlyphHtml(
+    p.type,
+    p.type === "SEHENSWUERDIGKEIT"
+      ? v === "SELECTED"
+        ? 26
+        : v === "HOVER"
+          ? 24
+          : 22
+      : v === "NORMAL"
+        ? 16
+        : 18,
+  );
 
   if (v === "SELECTED") {
     return `<div style="
@@ -133,7 +157,7 @@ function markerHtml(p: Place, v: MarkerVariant) {
       box-shadow:0 16px 30px rgba(0,0,0,0.55);
       font-size:18px;
       transform:translateZ(0);
-    ">${emoji}</div>`;
+    ">${glyph}</div>`;
   }
 
   if (v === "HOVER") {
@@ -145,7 +169,7 @@ function markerHtml(p: Place, v: MarkerVariant) {
       box-shadow:0 16px 34px rgba(0,0,0,0.60);
       font-size:18px;
       transform:translateZ(0);
-    ">${emoji}</div>`;
+    ">${glyph}</div>`;
   }
 
   return `<div style="
@@ -156,7 +180,7 @@ function markerHtml(p: Place, v: MarkerVariant) {
     box-shadow:0 12px 24px rgba(0,0,0,0.40);
     font-size:16px;
     transform:translateZ(0);
-  ">${emoji}</div>`;
+  ">${glyph}</div>`;
 }
 
 function hoverTooltipHtml(p: Place) {

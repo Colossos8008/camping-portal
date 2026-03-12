@@ -48,7 +48,7 @@ function ts21ToPoints(v: TS21Value): number {
 
 function reviewBadge(p: Place) {
   const rawStatus = (p as any)?.coordinateReviewStatus;
-  const status = rawStatus === "CONFIRMED" || rawStatus === "CORRECTED" ? rawStatus : "UNREVIEWED";
+  const status = rawStatus === "CONFIRMED" || rawStatus === "CORRECTED" || rawStatus === "REJECTED" ? rawStatus : "UNREVIEWED";
 
   if (status === "CONFIRMED") {
     return (
@@ -68,6 +68,17 @@ function reviewBadge(p: Place) {
         title="Koordinate korrigiert"
       >
         korrigiert
+      </span>
+    );
+  }
+
+  if (status === "REJECTED") {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-rose-400/20 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-rose-200"
+        title="Koordinate gepr??ft, aber verworfen"
+      >
+        verworfen
       </span>
     );
   }

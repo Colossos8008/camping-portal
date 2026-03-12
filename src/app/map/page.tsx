@@ -49,11 +49,11 @@ function isIOSNow() {
   return isiPhone || isMacTouch;
 }
 
-type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED" | "REJECTED";
 type CoordinateReviewFilter = "ALL" | CoordinateReviewStatus;
 
 function normalizeCoordinateReviewStatus(v: any): CoordinateReviewStatus {
-  return v === "CORRECTED" || v === "CONFIRMED" ? v : "UNREVIEWED";
+  return v === "CORRECTED" || v === "CONFIRMED" || v === "REJECTED" ? v : "UNREVIEWED";
 }
 
 function coordinateReviewStatusMeta(v: any): { label: string; className: string } {

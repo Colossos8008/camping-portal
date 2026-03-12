@@ -3,7 +3,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
-type CoordinateReviewFilter = "ALL" | "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+type CoordinateReviewFilter = "ALL" | "UNREVIEWED" | "CORRECTED" | "CONFIRMED" | "REJECTED";
 
 export default function FiltersPanel(props: {
   filtersOpen: boolean;

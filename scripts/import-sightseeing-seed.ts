@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { prisma } from "../src/lib/prisma.ts";
 import {
   areLikelySamePlace,
@@ -60,6 +62,7 @@ type ExistingPlace = {
   lng: number;
   sightExternalId: string | null;
   heroImageUrl: string | null;
+  poiReviewState?: string | null;
 };
 
 const TEST_MODE_BBOXES: Record<TargetRegion, BoundingBox> = {
@@ -71,6 +74,78 @@ type RankedCandidate = {
   candidate: SightseeingCandidate;
   highlightScore: number | null;
 };
+
+type CoordinateFeedbackDecision = "CONFIRMED" | "CORRECTED" | "REJECTED";
+type CoordinateFeedbackItem = {
+  placeKey?: string;
+  decision?: CoordinateFeedbackDecision | string;
+  selectedLat?: number;
+  selectedLng?: number;
+};
+type CoordinateFeedbackFile = {
+  items?: CoordinateFeedbackItem[];
+};
+
+const COORDINATE_FEEDBACK_FILE = resolve(process.cwd(), "data/review/poi-coordinate-feedback-v1.json");
+
+function readCoordinateFeedbackByPlaceKey(): Map<string, CoordinateFeedbackItem> {
+  if (!existsSync(COORDINATE_FEEDBACK_FILE)) return new Map();
+
+  try {
+    const payload = JSON.parse(readFileSync(COORDINATE_FEEDBACK_FILE, "utf8")) as CoordinateFeedbackFile;
+    const out = new Map<string, CoordinateFeedbackItem>();
+    for (const item of Array.isArray(payload.items) ? payload.items : []) {
+      const placeKey = String(item?.placeKey ?? "").trim();
+      if (!placeKey) continue;
+      out.set(placeKey, item);
+    }
+    return out;
+  } catch (error) {
+    console.warn(`[coordinate-feedback] failed to read ${COORDINATE_FEEDBACK_FILE}: ${String(error)}`);
+    return new Map();
+  }
+}
+
+function toFeedbackSlug(input: string): string {
+  return String(input ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+}
+
+function findCoordinateFeedback(candidate: SightseeingCandidate, feedbackByPlaceKey: Map<string, CoordinateFeedbackItem>): CoordinateFeedbackItem | null {
+  const sourceId = String(candidate.sourceId ?? "").trim();
+  const fallbackKey = toFeedbackSlug(String(candidate.name ?? ""));
+  const candidates = [sourceId, fallbackKey].filter(Boolean);
+
+  for (const key of candidates) {
+    const feedback = feedbackByPlaceKey.get(key);
+    if (feedback) return feedback;
+  }
+
+  return null;
+}
+
+function applyCoordinateFeedback(candidate: SightseeingCandidate, feedbackByPlaceKey: Map<string, CoordinateFeedbackItem>): SightseeingCandidate {
+  const feedback = findCoordinateFeedback(candidate, feedbackByPlaceKey);
+  if (!feedback) return candidate;
+
+  const decision = String(feedback.decision ?? "").trim().toUpperCase();
+  if (decision !== "CONFIRMED" && decision !== "CORRECTED") return candidate;
+
+  const lat = Number(feedback.selectedLat);
+  const lng = Number(feedback.selectedLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return candidate;
+
+  return {
+    ...candidate,
+    lat,
+    lng,
+  };
+}
 
 async function validateCuratedCandidateHeroes(candidates: SightseeingCandidate[], verbose: boolean): Promise<SightseeingCandidate[]> {
   const out: SightseeingCandidate[] = [];
@@ -644,8 +719,10 @@ async function runRegionImport(options: {
         })
         .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
+  const feedbackByPlaceKey = readCoordinateFeedbackByPlaceKey();
+
   const normalized = curatedSet
-    ? await validateCuratedCandidateHeroes(normalizedRaw, verbose)
+    ? (await validateCuratedCandidateHeroes(normalizedRaw, verbose)).map((candidate) => applyCoordinateFeedback(candidate, feedbackByPlaceKey))
     : normalizedRaw;
 
   if (curatedSet) {
@@ -667,7 +744,7 @@ async function runRegionImport(options: {
 
   const existingRows = (await prisma.place.findMany({
     where: { type: "SEHENSWUERDIGKEIT" },
-    select: { id: true, name: true, lat: true, lng: true, type: true, sightExternalId: true, heroImageUrl: true },
+    select: { id: true, name: true, lat: true, lng: true, type: true, sightExternalId: true, heroImageUrl: true, poiReviewState: true },
   })) as ExistingPlace[];
 
   const accepted: RankedCandidate[] = [];
@@ -783,6 +860,7 @@ async function runRegionImport(options: {
               sightRegion: candidate.sourceRegion,
               sightCountry: candidate.country,
               ...buildPoiGovernanceData(candidate),
+              poiReviewState: matchByExternalId.poiReviewState ?? buildPoiGovernanceData(candidate).poiReviewState,
               ...buildHeroImageUpdate({
                 candidate,
                 existingHeroImageUrl: matchByExternalId.heroImageUrl,
@@ -861,6 +939,7 @@ async function runRegionImport(options: {
             sightRegion: candidate.sourceRegion,
             sightCountry: candidate.country,
             ...buildPoiGovernanceData(candidate),
+            poiReviewState: duplicateInDb.poiReviewState ?? buildPoiGovernanceData(candidate).poiReviewState,
             ...buildHeroImageUpdate({
               candidate,
               existingHeroImageUrl: duplicateInDb.heroImageUrl,

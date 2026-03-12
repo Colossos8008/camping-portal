@@ -176,7 +176,10 @@ export function safePlacesFromApi(input: any): Place[] {
         sightTags: Array.isArray(p.sightTags) ? p.sightTags.map((x: any) => String(x)).filter((x: string) => x.trim().length > 0) : [],
         sightRegion: typeof p.sightRegion === "string" && p.sightRegion.trim() ? p.sightRegion.trim() : null,
         sightCountry: typeof p.sightCountry === "string" && p.sightCountry.trim() ? p.sightCountry.trim() : null,
-        coordinateReviewStatus: p.coordinateReviewStatus === "CORRECTED" || p.coordinateReviewStatus === "CONFIRMED" ? p.coordinateReviewStatus : "UNREVIEWED",
+        coordinateReviewStatus:
+          p.coordinateReviewStatus === "CORRECTED" || p.coordinateReviewStatus === "CONFIRMED" || p.coordinateReviewStatus === "REJECTED"
+            ? p.coordinateReviewStatus
+            : "UNREVIEWED",
         coordinateReviewSource: typeof p.coordinateReviewSource === "string" && p.coordinateReviewSource.trim() ? p.coordinateReviewSource.trim() : null,
         coordinateReviewReviewedAt: typeof p.coordinateReviewReviewedAt === "string" && p.coordinateReviewReviewedAt.trim() ? p.coordinateReviewReviewedAt.trim() : null,
         coordinateReviewNote: typeof p.coordinateReviewNote === "string" ? p.coordinateReviewNote : null,

@@ -57,8 +57,8 @@ type TS21Detail = {
   note: string;
 };
 
-type CoordinateReviewDecision = "CORRECTED" | "CONFIRMED";
-type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED";
+type CoordinateReviewDecision = "CORRECTED" | "CONFIRMED" | "REJECTED";
+type CoordinateReviewStatus = "UNREVIEWED" | "CORRECTED" | "CONFIRMED" | "REJECTED";
 type CoordinateReviewMeta = {
   status: CoordinateReviewStatus;
   source: string | null;
@@ -287,13 +287,14 @@ function normalizeScore0to100(v: any): number | null | undefined {
 }
 
 function normalizeReviewDecision(v: any): CoordinateReviewDecision | null {
-  if (v === "CORRECTED" || v === "CONFIRMED") return v;
+  if (v === "CORRECTED" || v === "CONFIRMED" || v === "REJECTED") return v;
   return null;
 }
 
 function normalizeReviewStatus(decision: string | undefined): CoordinateReviewStatus {
   if (decision === "CORRECTED") return "CORRECTED";
   if (decision === "CONFIRMED") return "CONFIRMED";
+  if (decision === "REJECTED") return "REJECTED";
   return "UNREVIEWED";
 }
 

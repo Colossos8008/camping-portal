@@ -57,12 +57,42 @@ type CandidateSignature = {
   signature: string | null;
 };
 
+type ImageInspection = {
+  signature: string | null;
+  width?: number;
+  height?: number;
+  format?: string;
+  hasAlpha?: boolean;
+};
+
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_WIKIMEDIA_CANDIDATES = 16;
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
 const GOOGLE_THUMB_WIDTH = 480;
 const MIN_TARGET_RESULTS = 6;
-const BAD_HINTS = ["logo", "icon", "map", "flag", "coat", "emblem", "text", "sign", "selfie", "portrait"];
+const BAD_HINTS = [
+  "logo",
+  "icon",
+  "map",
+  "flag",
+  "coat",
+  "emblem",
+  "text",
+  "sign",
+  "selfie",
+  "portrait",
+  "badge",
+  "classification",
+  "adac",
+  "award",
+  "partner",
+  "sponsor",
+  "shop",
+  "stars",
+  "stern",
+  "button",
+  "favicon",
+];
 const EXCLUDED_CAMPING_HINTS = ["hotel", "cottage", "bedroom", "spa", "apartment", "ferienwohnung", "guesthouse", "villa", "lodge", "resort", "hostel"];
 const EXCLUDED_SIGHTSEEING_HINTS = ["selfie", "portrait", "logo", "plan", "map"];
 const GENERIC_TOKENS = new Set([
@@ -592,13 +622,18 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
 
   if (relaxed) {
     if (distance !== null && distance > 25000 && nameScore < 0.2 && overlap < 0.2) return false;
+    if (isCamping) {
+      if (!looksCampingLike(candidateName) && !hasSignal && nameScore < 0.3 && overlap < 0.3) return false;
+      if (!hasSignal && distance !== null && distance > 1500) return false;
+    }
     return hasSignal || nameScore >= 0.18 || overlap >= 0.18 || (distance !== null && distance < 1200);
   }
 
   if (isCamping) {
     if (!looksCampingLike(candidateName) && !hasSignal && nameScore < 0.45 && overlap < 0.4) return false;
+    if (!hasSignal && distance !== null && distance > 1200) return false;
     if (distance !== null && distance > 6000 && nameScore < 0.55 && overlap < 0.5) return false;
-    return hasSignal || looksCampingLike(candidateName) || distance === null || distance <= 2500;
+    return hasSignal || (looksCampingLike(candidateName) && (distance === null || distance <= 500));
   }
 
   if (!hasSignal && nameScore < 0.35 && overlap < 0.28) return false;
@@ -732,20 +767,28 @@ function entityKeyFromCandidate(candidate: HeroCandidateRecord): string {
 }
 
 function entityCap(candidate: HeroCandidateRecord): number {
-  if (candidate.source === "google") return 2;
+  if (candidate.source === "google") return 1;
   if (candidate.source === "website") return 3;
-  return 2;
+  return 1;
 }
 
-async function buildVisualSignature(url: string): Promise<string | null> {
+async function inspectImage(url: string): Promise<ImageInspection> {
   try {
     const buffer = await fetchBuffer(url, 10000);
-    const raw = await sharp(buffer).rotate().resize(8, 8, { fit: "fill" }).grayscale().raw().toBuffer();
-    if (!raw.length) return null;
+    const image = sharp(buffer).rotate();
+    const metadata = await image.metadata();
+    const raw = await image.resize(8, 8, { fit: "fill" }).grayscale().raw().toBuffer();
+    if (!raw.length) return { signature: null };
     const avg = raw.reduce((sum, value) => sum + value, 0) / raw.length;
-    return Array.from(raw, (value) => (value >= avg ? "1" : "0")).join("");
+    return {
+      signature: Array.from(raw, (value) => (value >= avg ? "1" : "0")).join(""),
+      width: metadata.width,
+      height: metadata.height,
+      format: metadata.format,
+      hasAlpha: metadata.hasAlpha,
+    };
   } catch {
-    return null;
+    return { signature: null };
   }
 }
 
@@ -761,27 +804,39 @@ function signatureDistance(a: string, b: string): number {
 async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Promise<HeroCandidateRecord[]> {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const topForSignature = sorted.slice(0, Math.min(24, sorted.length));
-  const signatures = await Promise.all(
+  const inspections = await Promise.all(
     topForSignature.map(async (candidate) => ({
       candidate,
-      signature: await buildVisualSignature(String(candidate.thumbUrl ?? candidate.url ?? "").trim()),
+      inspection: await inspectImage(String(candidate.thumbUrl ?? candidate.url ?? "").trim()),
     }))
   );
-  const signatureMap = new Map<string, string | null>(signatures.map((entry) => [dedupeKey(entry.candidate), entry.signature]));
+  const inspectionMap = new Map<string, ImageInspection>(inspections.map((entry) => [dedupeKey(entry.candidate), entry.inspection]));
 
   const kept: HeroCandidateRecord[] = [];
   const keptSignatures: CandidateSignature[] = [];
   const entityCounts = new Map<string, number>();
 
   for (const candidate of sorted) {
+    const inspection = inspectionMap.get(dedupeKey(candidate));
+    const width = inspection?.width ?? candidate.width ?? undefined;
+    const height = inspection?.height ?? candidate.height ?? undefined;
+    const format = String(inspection?.format ?? "").toLowerCase();
+    const hasAlpha = inspection?.hasAlpha === true;
+    const combinedText = `${candidate.url} ${candidate.reason}`;
+
+    if (hasBadHints(combinedText)) continue;
+    if (width && height && (width < 500 || height < 320)) continue;
+    if (width && height && width / Math.max(1, height) < 0.7) continue;
+    if (format === "png" && hasAlpha) continue;
+
     const entityKey = entityKeyFromCandidate(candidate);
     const currentCount = entityCounts.get(entityKey) ?? 0;
     if (currentCount >= entityCap(candidate)) continue;
 
-    const signature = signatureMap.get(dedupeKey(candidate)) ?? null;
+    const signature = inspection?.signature ?? null;
     if (
       signature &&
-      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 6)
+      keptSignatures.some((entry) => entry.signature && signatureDistance(signature, entry.signature) <= 10)
     ) {
       continue;
     }

@@ -466,7 +466,6 @@ export default function MapPage() {
     setErrorMsg("");
     setUploadMsg("");
     setPickedFiles([]);
-    setHeroCandidates([]);
     setHeroCandidatesError("");
 
     setForm({

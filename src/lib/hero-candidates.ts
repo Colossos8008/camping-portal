@@ -110,6 +110,7 @@ const GALLERY_LINK_HINTS = ["galerie", "gallery", "bilder", "photos", "fotos", "
 const GENERIC_TOKENS = new Set([
   "the",
   "and",
+  "bad",
   "der",
   "die",
   "das",
@@ -131,7 +132,6 @@ const GENERIC_TOKENS = new Set([
   "campingplatz",
   "campground",
   "rv",
-  "park",
   "aire",
   "wohnmobil",
   "stellplatz",
@@ -190,6 +190,16 @@ function hasSpecificNameSignal(placeName: string, candidateName: string): boolea
   const placeTokens = tokenizeMeaningful(placeName);
   const candidateTokens = new Set(tokenizeMeaningful(candidateName));
   return placeTokens.some((token) => candidateTokens.has(token));
+}
+
+function sharedMeaningfulTokenCount(a: string, b: string): number {
+  const aa = new Set(tokenizeMeaningful(a));
+  const bb = new Set(tokenizeMeaningful(b));
+  let overlap = 0;
+  for (const token of aa) {
+    if (bb.has(token)) overlap += 1;
+  }
+  return overlap;
 }
 
 function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -571,9 +581,17 @@ async function discoverPagesFromDuckDuckGo(place: HeroCandidateInput): Promise<S
 async function findDiscoveredWebsiteCandidates(place: HeroCandidateInput): Promise<HeroCandidateRecord[]> {
   const pages = await discoverPagesFromDuckDuckGo(place);
   if (!pages.length) return [];
+  const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
 
   const pageGroups = await Promise.allSettled(
     pages.map(async (page, pageIndex) => {
+      if (
+        place.type === "SEHENSWUERDIGKEIT" &&
+        requiredSharedTokens >= 2 &&
+        sharedMeaningfulTokenCount(place.name, `${page.title} ${page.url}`) < requiredSharedTokens
+      ) {
+        return [];
+      }
       const images = await fetchWebsiteImageCandidates(page.url, place.name, {
         reasonPrefix: "Web search",
         includeLinkedPages: false,
@@ -849,6 +867,8 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
   const overlap = tokenOverlap(place.name, candidateName);
   const nameScore = similarity(place.name, candidateName);
   const hasSignal = hasSpecificNameSignal(place.name, candidateName);
+  const sharedTokens = sharedMeaningfulTokenCount(place.name, candidateName);
+  const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
   const isCamping = place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ";
 
   if (isCamping && containsHint(candidateName, EXCLUDED_CAMPING_HINTS) && !relaxed) return false;
@@ -869,6 +889,8 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
     if (distance !== null && distance > 6000 && nameScore < 0.55 && overlap < 0.5) return false;
     return hasSignal || (looksCampingLike(candidateName) && (distance === null || distance <= 500));
   }
+
+  if (!isCamping && requiredSharedTokens >= 2 && sharedTokens < requiredSharedTokens) return false;
 
   if (!hasSignal && nameScore < 0.35 && overlap < 0.28) return false;
   if (distance !== null && distance > 8000 && nameScore < 0.45 && overlap < 0.35) return false;
@@ -946,11 +968,14 @@ function shouldKeepWikiCandidate(place: HeroCandidateInput, candidate: Wikimedia
   const overlap = tokenOverlap(place.name, candidate.title);
   const nameScore = similarity(place.name, candidate.title);
   const hasSignal = hasSpecificNameSignal(place.name, candidate.title);
+  const sharedTokens = sharedMeaningfulTokenCount(place.name, candidate.title);
+  const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
   if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && !looksCampingLike(`${candidate.title} ${candidate.url}`)) {
     return false;
   }
   if (place.type === "SEHENSWUERDIGKEIT" && containsHint(candidate.title, EXCLUDED_SIGHTSEEING_HINTS) && !relaxed) return false;
   if (place.type !== "SEHENSWUERDIGKEIT" && containsHint(candidate.title, EXCLUDED_CAMPING_HINTS) && !relaxed) return false;
+  if (place.type === "SEHENSWUERDIGKEIT" && requiredSharedTokens >= 2 && sharedTokens < requiredSharedTokens) return false;
   return relaxed ? overlap >= 0.15 || nameScore >= 0.18 || hasSignal : overlap >= 0.3 || nameScore >= 0.35 || hasSignal;
 }
 

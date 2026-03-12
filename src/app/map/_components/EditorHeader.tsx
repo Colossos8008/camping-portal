@@ -41,6 +41,7 @@ export default function EditorHeader(props: {
 
   const [heroRetry, setHeroRetry] = useState(0);
   const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");
+  const [failedCandidateThumbs, setFailedCandidateThumbs] = useState<string[]>([]);
   const heroSrc = heroRetry > 0 && heroBaseSrc ? `${heroBaseSrc}${heroBaseSrc.includes("?") ? "&" : "?"}ui_retry=${heroRetry}` : heroBaseSrc;
 
   const canRenderHero = useMemo(() => {
@@ -53,6 +54,10 @@ export default function EditorHeader(props: {
     setHeroRetry(0);
     setHeroFailedSrc("");
   }, [heroBaseSrc]);
+
+  useEffect(() => {
+    setFailedCandidateThumbs([]);
+  }, [props.placeId, props.heroCandidateImages]);
 
   return (
     <div className="shrink-0 border-b border-white/10">
@@ -156,7 +161,10 @@ export default function EditorHeader(props: {
                   );
                 })}
 
-                {props.heroCandidateImages.slice(0, 12).map((img, idx) => {
+                {props.heroCandidateImages
+                  .filter((img) => !failedCandidateThumbs.includes(String(img.filename ?? "")))
+                  .slice(0, 12)
+                  .map((img, idx) => {
                   const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
                   return (
                     <button
@@ -167,7 +175,17 @@ export default function EditorHeader(props: {
                       title="Vorschlag öffnen"
                     >
                       {src ? (
-                        <img src={src} alt="" className="h-10 w-10 rounded-lg object-cover ring-1 ring-sky-300/40" loading="lazy" />
+                        <img
+                          src={src}
+                          alt=""
+                          className="h-10 w-10 rounded-lg object-cover ring-1 ring-sky-300/40"
+                          loading="lazy"
+                          onError={() => {
+                            setFailedCandidateThumbs((current) =>
+                              current.includes(String(img.filename ?? "")) ? current : [...current, String(img.filename ?? "")]
+                            );
+                          }}
+                        />
                       ) : (
                         <div className="h-10 w-10 rounded-lg bg-black/30 ring-1 ring-sky-300/40" />
                       )}
@@ -176,7 +194,7 @@ export default function EditorHeader(props: {
                       </span>
                     </button>
                   );
-                })}
+                  })}
               </>
             ) : (
               <div className="h-10 w-10 shrink-0 rounded-lg border border-white/10 bg-black/30" />

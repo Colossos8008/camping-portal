@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 import { isGooglePhotoReference } from "@/lib/hero-image";
 import { isHeroDebugPoiId, isHeroDebugPoiName } from "@/lib/hero-debug";
 import { getSupabasePublicUrl } from "./_lib/image-url";
+import { getCampingStance, getPlaceScore, getPlaceTypeLabel, getSightseeingMeta } from "./_lib/place-display";
 
 type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 type TSHaltung = "DNA" | "EXPLORER";
@@ -188,15 +189,16 @@ function hoverTooltipHtml(p: Place) {
   const heroUrl = hero ? getSupabasePublicUrl(hero, { placeId: p.id }) : null;
 
   const isSightseeing = p.type === "SEHENSWUERDIGKEIT";
-  const score = isSightseeing
-    ? (typeof p.sightseeingTotalScore === "number" && Number.isFinite(p.sightseeingTotalScore) ? p.sightseeingTotalScore : null)
-    : (() => { const v = Number(p.ratingDetail?.totalPoints ?? 0); return Number.isFinite(v) ? v : null; })();
+  const score = getPlaceScore(p as any);
 
+  const sightseeingMeta = getSightseeingMeta(p as any);
+  const stance = getCampingStance(p as any);
   const name = escapeHtml(clampText(p.name ?? ""));
-  const typeText = escapeHtml(String(p.type ?? ""));
-  const category = isSightseeing && typeof p.sightCategory === "string" && p.sightCategory.trim().length > 0 ? p.sightCategory.trim() : null;
-  const relevance = isSightseeing && typeof p.sightRelevanceType === "string" && p.sightRelevanceType.trim().length > 0 ? p.sightRelevanceType.trim() : null;
-  const visitMode = isSightseeing && typeof p.sightVisitModePrimary === "string" && p.sightVisitModePrimary.trim().length > 0 ? p.sightVisitModePrimary.trim() : null;
+  const typeText = escapeHtml(getPlaceTypeLabel(p.type));
+  const category = sightseeingMeta?.category ?? null;
+  const relevance = sightseeingMeta?.relevance ?? null;
+  const visitMode = sightseeingMeta?.visitMode ?? null;
+  const hEmoji = stance?.icon ?? null;
 
   const dist =
     typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm)
@@ -204,9 +206,6 @@ function hoverTooltipHtml(p: Place) {
         ? `${p.distanceKm.toFixed(1)} km`
         : `${p.distanceKm.toFixed(0)} km`
       : null;
-
-  const hasTS2 = p.type === "CAMPINGPLATZ" || p.type === "STELLPLATZ";
-  const hEmoji = hasTS2 ? haltungEmoji((p.ts2?.haltung ?? "DNA") as any) : null;
 
   const heroDebugEnabled = isHeroDebugPoiId(p.id);
   const debugInfoHtml = heroDebugEnabled
@@ -228,6 +227,7 @@ function hoverTooltipHtml(p: Place) {
     backdrop-filter: blur(6px);
     color:rgba(255,255,255,0.94);
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    pointer-events:none;
   ">
     <div style="border-radius:14px;overflow:hidden;">
       ${imgHtml}
@@ -297,6 +297,125 @@ function hoverTooltipHtml(p: Place) {
               </div>`
             : ``
         }
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+function hoverTooltipHtmlUnified(p: Place) {
+  const hero = heroFilename(p);
+  const heroUrl = hero ? getSupabasePublicUrl(hero, { placeId: p.id }) : null;
+  const score = getPlaceScore(p as any);
+  const sightseeingMeta = getSightseeingMeta(p as any);
+  const stance = getCampingStance(p as any);
+  const isSightseeing = p.type === "SEHENSWUERDIGKEIT";
+
+  const name = escapeHtml(clampText(p.name ?? ""));
+  const typeText = escapeHtml(getPlaceTypeLabel(p.type));
+  const category = sightseeingMeta?.category ?? null;
+  const relevance = sightseeingMeta?.relevance ?? null;
+  const visitMode = sightseeingMeta?.visitMode ?? null;
+
+  const dist =
+    typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm)
+      ? p.distanceKm < 10
+        ? `${p.distanceKm.toFixed(1)} km`
+        : `${p.distanceKm.toFixed(0)} km`
+      : null;
+
+  const heroDebugEnabled = isHeroDebugPoiId(p.id);
+  const debugInfoHtml = heroDebugEnabled
+    ? `<div style="margin-top:6px;font-size:10px;line-height:1.3;opacity:0.85;word-break:break-word;">src=${escapeHtml(heroUrl || "(empty)")}</div>`
+    : "";
+
+  const imgHtml = heroUrl
+    ? `<img src="${escapeHtml(heroUrl)}" style="width:220px;height:120px;object-fit:cover;border-radius:14px;display:block;" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src+(this.src.includes('?')?'&':'?')+'ui_retry=1';return;}this.style.display='none';this.insertAdjacentHTML('afterend','<div style=&quot;width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.85;&quot;>Hero failed</div>');" />`
+    : `<div style="width:220px;height:120px;border-radius:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);"></div>`;
+
+  const scoreHtml = score
+    ? `<div style="
+        display:flex;align-items:center;gap:6px;
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,0.14);
+        background:rgba(255,255,255,0.08);
+        font-size:12px;
+        font-weight:800;
+        line-height:1;
+      ">
+        <span style="font-size:14px;">${escapeHtml(score.icon)}</span>
+        <span>${score.value}/${score.max}</span>
+      </div>`
+    : "";
+
+  const stanceHtml = stance
+    ? `<div style="
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,0.12);
+        background:rgba(255,255,255,0.06);
+        font-size:11px;
+        opacity:0.9;
+      ">
+        ${escapeHtml(stance.icon)} ${escapeHtml(stance.label)}
+      </div>`
+    : "";
+
+  const distanceHtml = dist
+    ? `<div style="
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,0.12);
+        background:rgba(255,255,255,0.06);
+        font-size:11px;
+        opacity:0.9;
+      ">
+        📏 ${escapeHtml(dist)}
+      </div>`
+    : "";
+
+  return `
+  <div style="
+    width:240px;
+    padding:10px;
+    border-radius:16px;
+    background:rgba(0,0,0,0.72);
+    border:1px solid rgba(255,255,255,0.12);
+    box-shadow:0 18px 40px rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    color:rgba(255,255,255,0.94);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    pointer-events:none;
+  ">
+    <div style="border-radius:14px;overflow:hidden;">
+      ${imgHtml}
+      ${debugInfoHtml}
+    </div>
+
+    <div style="margin-top:8px;">
+      <div style="font-size:13px;font-weight:800;line-height:1.25;word-break:break-word;">
+        ${name}
+      </div>
+
+      <div style="margin-top:4px;font-size:11px;opacity:0.75;">
+        ${typeText}
+      </div>
+
+      ${
+        isSightseeing && (category || relevance || visitMode)
+          ? `<div style="margin-top:6px;font-size:11px;opacity:0.8;display:flex;gap:6px;flex-wrap:wrap;">
+              ${category ? `<span>🏷️ ${escapeHtml(category)}</span>` : ""}
+              ${relevance ? `<span>🎯 ${escapeHtml(relevance)}</span>` : ""}
+              ${visitMode ? `<span>🧭 ${escapeHtml(visitMode)}</span>` : ""}
+            </div>`
+          : ""
+      }
+
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        ${scoreHtml}
+        ${stanceHtml}
+        ${distanceHtml}
       </div>
     </div>
   </div>
@@ -534,15 +653,15 @@ export default function MapClient(props: Props) {
     // Desktop - Tooltip vorhanden, per Hover
     const hasTooltip = (m as any).getTooltip?.() != null;
     if (!hasTooltip) {
-      m.bindTooltip(hoverTooltipHtml(p), {
+      m.bindTooltip(hoverTooltipHtmlUnified(p), {
         direction: "top",
         offset: L.point(0, -14),
         opacity: 1,
-        sticky: true,
+        sticky: false,
         className: "cp-hover-tooltip",
       });
     } else {
-      m.setTooltipContent(hoverTooltipHtml(p));
+      m.setTooltipContent(hoverTooltipHtmlUnified(p));
     }
 
     m.off("mouseover");

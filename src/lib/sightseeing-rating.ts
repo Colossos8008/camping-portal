@@ -54,11 +54,12 @@ type SignalBucket = {
   historicQuarter: number;
   landmarkMonument: number;
   geothermal: number;
+  historicPark: number;
   hasKnowledgeRefs: boolean;
 };
 
 const NATURE_SIGNAL_WORDS = [
-  "cliff", "cliffs", "coast", "coastal", "bay", "headland", "rock", "rocks", "forest", "dune", "dunes", "viewpoint", "panorama", "panoramic", "natural site", "waterfall", "valley", "gorge", "geologic", "geological", "nature reserve", "estuary", "lighthouse setting", "geyser", "geysir", "geothermal", "natural attraction", "natural-attraction", "kaltwassergeysir",
+  "cliff", "cliffs", "coast", "coastal", "bay", "headland", "rock", "rocks", "forest", "dune", "dunes", "viewpoint", "panorama", "panoramic", "natural site", "waterfall", "valley", "gorge", "geologic", "geological", "nature reserve", "estuary", "lighthouse setting", "geyser", "geysir", "geothermal", "natural attraction", "natural-attraction", "kaltwassergeysir", "park", "historic park", "kurpark", "spa park",
 ];
 
 const ARCHITECTURE_SIGNAL_WORDS = [
@@ -66,11 +67,11 @@ const ARCHITECTURE_SIGNAL_WORDS = [
 ];
 
 const HISTORY_SIGNAL_WORDS = [
-  "memorial", "national monument", "battlefield", "heritage", "historic", "archaeological", "megalithic", "dolmen", "menhir", "ancient", "medieval", "listed monument", "remembrance", "historic quarter", "old town", "historic center", "historisches zentrum", "altstadt", "denkmal", "nationaldenkmal", "mittelalter",
+  "memorial", "national monument", "battlefield", "heritage", "historic", "archaeological", "megalithic", "dolmen", "menhir", "ancient", "medieval", "listed monument", "remembrance", "historic quarter", "old town", "historic center", "historisches zentrum", "altstadt", "denkmal", "nationaldenkmal", "mittelalter", "unesco", "world heritage", "welterbe", "spa town", "great spa towns",
 ];
 
 const UNIQUENESS_SIGNAL_WORDS = [
-  "iconic", "exceptional", "unique", "unesco", "emblematic", "remarkable", "spectacular", "famous landmark", "major attraction", "river confluence", "rivers confluence", "headland", "geysir", "geyser", "geothermal", "pilgrimage", "icon", "ikonisch",
+  "iconic", "exceptional", "unique", "unesco", "emblematic", "remarkable", "spectacular", "famous landmark", "major attraction", "river confluence", "rivers confluence", "confluence", "zusammenfluss", "headland", "geysir", "geyser", "geothermal", "pilgrimage", "icon", "ikonisch", "world heritage", "welterbe", "great spa towns",
 ];
 
 const NEGATIVE_SIGNAL_WORDS = [
@@ -113,6 +114,7 @@ const RELIGIOUS_HERITAGE_SIGNAL_WORDS = ["abbey", "abtei", "monastery", "kloster
 const HISTORIC_QUARTER_SIGNAL_WORDS = ["historic quarter", "old town", "historic center", "historisches zentrum", "altstadt", "medieval town"];
 const LANDMARK_MONUMENT_SIGNAL_WORDS = ["landmark", "monument", "national monument", "denkmal", "nationaldenkmal", "river confluence", "rivers confluence", "major viewpoint", "headland"];
 const GEOTHERMAL_SIGNAL_WORDS = ["geysir", "geyser", "geothermal", "cold-water geyser", "natural attraction", "natural-attraction", "kaltwassergeysir"];
+const HISTORIC_PARK_SIGNAL_WORDS = ["historic park", "kurpark", "spa park", "spa town", "great spa towns", "world heritage", "welterbe"];
 
 const GENERIC_MEMORIAL_SIGNAL_WORDS = [
   "memorial", "monument", "commemoration", "war memorial",
@@ -199,6 +201,7 @@ function signalsFromText(text: string): SignalBucket {
     historicQuarter: countSignals(text, HISTORIC_QUARTER_SIGNAL_WORDS),
     landmarkMonument: countSignals(text, LANDMARK_MONUMENT_SIGNAL_WORDS),
     geothermal: countSignals(text, GEOTHERMAL_SIGNAL_WORDS),
+    historicPark: countSignals(text, HISTORIC_PARK_SIGNAL_WORDS),
     hasKnowledgeRefs: hasSignalMatch(normalizedText, "wikidata") || hasSignalMatch(normalizedText, "wikipedia"),
   };
 }
@@ -214,6 +217,7 @@ function calculateCoreScores(sig: SignalBucket): Omit<SightseeingRatingResult, "
       sig.castlePalace * 1.05 +
       sig.religiousHeritage * 0.8 +
       sig.historicQuarter * 0.8 +
+      sig.historicPark * 0.6 +
       sig.lighthouse * 0.9 -
       sig.negative * 0.8 +
       (sig.outside > 0 ? 0.3 : 0) +
@@ -228,6 +232,7 @@ function calculateCoreScores(sig: SignalBucket): Omit<SightseeingRatingResult, "
       sig.fortification * 1.05 +
       sig.religiousHeritage * 0.95 +
       sig.historicQuarter * 0.9 +
+      sig.historicPark * 1.15 +
       sig.landmarkMonument * 0.6 +
       sig.genericMemorial * 0.45 +
       sig.heavyMemorial * 1.35 +
@@ -245,6 +250,7 @@ function calculateCoreScores(sig: SignalBucket): Omit<SightseeingRatingResult, "
       sig.castlePalace * 0.95 +
       sig.religiousHeritage * 0.65 +
       sig.historicQuarter * 0.7 +
+      sig.historicPark * 1.1 +
       sig.landmarkMonument * 1.0 +
       sig.geothermal * 1.35 +
       sig.lighthouse * 0.75 +
@@ -254,6 +260,7 @@ function calculateCoreScores(sig: SignalBucket): Omit<SightseeingRatingResult, "
       (sig.fortification > 0 && sig.strongCoastView > 0 ? 0.8 : 0) +
       (sig.lighthouse > 0 && sig.strongCoastView > 0 ? 0.9 : 0) +
       (sig.geothermal > 0 && sig.nature > 0 ? 0.8 : 0) +
+      (sig.historicPark > 0 && sig.history > 0 ? 0.6 : 0) +
       (sig.heavyMemorial > 0 && sig.history >= 2 ? 0.8 : 0) +
       (sig.uniqueness >= 2 ? 1.2 : 0) +
       (sig.hasKnowledgeRefs && (sig.archaeoMegalith > 0 || sig.uniquenessStrong > 0) ? 0.9 : 0) -

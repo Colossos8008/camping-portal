@@ -1,49 +1,25 @@
 // src/app/map/_components/PlacesList.tsx
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { SortMode, Place } from "../_lib/types";
 import { formatDistanceKm } from "../_lib/geo";
+import { getCampingStance, getPlaceScore, getPlaceTypeLabel, getSightseeingMeta } from "../_lib/place-display";
 import FeatureIcons from "./FeatureIcons";
 
-type TS21Value = "S" | "O" | "X";
-type TS21Source = "AI" | "USER";
-
-function isTsRelevantType(t: any) {
-  return t === "CAMPINGPLATZ" || t === "STELLPLATZ";
-}
-
 function ts21HaltungBadge(p: Place) {
-  if (!isTsRelevantType((p as any)?.type)) return null;
-
-  const raw = (p as any)?.ts21;
-  if (!raw || typeof raw !== "object") return null;
-
-  const dna = !!raw.dna;
-  const explorer = !!raw.explorer;
-
-  const effectiveDna = dna && explorer ? true : dna;
-  const effectiveExplorer = dna && explorer ? false : explorer;
-
-  if (!effectiveDna && !effectiveExplorer) return null;
-
-  const emoji = effectiveExplorer ? "🧭" : "🧬";
-  const label = effectiveExplorer ? "Explorer" : "DNA";
+  const stance = getCampingStance(p);
+  if (!stance) return null;
 
   return (
     <div
       className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold leading-none text-white/90"
-      title="Törtchensystem - Haltung"
+      title="Toertchensystem - Haltung"
     >
-      <span className="text-[11px]">{emoji}</span>
-      <span>{label}</span>
+      <span className="text-[11px]">{stance.icon}</span>
+      <span>{stance.label}</span>
     </div>
   );
-}
-
-function ts21ToPoints(v: TS21Value): number {
-  if (v === "S") return 2;
-  if (v === "O") return 1;
-  return 0;
 }
 
 function reviewBadge(p: Place) {
@@ -54,9 +30,9 @@ function reviewBadge(p: Place) {
     return (
       <span
         className="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-emerald-200"
-        title="Koordinate bestätigt"
+        title="Koordinate bestaetigt"
       >
-        bestätigt
+        bestaetigt
       </span>
     );
   }
@@ -76,7 +52,7 @@ function reviewBadge(p: Place) {
     return (
       <span
         className="inline-flex items-center rounded-full border border-rose-400/20 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-rose-200"
-        title="Koordinate gepr??ft, aber verworfen"
+        title="Koordinate geprueft, aber verworfen"
       >
         verworfen
       </span>
@@ -86,61 +62,31 @@ function reviewBadge(p: Place) {
   return (
     <span
       className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-medium leading-none text-white/70"
-      title="Koordinate ungeprüft"
+      title="Koordinate ungeprueft"
     >
-      ungeprüft
+      ungeprueft
     </span>
   );
 }
 
-function normTS21Value(v: any): TS21Value {
-  return v === "S" || v === "O" || v === "X" ? v : "O";
-}
-
-function ts21Total(p: Place): number | null {
-  if (!isTsRelevantType((p as any)?.type)) return null;
-
-  const raw = (p as any)?.ts21;
-  if (!raw || typeof raw !== "object") return null;
-
-  const src: TS21Source = raw.activeSource === "USER" ? "USER" : "AI";
-  const scores =
-    (src === "USER" ? raw.user : raw.ai) && typeof (src === "USER" ? raw.user : raw.ai) === "object"
-      ? (src === "USER" ? raw.user : raw.ai)
-      : {};
-
-  const keys = ["1a", "1b", "2a", "2b", "3", "4a", "4b", "5", "6", "7"];
-  let sum = 0;
-  for (const k of keys) sum += ts21ToPoints(normTS21Value((scores as any)[k]));
-  return sum;
-}
-
-
 function sightInfo(p: Place) {
   if ((p as any)?.type !== "SEHENSWUERDIGKEIT") return null;
 
-  const total = typeof (p as any)?.sightseeingTotalScore === "number" ? (p as any).sightseeingTotalScore : null;
-  const relevance = typeof (p as any)?.sightRelevanceType === "string" ? (p as any).sightRelevanceType : null;
-  const modePrimary = typeof (p as any)?.sightVisitModePrimary === "string" ? (p as any).sightVisitModePrimary : null;
+  const score = getPlaceScore(p);
+  const meta = getSightseeingMeta(p);
 
-  return { total, relevance, modePrimary };
-}
-
-function displayScore(p: Place) {
-  if (!isTsRelevantType((p as any)?.type)) return null;
-
-  const t21 = ts21Total(p);
-  if (t21 != null) return { value: t21, max: 20, title: "Törtchensystem" };
-
-  const t1 = (p as any)?.ratingDetail?.totalPoints;
-  const n = typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
-  return { value: n, max: 14, title: "Törtchensystem" };
+  return {
+    total: score?.value ?? null,
+    relevance: meta?.relevance ?? null,
+    modePrimary: meta?.visitMode ?? null,
+  };
 }
 
 export default function PlacesList(props: {
   places: Place[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  scrollToSelectedToken?: number;
 
   sortMode: SortMode;
   setSortMode: (m: SortMode) => void;
@@ -154,6 +100,16 @@ export default function PlacesList(props: {
   showMyRings: boolean;
   setShowMyRings: (v: boolean) => void;
 }) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  useEffect(() => {
+    if (!props.scrollToSelectedToken || props.selectedId == null) return;
+    const node = itemRefs.current.get(props.selectedId);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [props.scrollToSelectedToken, props.selectedId]);
+
   return (
     <div className="h-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
       <div className="flex items-center justify-between px-4 py-3">
@@ -203,16 +159,19 @@ export default function PlacesList(props: {
         </label>
       </div>
 
-      <div className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
+      <div ref={listRef} className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
         {props.places.map((p) => {
           const dist = formatDistanceKm((p as any).distanceKm);
           const hasDist = typeof (p as any).distanceKm === "number" && Number.isFinite((p as any).distanceKm);
-
-          const sc = displayScore(p);
+          const score = getPlaceScore(p);
 
           return (
             <button
               key={p.id}
+              ref={(node) => {
+                if (node) itemRefs.current.set(p.id, node);
+                else itemRefs.current.delete(p.id);
+              }}
               onClick={() => props.onSelect(p.id)}
               className={`mb-2 w-full rounded-xl border px-3 py-3 text-left ${
                 p.id === props.selectedId ? "border-white/30 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10"
@@ -222,19 +181,19 @@ export default function PlacesList(props: {
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{p.name}</div>
                   <div className="mt-0.5 flex items-center gap-2">
-                    <div className="text-[11px] opacity-70">{p.type}</div>
+                    <div className="text-[11px] opacity-70">{getPlaceTypeLabel(p.type)}</div>
                     {reviewBadge(p)}
                   </div>
                   <FeatureIcons {...p} />
                 </div>
 
                 <div className="shrink-0 text-right text-[11px] opacity-90">
-                  {sc ? (
-                    <div title={sc.title}>
-                      <span title="Törtchen-Score" className="mr-1" aria-hidden="true">
-                        🍰
+                  {score ? (
+                    <div title={score.title}>
+                      <span title={score.title} className="mr-1" aria-hidden="true">
+                        {score.icon}
                       </span>
-                      {sc.value}/{sc.max}
+                      {score.value}/{score.max}
                     </div>
                   ) : null}
 
@@ -243,7 +202,6 @@ export default function PlacesList(props: {
                     if (!si) return null;
                     return (
                       <div className="mt-1 space-y-1">
-                        <div className="text-[10px]" title="TS Sehenswürdigkeiten Score">🧭 {si.total != null ? `${si.total}/100` : "—"}</div>
                         {si.relevance ? <div className="text-[10px] opacity-80">{si.relevance}</div> : null}
                         {si.modePrimary ? <div className="text-[10px] opacity-80">{si.modePrimary}</div> : null}
                       </div>
@@ -262,7 +220,7 @@ export default function PlacesList(props: {
         })}
 
         {props.places.length === 0 ? (
-          <div className="px-2 py-6 text-sm opacity-70">Keine Treffer (Filter prüfen) - oder rechts auf + Neu.</div>
+          <div className="px-2 py-6 text-sm opacity-70">Keine Treffer (Filter pruefen) - oder rechts auf + Neu.</div>
         ) : null}
       </div>
     </div>

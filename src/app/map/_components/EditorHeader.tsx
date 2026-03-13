@@ -13,7 +13,7 @@ export default function EditorHeader(props: {
   formName: string;
   formType: string;
 
-  score: { value: number; max: number; title: string } | null;
+  score: { icon?: string; value: number; max: number; title: string } | null;
 
   heroImage: { filename: string } | null;
   placeId: number | null;
@@ -27,10 +27,13 @@ export default function EditorHeader(props: {
 
   onOpenLightbox: (index: number) => void;
   onOpenCandidateLightbox: (index: number) => void;
+  onOpenNav: () => void;
   onSave: () => void;
+  onCenterOnMap: () => void;
   onDelete: () => void;
   onNew: () => void;
 
+  canNavigate: boolean;
   canDelete: boolean;
 }) {
   const title = props.formName || (props.editingNew ? "Ort neu" : "Ort bearbeiten");
@@ -40,8 +43,9 @@ export default function EditorHeader(props: {
   const heroBaseSrc = heroFilename ? getSupabasePublicUrl(heroFilename, { placeId: props.placeId }) : "";
 
   const [heroRetry, setHeroRetry] = useState(0);
-  const [heroFailedSrc, setHeroFailedSrc] = useState<string>("");
+  const [heroFailedSrc, setHeroFailedSrc] = useState("");
   const [failedCandidateThumbs, setFailedCandidateThumbs] = useState<string[]>([]);
+
   const heroSrc = heroRetry > 0 && heroBaseSrc ? `${heroBaseSrc}${heroBaseSrc.includes("?") ? "&" : "?"}ui_retry=${heroRetry}` : heroBaseSrc;
 
   const canRenderHero = useMemo(() => {
@@ -95,56 +99,76 @@ export default function EditorHeader(props: {
             {dist ? <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5">📏 {dist}</span> : null}
           </div>
 
-          {props.score ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
-              <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5" title={props.score.title}>
-                🍰 Bewertung: {props.score.value}/{props.score.max}
-              </span>
-            </div>
-          ) : null}
-
           <div className="mt-2 flex items-start justify-between gap-3">
-            <div className="min-w-0">{props.selectedPlace ? <FeatureIcons {...props.selectedPlace} /> : null}</div>
-
-            <div className="shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={props.onSave}
-                  className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-1.5 text-[11px] hover:bg-white/15 disabled:opacity-60"
-                  disabled={props.saving}
-                >
-                  {props.saving ? "..." : "Speichern"}
-                </button>
-
-                {props.canDelete ? (
-                  <button
-                    type="button"
-                    onClick={props.onDelete}
-                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] hover:bg-red-500/20 disabled:opacity-60"
-                    disabled={props.saving}
-                  >
-                    Löschen
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={props.onNew}
-                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] hover:bg-white/10 disabled:opacity-60"
-                  disabled={props.saving}
-                >
-                  + Neu
-                </button>
-              </div>
+            <div className="min-w-0">
+              {props.score ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs opacity-80">
+                  <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-0.5" title={props.score.title}>
+                    🍰 Bewertung: {props.score.value}/{props.score.max}
+                  </span>
+                </div>
+              ) : null}
             </div>
+
+            <div className="shrink-0 pt-0.5">{props.selectedPlace ? <FeatureIcons {...props.selectedPlace} /> : null}</div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={props.onOpenNav}
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] hover:bg-white/10 disabled:opacity-60"
+              disabled={!props.canNavigate}
+              title={props.canNavigate ? "Navigation starten" : "Koordinaten fehlen"}
+            >
+              Navi
+            </button>
+
+            <button
+              type="button"
+              onClick={props.onSave}
+              className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-1.5 text-[11px] hover:bg-white/15 disabled:opacity-60"
+              disabled={props.saving}
+            >
+              {props.saving ? "..." : "Speichern"}
+            </button>
+
+            <button
+              type="button"
+              onClick={props.onCenterOnMap}
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] hover:bg-white/10 disabled:opacity-60"
+              disabled={!props.placeId}
+              title={props.placeId ? "Ort auf der Karte zentrieren" : "Erst Ort speichern"}
+            >
+              Zentrieren
+            </button>
+
+            {props.canDelete ? (
+              <button
+                type="button"
+                onClick={props.onDelete}
+                className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] hover:bg-red-500/20 disabled:opacity-60"
+                disabled={props.saving}
+              >
+                Löschen
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={props.onNew}
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] hover:bg-white/10 disabled:opacity-60"
+              disabled={props.saving}
+            >
+              + Neu
+            </button>
           </div>
 
           <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
             {props.headerImages.length || props.heroCandidateImages.length ? (
               <>
                 {props.headerImages.slice(0, 12).map((img, idx) => {
-                  const src = getSupabasePublicUrl(String(img.filename ?? ""));
+                  const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
                   return (
                     <button key={img.id} type="button" onClick={() => props.onOpenLightbox(idx)} className="shrink-0" title="Bild öffnen">
                       {src ? (
@@ -165,35 +189,35 @@ export default function EditorHeader(props: {
                   .filter((img) => !failedCandidateThumbs.includes(String(img.filename ?? "")))
                   .slice(0, 12)
                   .map((img, idx) => {
-                  const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
-                  return (
-                    <button
-                      key={`candidate-${img.id ?? idx}-${img.filename}`}
-                      type="button"
-                      onClick={() => props.onOpenCandidateLightbox(idx)}
-                      className="relative shrink-0"
-                      title="Vorschlag öffnen"
-                    >
-                      {src ? (
-                        <img
-                          src={src}
-                          alt=""
-                          className="h-10 w-10 rounded-lg object-cover ring-1 ring-sky-300/40"
-                          loading="lazy"
-                          onError={() => {
-                            setFailedCandidateThumbs((current) =>
-                              current.includes(String(img.filename ?? "")) ? current : [...current, String(img.filename ?? "")]
-                            );
-                          }}
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-lg bg-black/30 ring-1 ring-sky-300/40" />
-                      )}
-                      <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] uppercase text-white/80">
-                        {String(img.source ?? "").slice(0, 3)}
-                      </span>
-                    </button>
-                  );
+                    const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
+                    return (
+                      <button
+                        key={`candidate-${img.id ?? idx}-${img.filename}`}
+                        type="button"
+                        onClick={() => props.onOpenCandidateLightbox(idx)}
+                        className="relative shrink-0"
+                        title="Vorschlag öffnen"
+                      >
+                        {src ? (
+                          <img
+                            src={src}
+                            alt=""
+                            className="h-10 w-10 rounded-lg object-cover ring-1 ring-sky-300/40"
+                            loading="lazy"
+                            onError={() => {
+                              setFailedCandidateThumbs((current) =>
+                                current.includes(String(img.filename ?? "")) ? current : [...current, String(img.filename ?? "")]
+                              );
+                            }}
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded-lg bg-black/30 ring-1 ring-sky-300/40" />
+                        )}
+                        <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] uppercase text-white/80">
+                          {String(img.source ?? "").slice(0, 3)}
+                        </span>
+                      </button>
+                    );
                   })}
               </>
             ) : (

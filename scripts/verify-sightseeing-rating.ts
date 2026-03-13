@@ -1,5 +1,5 @@
 async function loadRatingModule() {
-  return import(new URL("../src/lib/sightseeing-rating", import.meta.url).href);
+  return import(new URL("../src/lib/sightseeing-rating.ts", import.meta.url).href);
 }
 
 function assert(condition: boolean, message: string) {
@@ -190,6 +190,43 @@ async function run() {
   });
   assert(nationalMonument.uniquenessScore >= 3.2, "national monument landmark should have notable uniqueness");
   assert(nationalMonument.sightRelevanceType !== "LOW_MATCH", "national monument landmark should avoid LOW_MATCH");
+
+  const deutschesEck = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Deutsches Eck",
+    category: "landmark",
+    description: "Beruehmte Landmarke an der Landzunge am Zusammenfluss von Rhein und Mosel mit Kaiser-Wilhelm-Nationaldenkmal und grossem Aussichtspunkt.",
+    tags: ["rivers-confluence", "landmark", "national-monument", "major-viewpoint", "major-attraction"],
+  });
+  const obscureMaar = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Kleines Maar",
+    category: "maar",
+    description: "Ruhiger Naturort in der Eifel.",
+    tags: ["maar", "nature"],
+  });
+  assert(deutschesEck.sightseeingTotalScore > obscureMaar.sightseeingTotalScore, "Deutsches Eck should outrank a generic maar");
+  assert(deutschesEck.sightRelevanceType !== "LOW_MATCH", "Deutsches Eck should not stay LOW_MATCH");
+
+  const marksburg = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Marksburg",
+    category: "castle",
+    description: "Ikonische mittelalterliche Hoehenburg am Mittelrhein, als nahezu vollstaendig erhaltene Burganlage ein Hauptziel der Region.",
+    tags: ["castle", "medieval-castle", "iconic-castle", "landmark", "major-attraction"],
+  });
+  assert(marksburg.sightseeingTotalScore >= 60, "Marksburg should be clearly above low/mid scores");
+  assert(marksburg.sightRelevanceType === "ICON" || marksburg.sightRelevanceType === "GOOD_MATCH", "Marksburg should be a top-tier match");
+
+  const kurparkSpa = rateSightseeing({
+    type: "SEHENSWUERDIGKEIT",
+    name: "Kurpark Bad Ems",
+    category: "historic-park",
+    description: "Historische Kuranlagen im UNESCO-Welterbe Great Spa Towns of Europe.",
+    tags: ["spa-town", "park", "unesco"],
+  });
+  assert(kurparkSpa.historyScore >= 2.5, "historic UNESCO spa park should pick up history");
+  assert(kurparkSpa.uniquenessScore >= 2.5, "historic UNESCO spa park should pick up uniqueness");
 
   const geothermalGeyser = rateSightseeing({
     type: "SEHENSWUERDIGKEIT",

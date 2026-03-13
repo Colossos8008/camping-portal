@@ -8,6 +8,7 @@ import Ts21Editor, { TS21Detail } from "./ts21-editor";
 import type { Place, PlaceHeroCandidate, PlaceType, SortMode } from "./_lib/types";
 import { distanceKm } from "./_lib/geo";
 import { safePlacesFromApi } from "./_lib/place";
+import { getPlaceScore, getPlaceTypeLabel } from "./_lib/place-display";
 import { blankRating } from "./_lib/rating";
 
 import FiltersPanel from "./_components/FiltersPanel";
@@ -116,11 +117,11 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
   return `${base}&${params.toString()}`;
 }
 
-type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES";
+type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES" | "REVIEW";
 type LightboxImage = { id?: number; filename: string };
 
 function collapsedSections(): Record<EditorSectionId, boolean> {
-  return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false };
+  return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false, REVIEW: false };
 }
 
 function loadSectionState(): Record<EditorSectionId, boolean> {
@@ -136,6 +137,7 @@ function loadSectionState(): Record<EditorSectionId, boolean> {
       TOGGLES: typeof obj?.TOGGLES === "boolean" ? obj.TOGGLES : false,
       TS: typeof obj?.TS === "boolean" ? obj.TS : false,
       IMAGES: typeof obj?.IMAGES === "boolean" ? obj.IMAGES : false,
+      REVIEW: typeof obj?.REVIEW === "boolean" ? obj.REVIEW : false,
     };
   } catch {
     return collapsedSections();
@@ -219,6 +221,7 @@ function ts21TotalFromDetail(raw: any): number | null {
 export default function MapPage() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [listScrollSelectedToken, setListScrollSelectedToken] = useState(0);
 
   const [selectTick, setSelectTick] = useState(0);
   const [focusToken, setFocusToken] = useState(0);
@@ -438,19 +441,16 @@ export default function MapPage() {
 
     if (sortMode === "ALPHA") {
       list.sort((a: any, b: any) => a.name.localeCompare(b.name, "de"));
-      return list;
-    }
-
-    if (sortMode === "DIST") {
+    } else if (sortMode === "DIST") {
       list.sort((a: any, b: any) => {
         const da = typeof a.distanceKm === "number" ? a.distanceKm : Number.POSITIVE_INFINITY;
         const db = typeof b.distanceKm === "number" ? b.distanceKm : Number.POSITIVE_INFINITY;
         return da - db;
       });
-      return list;
+    } else {
+      list.sort((a: any, b: any) => scoreForListOrSort(b) - scoreForListOrSort(a));
     }
 
-    list.sort((a: any, b: any) => scoreForListOrSort(b) - scoreForListOrSort(a));
     return list;
   }, [filteredPlaces, sortMode]);
 
@@ -562,6 +562,7 @@ export default function MapPage() {
     }
 
     setSelectedId(id);
+    if (source === "map") setListScrollSelectedToken((t) => t + 1);
     setSelectTick((t) => t + 1);
     setFocusToken((t) => t + 1);
 
@@ -765,6 +766,26 @@ export default function MapPage() {
     const n = typeof t1 === "number" && Number.isFinite(t1) ? t1 : 0;
     return { value: n, max: 14, title: "Törtchensystem" };
   }, [form?.type, form?.ts21, form?.ratingDetail?.totalPoints]);
+
+  const editorDisplayScore = useMemo(
+    () =>
+      getPlaceScore({
+        id: Number(form?.id ?? 0),
+        name: String(form?.name ?? ""),
+        type: (form?.type ?? "CAMPINGPLATZ") as PlaceType,
+        lat: Number(form?.lat ?? 0),
+        lng: Number(form?.lng ?? 0),
+        dogAllowed: !!form?.dogAllowed,
+        sanitary: !!form?.sanitary,
+        yearRound: !!form?.yearRound,
+        onlineBooking: !!form?.onlineBooking,
+        gastronomy: !!form?.gastronomy,
+        ratingDetail: form?.ratingDetail ?? null,
+        ts21: form?.ts21 ?? null,
+        sightseeingTotalScore: typeof form?.sightseeingTotalScore === "number" ? form.sightseeingTotalScore : null,
+      } as Place),
+    [form]
+  );
 
   function stopGeoWatch() {
     if (geoWatchIdRef.current != null && navigator.geolocation) {
@@ -990,6 +1011,17 @@ export default function MapPage() {
     }
   }
 
+  function centerSelectedPlaceOnMap() {
+    const targetId = typeof form.id === "number" ? form.id : selectedId;
+    if (!Number.isFinite(Number(targetId))) return;
+    setSelectedId(Number(targetId));
+    setFocusToken((t) => t + 1);
+    if (isMobile) {
+      setPanelMapOpen(true);
+      scrollToMapIfMobile();
+    }
+  }
+
   async function fetchHeroCandidates(force = true) {
     if (!form.id || form.type === "HVO_TANKSTELLE") return;
     setHeroCandidatesLoading(true);
@@ -1124,11 +1156,11 @@ export default function MapPage() {
 
   const sectionsHint = useMemo(() => {
     const openCount = Object.values(sectionOpen).filter(Boolean).length;
-    return `${openCount}/4`;
+    return `${openCount}/${Object.keys(sectionOpen).length}`;
   }, [sectionOpen]);
 
   function openAllSections() {
-    setSectionOpen({ BASICS: true, TOGGLES: true, TS: true, IMAGES: true });
+    setSectionOpen({ BASICS: true, TOGGLES: true, TS: true, IMAGES: true, REVIEW: true });
   }
 
   function closeAllSections() {
@@ -1175,25 +1207,44 @@ export default function MapPage() {
           {editorSectionsToolbar}
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Review-/Lernstatus</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-semibold ${reviewStatusMeta.className}`}>
-              {reviewStatusMeta.label}
-            </div>
-            <div className="text-[11px] text-white/60">
-              {reviewActionLabel} - Quelle: {reviewSourceLabel} - {reviewDateLabel}
-            </div>
-          </div>
-          <div className="mt-2">
+        {shouldShowTS ? (
+          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Notiz (optional)</div>
             <textarea
-              className="min-h-[68px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-              placeholder="Kurze Review-Notiz (z. B. passt in der UI)"
-              value={String(form.coordinateReviewNote ?? "")}
-              onChange={(e) => setForm((f: any) => ({ ...f, coordinateReviewNote: e.target.value }))}
+              className="min-h-[76px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              placeholder="Kontext zur Törtchensystem-Bewertung"
+              value={String(form?.ts21?.note ?? "")}
+              onChange={(e) =>
+                setForm((f: any) => ({
+                  ...f,
+                  ts21: {
+                    ...(f?.ts21 ?? { activeSource: "AI", ai: {}, user: {}, dna: false, explorer: false, dnaExplorerNote: "", note: "" }),
+                    note: e.target.value,
+                  },
+                }))
+              }
             />
           </div>
-        </div>
+        ) : null}
+
+        {shouldShowSightseeing ? (
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            <div className="px-3 py-2.5 text-sm font-semibold">TS Sehenswürdigkeit</div>
+            <div className="space-y-2 px-3 pb-3 text-xs">
+              <div className="flex flex-wrap gap-3">
+                <span>Score: {typeof (form as any).sightseeingTotalScore === "number" ? `${Math.round((form as any).sightseeingTotalScore)}/100` : "-"}</span>
+                <span>Relevance: {(form as any).sightRelevanceType ?? "-"}</span>
+                <span>Visit: {(form as any).sightVisitModePrimary ?? "-"}{(form as any).sightVisitModeSecondary ? ` + ${(form as any).sightVisitModeSecondary}` : ""}</span>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Beschreibung</div>
+                <div className="whitespace-pre-wrap opacity-90">{(form as any).sightDescription ?? "Keine Beschreibung vorhanden."}</div>
+              </div>
+              <div className="opacity-85">{(form as any).bestVisitHint ?? "Kein Visit-Hinweis vorhanden."}</div>
+              <div className="opacity-85">{(form as any).summaryWhyItMatches ?? "Noch keine Zusammenfassung vorhanden."}</div>
+            </div>
+          </div>
+        ) : null}
 
         <Section id="BASICS" title="Basics" icon="🧱" open={sectionOpen.BASICS} onOpenChange={(vv) => setSection("BASICS", vv)}>
           <div className="space-y-2">
@@ -1215,7 +1266,7 @@ export default function MapPage() {
               <option value="HVO_TANKSTELLE">HVO Tankstelle</option>
             </select>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 className="h-9 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none"
                 placeholder="Lat"
@@ -1271,7 +1322,7 @@ export default function MapPage() {
               <button
                 type="button"
                 onClick={() => setNavOpen(true)}
-                className="h-9 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs hover:bg-white/10 disabled:opacity-60"
+                className="hidden"
                 disabled={saving || !canNavigateNow()}
                 title="Navigation starten"
               >
@@ -1327,32 +1378,18 @@ export default function MapPage() {
 
         <Section id="TS" title="Törtchensystem" icon="🍰" open={sectionOpen.TS} onOpenChange={(vv) => setSection("TS", vv)}>
           {shouldShowTS ? (
-            <Ts21Editor value={(form.ts21 ?? null) as TS21Detail | null} onChange={(next) => setForm((f: any) => ({ ...f, ts21: next }))} disabled={saving} />
+            <Ts21Editor
+              value={(form.ts21 ?? null) as TS21Detail | null}
+              onChange={(next) => setForm((f: any) => ({ ...f, ts21: next }))}
+              disabled={saving}
+              showGeneralNote={false}
+            />
           ) : (
             <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs opacity-80">
               TS ist nur für Campingplatz und Stellplatz verfügbar.
             </div>
           )}
         </Section>
-
-        {shouldShowSightseeing ? (
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-            <div className="px-3 py-2.5 text-sm font-semibold">🧭 TS Sehenswürdigkeiten v1</div>
-            <div className="space-y-2 px-3 pb-3 text-xs">
-              <div className="flex flex-wrap gap-3">
-                <span>Score: {typeof (form as any).sightseeingTotalScore === "number" ? `${(form as any).sightseeingTotalScore}/100` : "—"}</span>
-                <span>Relevance: {(form as any).sightRelevanceType ?? "—"}</span>
-                <span>Visit: {(form as any).sightVisitModePrimary ?? "—"}{(form as any).sightVisitModeSecondary ? ` + ${(form as any).sightVisitModeSecondary}` : ""}</span>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-                <div className="mb-1 text-[11px] uppercase tracking-wide text-white/60">Beschreibung</div>
-                <div className="whitespace-pre-wrap opacity-90">{(form as any).sightDescription ?? "Keine Beschreibung vorhanden."}</div>
-              </div>
-              <div className="opacity-85">{(form as any).bestVisitHint ?? "Kein Visit-Hinweis vorhanden."}</div>
-              <div className="opacity-85">{(form as any).summaryWhyItMatches ?? "Noch keine Zusammenfassung vorhanden."}</div>
-            </div>
-          </div>
-        ) : null}
 
         <Section
           id="IMAGES"
@@ -1392,6 +1429,25 @@ export default function MapPage() {
             onSetThumbnail={setThumbnail}
             onDeleteImage={deleteImage}
           />
+        </Section>
+
+        <Section id="REVIEW" title="Review-/Lernstatus" icon="Review" open={sectionOpen.REVIEW} onOpenChange={(vv) => setSection("REVIEW", vv)}>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-semibold ${reviewStatusMeta.className}`}>
+                {reviewStatusMeta.label}
+              </div>
+              <div className="text-[11px] text-white/60">
+                {reviewActionLabel} - Quelle: {reviewSourceLabel} - {reviewDateLabel}
+              </div>
+            </div>
+            <textarea
+              className="min-h-[68px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              placeholder="Kurze Review-Notiz (z. B. passt in der UI)"
+              value={String(form.coordinateReviewNote ?? "")}
+              onChange={(e) => setForm((f: any) => ({ ...f, coordinateReviewNote: e.target.value }))}
+            />
+          </div>
         </Section>
 
         <button
@@ -1481,8 +1537,8 @@ export default function MapPage() {
               editingNew={editingNew}
               saving={saving}
               formName={String(form.name ?? "")}
-              formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-              score={editorScore}
+              formType={getPlaceTypeLabel((form.type ?? "CAMPINGPLATZ") as PlaceType)}
+              score={editorDisplayScore}
               heroImage={heroImage ? { filename: heroImage.filename } : null}
               placeId={typeof form.id === "number" ? form.id : null}
               headerImages={headerImages}
@@ -1492,9 +1548,12 @@ export default function MapPage() {
               distanceKm={selectedDistanceKm}
               onOpenLightbox={openLightbox}
               onOpenCandidateLightbox={openCandidateLightbox}
+              onOpenNav={() => setNavOpen(true)}
               onSave={save}
+              onCenterOnMap={centerSelectedPlaceOnMap}
               onDelete={del}
               onNew={newPlace}
+              canNavigate={canNavigateNow()}
               canDelete={!editingNew && !!form.id}
             />
 
@@ -1511,6 +1570,7 @@ export default function MapPage() {
             <PlacesList
               places={mapPlaces as any}
               selectedId={selectedId}
+              scrollToSelectedToken={listScrollSelectedToken}
               onSelect={(id) => selectPlace(id, "list")}
               sortMode={sortMode}
               setSortMode={setSortMode}
@@ -1537,6 +1597,7 @@ export default function MapPage() {
         <PlacesList
           places={mapPlaces as any}
           selectedId={selectedId}
+          scrollToSelectedToken={listScrollSelectedToken}
           onSelect={(id) => selectPlace(id, "list")}
           sortMode={sortMode}
           setSortMode={setSortMode}
@@ -1599,8 +1660,8 @@ export default function MapPage() {
                 editingNew={editingNew}
                 saving={saving}
                 formName={String(form.name ?? "")}
-                formType={String((form.type ?? "CAMPINGPLATZ") as string)}
-                score={editorScore}
+                formType={getPlaceTypeLabel((form.type ?? "CAMPINGPLATZ") as PlaceType)}
+                score={editorDisplayScore}
                 heroImage={heroImage ? { filename: heroImage.filename } : null}
                 placeId={typeof form.id === "number" ? form.id : null}
                 headerImages={headerImages}
@@ -1610,9 +1671,12 @@ export default function MapPage() {
                 distanceKm={selectedDistanceKm}
                 onOpenLightbox={openLightbox}
                 onOpenCandidateLightbox={openCandidateLightbox}
+                onOpenNav={() => setNavOpen(true)}
                 onSave={save}
+                onCenterOnMap={centerSelectedPlaceOnMap}
                 onDelete={del}
                 onNew={newPlace}
+                canNavigate={canNavigateNow()}
                 canDelete={!editingNew && !!form.id}
               />
             </div>

@@ -23,6 +23,7 @@ type Props = {
   value: TS21Detail | null | undefined;
   onChange: (next: TS21Detail) => void;
   disabled?: boolean;
+  showGeneralNote?: boolean;
 };
 
 type Row = {
@@ -253,18 +254,22 @@ export default function Ts21Editor(props: Props) {
         ))}
       </div>
 
-      <div className="my-3 h-px bg-white/10" />
+      {props.showGeneralNote !== false ? (
+        <>
+          <div className="my-3 h-px bg-white/10" />
 
-      <div>
-        <div className="mb-1 text-xs font-semibold opacity-80">Notiz (optional)</div>
-        <textarea
-          className="min-h-[76px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-          value={String(v.note ?? "")}
-          onChange={(e) => props.onChange({ ...v, note: e.target.value })}
-          placeholder="Kontext zur Bewertung"
-          disabled={props.disabled}
-        />
-      </div>
+          <div>
+            <div className="mb-1 text-xs font-semibold opacity-80">Notiz (optional)</div>
+            <textarea
+              className="min-h-[76px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+              value={String(v.note ?? "")}
+              onChange={(e) => props.onChange({ ...v, note: e.target.value })}
+              placeholder="Kontext zur Bewertung"
+              disabled={props.disabled}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

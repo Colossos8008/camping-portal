@@ -1,4 +1,3 @@
-// src/app/map/ts21-editor.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -11,11 +10,9 @@ export type TS21Detail = {
   activeSource: TS21Source;
   ai: TS21Scores;
   user: TS21Scores;
-
   dna: boolean;
   explorer: boolean;
   dnaExplorerNote: string;
-
   note: string;
 };
 
@@ -88,17 +85,13 @@ function normalizeDetail(input: any): TS21Detail {
   const activeSource: TS21Source = input.activeSource === "USER" ? "USER" : "AI";
   const ai = ensureScores(input.ai);
   const user = ensureScores(input.user);
-
   const dna = !!input.dna;
   const explorer = !!input.explorer;
 
-  // mutual exclusive – falls kaputte Daten kommen
   const fixedDna = dna && explorer ? true : dna;
   const fixedExplorer = dna && explorer ? false : explorer;
-
   const dnaExplorerNote =
     typeof input.dnaExplorerNote === "string" ? input.dnaExplorerNote : input.dnaExplorerNote == null ? "" : String(input.dnaExplorerNote);
-
   const note = typeof input.note === "string" ? input.note : input.note == null ? "" : String(input.note);
 
   return { activeSource, ai, user, dna: fixedDna, explorer: fixedExplorer, dnaExplorerNote, note };
@@ -156,7 +149,7 @@ export default function Ts21Editor(props: Props) {
   const active: TS21Source = v.activeSource === "USER" ? "USER" : "AI";
   const activeScores = active === "USER" ? v.user : v.ai;
 
-  const totalActive = useMemo(() => computeTotal(activeScores), [activeScores, active]);
+  const totalActive = useMemo(() => computeTotal(activeScores), [activeScores]);
   const totalAI = useMemo(() => computeTotal(v.ai), [v.ai]);
   const totalUser = useMemo(() => computeTotal(v.user), [v.user]);
 
@@ -189,22 +182,20 @@ export default function Ts21Editor(props: Props) {
     props.onChange({ ...v, dna: false, explorer: true });
   }
 
-  const haltungLabel = v.explorer ? "Explorer" : v.dna ? "DNA" : "—";
+  const haltungLabel = v.explorer ? "Explorer" : v.dna ? "DNA" : "-";
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Törtchensystem</div>
-          <div className="mt-1 text-xs opacity-70">
-            Aktiv - {active === "USER" ? "Wir" : "KI"} - {totalActive}/20
-          </div>
+          <div className="mt-1 text-xs opacity-70">Aktiv - {active === "USER" ? "Wir" : "KI"} - {totalActive}/20</div>
           <div className="mt-1 text-[11px] opacity-60">KI {totalAI}/20 - Wir {totalUser}/20</div>
         </div>
 
         <div className="flex items-center gap-2">
-          <SegButton active={active === "AI"} label="🤖 KI" onClick={() => setActiveSource("AI")} disabled={props.disabled} />
-          <SegButton active={active === "USER"} label="👤 Wir" onClick={() => setActiveSource("USER")} disabled={props.disabled} />
+          <SegButton active={active === "AI"} label="KI" onClick={() => setActiveSource("AI")} disabled={props.disabled} />
+          <SegButton active={active === "USER"} label="Wir" onClick={() => setActiveSource("USER")} disabled={props.disabled} />
         </div>
       </div>
 
@@ -217,8 +208,8 @@ export default function Ts21Editor(props: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <SegButton active={!!v.dna} label="🧬 DNA" onClick={toggleDNA} disabled={props.disabled} />
-          <SegButton active={!!v.explorer} label="🧭 Explorer" onClick={toggleExplorer} disabled={props.disabled} />
+          <SegButton active={!!v.dna} label="DNA" onClick={toggleDNA} disabled={props.disabled} />
+          <SegButton active={!!v.explorer} label="Explorer" onClick={toggleExplorer} disabled={props.disabled} />
         </div>
 
         <div className="mt-3">

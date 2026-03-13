@@ -155,11 +155,14 @@ model PlaceHeroCandidate {
   reason      String?
   rank        Int?
   isRejected  Boolean  @default(false)
+  userFeedback String?
+  feedbackUpdatedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
 
   @@index([placeId, rank])
   @@index([placeId, isRejected])
+  @@index([placeId, userFeedback])
 }
 
 model PlaceRating {

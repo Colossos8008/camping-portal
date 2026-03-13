@@ -44,14 +44,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Upstream is not an image" }, { status: 415 });
     }
 
+    const arrayBuffer = await upstream.arrayBuffer();
+    const body = Buffer.from(arrayBuffer);
+    if (!body.length) {
+      return NextResponse.json({ error: "Upstream image was empty" }, { status: 502 });
+    }
+
     const headers = new Headers();
     headers.set("Content-Type", contentType.split(";")[0]?.trim() || "image/jpeg");
     headers.set("Cache-Control", cacheControl(3600 * 24 * 7));
+    headers.set("Content-Length", String(body.length));
 
-    const contentLength = upstream.headers.get("content-length");
-    if (contentLength) headers.set("Content-Length", contentLength);
-
-    return new Response(upstream.body, { status: 200, headers });
+    return new Response(body, { status: 200, headers });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message ?? "Image proxy fetch failed" }, { status: 502 });
   }

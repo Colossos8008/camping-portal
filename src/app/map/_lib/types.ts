@@ -47,6 +47,7 @@ export type PlaceHeroCandidate = {
   score: number;
   reason: string;
   rank: number;
+  userFeedback?: "UP" | "DOWN" | null;
 };
 
 export type Place = {

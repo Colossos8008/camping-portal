@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@supabase/supabase-js";
+import { isGooglePhotoReference, isGooglePlacesPhotoUrl } from "@/lib/hero-image";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,13 @@ type RegisterImageInput = {
 type RegisterBody = {
   images: RegisterImageInput[];
 };
+
+function isRemoteImagePath(filename: string): boolean {
+  const normalized = String(filename ?? "").trim();
+  if (!normalized) return false;
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return true;
+  return isGooglePhotoReference(normalized) || isGooglePlacesPhotoUrl(normalized);
+}
 
 export async function POST(req: NextRequest) {
   const placeId = getPlaceIdFromPath(req);
@@ -90,14 +98,15 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Image not found" }, { status: 404 });
   }
 
-  const supabase = getSupabaseServerClient();
-
-  const { error: storageErr } = await supabase.storage.from(BUCKET).remove([img.filename]);
-  if (storageErr) {
-    return NextResponse.json(
-      { error: "Storage delete failed", details: storageErr.message },
-      { status: 500 }
-    );
+  if (!isRemoteImagePath(img.filename)) {
+    const supabase = getSupabaseServerClient();
+    const { error: storageErr } = await supabase.storage.from(BUCKET).remove([img.filename]);
+    if (storageErr) {
+      return NextResponse.json(
+        { error: "Storage delete failed", details: storageErr.message },
+        { status: 500 }
+      );
+    }
   }
 
   await prisma.image.delete({ where: { id: imageId } });

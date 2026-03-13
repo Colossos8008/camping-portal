@@ -746,6 +746,44 @@ export default function MapClient(props: Props) {
 
   useEffect(() => {
     const map = mapRef.current;
+    const root = rootRef.current;
+    if (!map || !root) return;
+
+    function closeHoveredTooltip() {
+      const hoveredId = hoveredIdRef.current;
+      if (hoveredId == null) return;
+      const marker = markersRef.current.get(hoveredId);
+      const place = props.places.find((item) => item.id === hoveredId);
+      hoveredIdRef.current = null;
+      try {
+        marker?.closeTooltip();
+      } catch {}
+      if (place) setMarkerVisual(place.id, place);
+    }
+
+    function handleRootMouseMove(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".cp-marker")) return;
+      closeHoveredTooltip();
+    }
+
+    function handleRootLeave() {
+      closeHoveredTooltip();
+    }
+
+    map.on("movestart zoomstart dragstart click", closeHoveredTooltip);
+    root.addEventListener("mousemove", handleRootMouseMove);
+    root.addEventListener("mouseleave", handleRootLeave);
+
+    return () => {
+      map.off("movestart zoomstart dragstart click", closeHoveredTooltip);
+      root.removeEventListener("mousemove", handleRootMouseMove);
+      root.removeEventListener("mouseleave", handleRootLeave);
+    };
+  }, [props.places]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map) return;
     if (!selected) return;
 

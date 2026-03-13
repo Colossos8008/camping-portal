@@ -12,9 +12,13 @@ function normalizeUnsafeRemoteImageUrl(path: string, placeId?: number | null): s
   const cleanPath = String(path ?? "").trim();
   if (!cleanPath) return "";
 
-  if (isGooglePhotoReference(cleanPath) || isGooglePlacesPhotoUrl(cleanPath)) {
+  if (isGooglePhotoReference(cleanPath)) {
     const proxyPath = buildPlaceHeroProxyPath(placeId);
     return proxyPath ?? "";
+  }
+
+  if (isGooglePlacesPhotoUrl(cleanPath)) {
+    return buildRemoteImageProxyPath(cleanPath);
   }
 
   if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {

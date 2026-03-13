@@ -126,11 +126,16 @@ async function streamRemoteImage(url: string): Promise<Response | null> {
   const contentType = upstream.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.startsWith("image/")) return null;
 
+  const arrayBuffer = await upstream.arrayBuffer();
+  const body = Buffer.from(arrayBuffer);
+  if (!body.length) return null;
+
   const headers = new Headers();
   headers.set("Content-Type", contentType.split(";")[0]?.trim() || "image/jpeg");
   headers.set("Cache-Control", cacheControl(3600 * 24 * 7));
+  headers.set("Content-Length", String(body.length));
 
-  return new Response(upstream.body, { status: 200, headers });
+  return new Response(body, { status: 200, headers });
 }
 
 

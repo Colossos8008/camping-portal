@@ -25,7 +25,8 @@ export default function EditorHeader(props: {
 
   distanceKm: number | null;
 
-  onOpenLightbox: (index: number) => void;
+  onOpenHeroLightbox: () => void;
+  onOpenLightboxByImageId: (imageId: number) => void;
   onOpenCandidateLightbox: (index: number) => void;
   onOpenNav: () => void;
   onSave: () => void;
@@ -67,7 +68,7 @@ export default function EditorHeader(props: {
     <div className="shrink-0 border-b border-white/10">
       <div className="relative overflow-hidden">
         {canRenderHero ? (
-          <button type="button" onClick={() => props.onOpenLightbox(0)} className="block w-full" title="Bild öffnen">
+          <button type="button" onClick={props.onOpenHeroLightbox} className="block w-full" title="Bild öffnen">
             <img
               key={heroSrc}
               src={heroSrc}
@@ -170,7 +171,7 @@ export default function EditorHeader(props: {
                 {props.headerImages.slice(0, 12).map((img, idx) => {
                   const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
                   return (
-                    <button key={img.id} type="button" onClick={() => props.onOpenLightbox(idx)} className="shrink-0" title="Bild öffnen">
+                    <button key={img.id} type="button" onClick={() => props.onOpenLightboxByImageId(img.id)} className="shrink-0" title="Bild öffnen">
                       {src ? (
                         <img
                           src={src}

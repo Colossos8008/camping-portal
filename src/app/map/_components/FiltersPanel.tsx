@@ -1,4 +1,3 @@
-// src/app/map/_components/FiltersPanel.tsx
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
@@ -8,7 +7,6 @@ type CoordinateReviewFilter = "ALL" | "UNREVIEWED" | "CORRECTED" | "CONFIRMED" |
 export default function FiltersPanel(props: {
   filtersOpen: boolean;
   setFiltersOpen: Dispatch<SetStateAction<boolean>>;
-
   showStellplatz: boolean;
   setShowStellplatz: Dispatch<SetStateAction<boolean>>;
   showCampingplatz: boolean;
@@ -17,7 +15,6 @@ export default function FiltersPanel(props: {
   setShowSehens: Dispatch<SetStateAction<boolean>>;
   showHvoTankstelle: boolean;
   setShowHvoTankstelle: Dispatch<SetStateAction<boolean>>;
-
   fDog: boolean;
   setFDog: Dispatch<SetStateAction<boolean>>;
   fSan: boolean;
@@ -28,15 +25,11 @@ export default function FiltersPanel(props: {
   setFOnline: Dispatch<SetStateAction<boolean>>;
   fGastro: boolean;
   setFGastro: Dispatch<SetStateAction<boolean>>;
-
   reviewFilter: CoordinateReviewFilter;
   setReviewFilter: Dispatch<SetStateAction<CoordinateReviewFilter>>;
-
   onRefresh: () => void;
 }) {
-  // Defensive: falls der Parent aus Versehen was Falsches übergibt, nicht crashen
-  const setShowHvo =
-    typeof props.setShowHvoTankstelle === "function" ? props.setShowHvoTankstelle : () => {};
+  const setShowHvo = typeof props.setShowHvoTankstelle === "function" ? props.setShowHvoTankstelle : () => {};
 
   return (
     <div className={`rounded-2xl border border-white/10 bg-white/5 ${props.filtersOpen ? "p-4" : "p-3"}`}>
@@ -50,11 +43,8 @@ export default function FiltersPanel(props: {
         </button>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={props.onRefresh}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
-          >
-            Refresh
+          <button onClick={props.onRefresh} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10">
+            Aktualisieren
           </button>
 
           <button
@@ -72,20 +62,12 @@ export default function FiltersPanel(props: {
 
           <div className="grid grid-cols-2 gap-2 text-sm">
             <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={props.showStellplatz}
-                onChange={(e) => props.setShowStellplatz(e.target.checked)}
-              />
+              <input type="checkbox" checked={props.showStellplatz} onChange={(e) => props.setShowStellplatz(e.target.checked)} />
               Stellplatz
             </label>
 
             <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={props.showCampingplatz}
-                onChange={(e) => props.setShowCampingplatz(e.target.checked)}
-              />
+              <input type="checkbox" checked={props.showCampingplatz} onChange={(e) => props.setShowCampingplatz(e.target.checked)} />
               Campingplatz
             </label>
 
@@ -96,7 +78,7 @@ export default function FiltersPanel(props: {
 
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={props.showHvoTankstelle} onChange={(e) => setShowHvo(e.target.checked)} />
-              HVO Tankstelle
+              HVO-Tankstelle
             </label>
 
             <div className="col-span-2 my-1 h-px bg-white/10" />
@@ -135,6 +117,7 @@ export default function FiltersPanel(props: {
                 <option value="UNREVIEWED">ungeprüft</option>
                 <option value="CORRECTED">korrigiert</option>
                 <option value="CONFIRMED">bestätigt</option>
+                <option value="REJECTED">verworfen</option>
               </select>
             </label>
           </div>

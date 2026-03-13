@@ -3,7 +3,7 @@ import type { Place, PlaceType } from "./types";
 const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
   CAMPINGPLATZ: "Campingplatz",
   STELLPLATZ: "Stellplatz",
-  SEHENSWUERDIGKEIT: "Sehenswuerdigkeit",
+  SEHENSWUERDIGKEIT: "Sehenswürdigkeit",
   HVO_TANKSTELLE: "HVO-Tankstelle",
 };
 
@@ -18,7 +18,7 @@ const SIGHT_RELEVANCE_LABELS: Record<string, string> = {
 const SIGHT_VISIT_MODE_LABELS: Record<string, string> = {
   EASY_STOP: "Einfacher Stopp",
   SMART_WINDOW: "Gutes Zeitfenster",
-  OUTSIDE_BEST: "Ausserhalb der Top-Zeit",
+  OUTSIDE_BEST: "Außerhalb der Top-Zeit",
   MAIN_DESTINATION: "Hauptziel",
   WEATHER_WINDOW: "Wetterfenster",
 };
@@ -65,16 +65,16 @@ export function getPlaceScore(place: Place | null | undefined): { icon: string; 
   if (place.type === "SEHENSWUERDIGKEIT") {
     const total = Number((place as any).sightseeingTotalScore);
     if (!Number.isFinite(total)) return null;
-    return { icon: "🧭", value: Math.round(total), max: 100, title: "TS Sehenswuerdigkeit" };
+    return { icon: "🧭", value: Math.round(total), max: 100, title: "TS Sehenswürdigkeit" };
   }
 
   if (!isTsRelevantType(place.type)) return null;
 
   const ts21Total = getTs21Total((place as any).ts21);
-  if (ts21Total != null) return { icon: "🍰", value: Math.round(ts21Total), max: 20, title: "Toertchensystem" };
+  if (ts21Total != null) return { icon: "🍰", value: Math.round(ts21Total), max: 20, title: "Törtchensystem" };
 
   const t1 = Number((place as any)?.ratingDetail?.totalPoints ?? Number.NaN);
-  if (Number.isFinite(t1)) return { icon: "🍰", value: Math.round(t1), max: 14, title: "Toertchensystem" };
+  if (Number.isFinite(t1)) return { icon: "🍰", value: Math.round(t1), max: 14, title: "Törtchensystem" };
 
   return null;
 }

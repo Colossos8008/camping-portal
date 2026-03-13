@@ -112,7 +112,7 @@ export default function PlaceImages({ placeId, images, onRefresh }: Props) {
 
       onRefresh();
     } catch (e: any) {
-      setErrorMsg(e?.message || "Loeschen fehlgeschlagen");
+      setErrorMsg(e?.message || "Löschen fehlgeschlagen");
     }
   }
 

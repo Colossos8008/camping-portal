@@ -1,21 +1,16 @@
-// src/app/map/_components/ImagesPanel.tsx
 "use client";
 
 import { getSupabasePublicUrl } from "../_lib/image-url";
 
 export default function ImagesPanel(props: {
   placeId: number | null;
-
   images: any[];
   thumbnailImageId: number | null;
-
   uploading: boolean;
   saving: boolean;
-
   uploadMsg: string;
   onPickFiles: (files: File[]) => void;
   pickedFilesCount: number;
-
   onUpload: () => void;
   onOpenLightboxById: (imageId: number) => void;
   onSetThumbnail: (imageId: number) => void;

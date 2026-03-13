@@ -12,6 +12,19 @@ export type HeroCandidateInput = {
   heroImageUrl?: string | null;
 };
 
+export type HeroCandidatePreferences = {
+  boostHints?: string[];
+  penaltyHints?: string[];
+  sourceBoosts?: Partial<Record<HeroCandidateRecord["source"], number>>;
+};
+
+export type HeroCandidateFeedbackSample = {
+  source: HeroCandidateRecord["source"];
+  url: string;
+  reason: string;
+  userFeedback: "UP" | "DOWN";
+};
+
 export type HeroCandidateRecord = {
   id?: number;
   source: "google" | "wikimedia" | "website";
@@ -22,6 +35,7 @@ export type HeroCandidateRecord = {
   score: number;
   reason: string;
   rank: number;
+  userFeedback?: "UP" | "DOWN" | null;
 };
 
 type WikimediaCandidate = {
@@ -71,7 +85,7 @@ type ImageInspection = {
   hasAlpha?: boolean;
 };
 
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 9000;
 const MAX_WIKIMEDIA_CANDIDATES = 16;
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
 const GOOGLE_THUMB_WIDTH = 480;
@@ -146,6 +160,84 @@ const GENERIC_TOKENS = new Set([
   "altstadt",
   "stadt",
 ]);
+
+const DEFAULT_TYPE_PREFERENCES: Record<PlaceType, HeroCandidatePreferences> = {
+  CAMPINGPLATZ: {
+    boostHints: ["aerial", "drone", "lake", "river", "water", "green", "forest", "camping", "caravan", "wohnmobil", "camper", "panorama", "nature"],
+    penaltyHints: ["logo", "icon", "map", "facebook", "instagram", "svg", "badge", "award", "selfie"],
+    sourceBoosts: { website: 6, google: 4, wikimedia: -2 },
+  },
+  STELLPLATZ: {
+    boostHints: ["aerial", "drone", "water", "green", "wohnmobil", "camper", "stellplatz", "panorama"],
+    penaltyHints: ["logo", "icon", "map", "facebook", "instagram", "svg", "badge"],
+    sourceBoosts: { website: 6, google: 4, wikimedia: -2 },
+  },
+  SEHENSWUERDIGKEIT: {
+    boostHints: ["panorama", "exterior", "landmark", "castle", "fortress", "abbey", "cathedral", "view", "aerial", "coast", "cliff"],
+    penaltyHints: ["logo", "icon", "map", "portrait", "plan", "floorplan", "ticket"],
+    sourceBoosts: { website: 2, google: 4, wikimedia: 3 },
+  },
+  HVO_TANKSTELLE: {
+    boostHints: ["station", "forecourt", "pump", "fuel", "truck", "canopy"],
+    penaltyHints: ["logo", "icon", "map", "svg", "badge", "social"],
+    sourceBoosts: { website: 5, google: 4, wikimedia: -4 },
+  },
+};
+
+const PREFERENCE_HINTS = uniqueBy(
+  [
+    "aerial",
+    "drone",
+    "panorama",
+    "landscape",
+    "water",
+    "river",
+    "lake",
+    "beach",
+    "coast",
+    "sea",
+    "green",
+    "forest",
+    "nature",
+    "camping",
+    "campground",
+    "camper",
+    "wohnmobil",
+    "caravan",
+    "pitch",
+    "tent",
+    "exterior",
+    "landmark",
+    "castle",
+    "fortress",
+    "abbey",
+    "cathedral",
+    "church",
+    "harbor",
+    "station",
+    "forecourt",
+    "fuel",
+    "pump",
+    "truck",
+    "canopy",
+    "logo",
+    "icon",
+    "map",
+    "badge",
+    "svg",
+    "social",
+    "facebook",
+    "instagram",
+    "room",
+    "bedroom",
+    "spa",
+    "hotel",
+    "apartment",
+    "terrace",
+    "mobilehome",
+  ],
+  (value) => normalize(value)
+);
 
 function normalize(value: string): string {
   return String(value ?? "")
@@ -236,6 +328,20 @@ function looksCampingLike(name: string): boolean {
   return normalized.includes("camp") || normalized.includes("rv") || normalized.includes("stellplatz") || normalized.includes("wohnmobil") || normalized.includes("caravan");
 }
 
+function looksFuelStationLike(name: string): boolean {
+  const normalized = normalize(name);
+  return (
+    normalized.includes("hvo") ||
+    normalized.includes("tank") ||
+    normalized.includes("fuel") ||
+    normalized.includes("station") ||
+    normalized.includes("diesel") ||
+    normalized.includes("truck stop") ||
+    normalized.includes("truckstop") ||
+    normalized.includes("lkw")
+  );
+}
+
 function uniqueBy<T>(items: T[], getKey: (item: T) => string): T[] {
   const map = new Map<string, T>();
   for (const item of items) {
@@ -248,6 +354,137 @@ function uniqueBy<T>(items: T[], getKey: (item: T) => string): T[] {
 function dedupeKey(candidate: HeroCandidateRecord): string {
   const direct = String(candidate.thumbUrl ?? candidate.url ?? "").trim();
   return `${candidate.source}:${direct}`;
+}
+
+function candidateIdentityKey(candidate: Pick<HeroCandidateRecord, "source" | "url">): string {
+  return `${String(candidate.source ?? "").trim().toLowerCase()}::${String(candidate.url ?? "").trim()}`;
+}
+
+function mergeUniqueHints(...groups: Array<string[] | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const item of group ?? []) {
+      const normalized = normalize(item);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function mergePreferences(base: HeroCandidatePreferences, learned?: HeroCandidatePreferences): HeroCandidatePreferences {
+  return {
+    boostHints: mergeUniqueHints(base.boostHints, learned?.boostHints),
+    penaltyHints: mergeUniqueHints(base.penaltyHints, learned?.penaltyHints),
+    sourceBoosts: {
+      ...(base.sourceBoosts ?? {}),
+      ...(learned?.sourceBoosts ?? {}),
+    },
+  };
+}
+
+function scoreCandidateByPreferences(candidate: HeroCandidateRecord, preferences: HeroCandidatePreferences): number {
+  const haystack = normalize(`${candidate.reason} ${candidate.url}`);
+  let delta = 0;
+
+  for (const hint of preferences.boostHints ?? []) {
+    if (haystack.includes(normalize(hint))) delta += 5;
+  }
+  for (const hint of preferences.penaltyHints ?? []) {
+    if (haystack.includes(normalize(hint))) delta -= 8;
+  }
+
+  delta += Number(preferences.sourceBoosts?.[candidate.source] ?? 0);
+  return delta;
+}
+
+function applyPreferenceScoring(
+  candidates: HeroCandidateRecord[],
+  placeType: PlaceType,
+  learnedPreferences?: HeroCandidatePreferences
+): HeroCandidateRecord[] {
+  const preferences = mergePreferences(DEFAULT_TYPE_PREFERENCES[placeType], learnedPreferences);
+  return candidates.map((candidate) => ({
+    ...candidate,
+    score: candidate.score + scoreCandidateByPreferences(candidate, preferences),
+  }));
+}
+
+export function deriveLearnedPreferencesFromFeedback(
+  placeType: PlaceType,
+  feedbackSamples: HeroCandidateFeedbackSample[]
+): HeroCandidatePreferences {
+  if (!feedbackSamples.length) return {};
+
+  const hintScores = new Map<string, number>();
+  const sourceScores = new Map<HeroCandidateRecord["source"], number>();
+
+  for (const sample of feedbackSamples) {
+    const direction = sample.userFeedback === "UP" ? 2 : -2;
+    sourceScores.set(sample.source, (sourceScores.get(sample.source) ?? 0) + direction);
+
+    const haystack = normalize(`${sample.reason} ${sample.url}`);
+    for (const hint of PREFERENCE_HINTS) {
+      if (!haystack.includes(normalize(hint))) continue;
+      hintScores.set(hint, (hintScores.get(hint) ?? 0) + direction);
+    }
+  }
+
+  const boostHints = Array.from(hintScores.entries())
+    .filter(([, score]) => score >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([hint]) => hint);
+
+  const penaltyHints = Array.from(hintScores.entries())
+    .filter(([, score]) => score <= -2)
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 8)
+    .map(([hint]) => hint);
+
+  const sourceBoosts = Object.fromEntries(
+    Array.from(sourceScores.entries()).map(([source, score]) => {
+      const baseline = Number(DEFAULT_TYPE_PREFERENCES[placeType].sourceBoosts?.[source] ?? 0);
+      return [source, Math.max(-8, Math.min(12, baseline + score))];
+    })
+  ) as Partial<Record<HeroCandidateRecord["source"], number>>;
+
+  return { boostHints, penaltyHints, sourceBoosts };
+}
+
+function buildQueryVariants(place: HeroCandidateInput, explorationLevel = 1, reloadRound = 0): string[] {
+  const base = [place.name];
+
+  if (place.type === "SEHENSWUERDIGKEIT") {
+    base.push(`${place.name} exterior`);
+    base.push(`${place.name} panorama`);
+    if (explorationLevel >= 2) base.push(`${place.name} official photos`);
+    if (explorationLevel >= 3) base.push(`${place.name} landmark view`);
+  } else if (place.type === "HVO_TANKSTELLE") {
+    base.push(`${place.name} hvo tankstelle`);
+    base.push(`${place.name} fuel station`);
+    if (explorationLevel >= 2) base.push(`${place.name} truck stop`);
+    if (explorationLevel >= 3) base.push(`${place.name} canopy pumps`);
+    if (explorationLevel >= 2) base.push(`${place.name} diesel station`);
+    if (explorationLevel >= 3) base.push(`${place.name} lkw tankstelle`);
+  } else {
+    base.push(`${place.name} camping`);
+    base.push(`${place.name} campground`);
+    if (explorationLevel >= 2) base.push(`${place.name} aerial camping`);
+    if (explorationLevel >= 2) base.push(`${place.name} panorama campground`);
+    if (explorationLevel >= 3) base.push(`${place.name} caravan site`);
+    if (explorationLevel >= 3) base.push(`${place.name} river lake camping`);
+    if (explorationLevel >= 2) base.push(`${place.name} bilder`);
+    if (explorationLevel >= 3) base.push(`${place.name} galerie`);
+    if (explorationLevel >= 3) base.push(`${place.name} official website photos`);
+  }
+
+  const unique = uniqueBy(base.filter(Boolean), (value) => normalize(value));
+  if (unique.length <= 1) return unique;
+  const offset = ((reloadRound % unique.length) + unique.length) % unique.length;
+  return [...unique.slice(offset), ...unique.slice(0, offset)];
 }
 
 function isHttpUrl(input: string): boolean {
@@ -525,8 +762,8 @@ async function fetchWebsiteImageCandidates(
     }
 
     const linkedImageGroups = await Promise.allSettled(
-      internalPages.map(async (pageUrl) => {
-        const pageHtml = await fetchText(pageUrl, 10000);
+      internalPages.slice(0, 2).map(async (pageUrl) => {
+        const pageHtml = await fetchText(pageUrl, 7000);
         return mapWebsiteImages(parseHtmlImageCandidates(pageHtml, pageUrl), placeName, reasonPrefix, pageUrl);
       })
     );
@@ -543,14 +780,13 @@ async function fetchWebsiteImageCandidates(
   }
 }
 
-async function discoverPagesFromDuckDuckGo(place: HeroCandidateInput): Promise<SearchResultPage[]> {
+async function discoverPagesFromDuckDuckGo(
+  place: HeroCandidateInput,
+  explorationLevel = 1,
+  reloadRound = 0
+): Promise<SearchResultPage[]> {
   const queries = uniqueBy(
-    [
-      place.name,
-      `${place.name} ${place.type === "SEHENSWUERDIGKEIT" ? "official photos" : "official camping photos"}`,
-      `${place.name} site officiel photos`,
-      `${place.name} galerie`,
-    ],
+    [...buildQueryVariants(place, explorationLevel, reloadRound), `${place.name} site officiel photos`, `${place.name} galerie`],
     (value) => normalize(value)
   );
 
@@ -578,8 +814,12 @@ async function discoverPagesFromDuckDuckGo(place: HeroCandidateInput): Promise<S
   return uniqueBy(discovered, (entry) => entry.url).slice(0, MAX_SEARCH_RESULT_PAGES);
 }
 
-async function findDiscoveredWebsiteCandidates(place: HeroCandidateInput): Promise<HeroCandidateRecord[]> {
-  const pages = await discoverPagesFromDuckDuckGo(place);
+async function findDiscoveredWebsiteCandidates(
+  place: HeroCandidateInput,
+  explorationLevel = 1,
+  reloadRound = 0
+): Promise<HeroCandidateRecord[]> {
+  const pages = await discoverPagesFromDuckDuckGo(place, explorationLevel, reloadRound);
   if (!pages.length) return [];
   const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
 
@@ -764,12 +1004,14 @@ async function runGoogleSearchNearby(place: HeroCandidateInput, googleKey: strin
     locationRestriction: {
       circle: {
         center: { latitude: place.lat, longitude: place.lng },
-        radius: place.type === "SEHENSWUERDIGKEIT" ? 2000 : 5000,
+        radius: place.type === "SEHENSWUERDIGKEIT" ? 2000 : place.type === "HVO_TANKSTELLE" ? 7000 : 5000,
       },
     },
   };
   if (place.type === "SEHENSWUERDIGKEIT") {
     body.includedTypes = ["tourist_attraction", "museum", "church", "park", "historical_landmark"];
+  } else if (place.type === "HVO_TANKSTELLE") {
+    body.includedTypes = ["gas_station", "truck_stop"];
   } else {
     body.includedTypes = ["campground", "rv_park", "lodging"];
   }
@@ -787,37 +1029,48 @@ async function runGoogleSearchNearby(place: HeroCandidateInput, googleKey: strin
   return Array.isArray(data.places) ? data.places : [];
 }
 
-async function runGoogleSearchText(place: HeroCandidateInput, googleKey: string): Promise<GooglePlace[]> {
+async function runGoogleSearchText(
+  place: HeroCandidateInput,
+  googleKey: string,
+  explorationLevel = 1,
+  reloadRound = 0
+): Promise<GooglePlace[]> {
   if (!googleKey) return [];
-  const query =
-    place.type === "SEHENSWUERDIGKEIT"
-      ? `${place.name}`
-      : `${place.name} ${place.type === "STELLPLATZ" ? "stellplatz wohnmobil" : "camping campground"}`;
-  const body: Record<string, unknown> = {
-    textQuery: query,
-    maxResultCount: 8,
-    languageCode: "de",
-  };
-  if (typeof place.lat === "number" && typeof place.lng === "number") {
-    body.locationBias = {
-      circle: {
-        center: { latitude: place.lat, longitude: place.lng },
-        radius: place.type === "SEHENSWUERDIGKEIT" ? 8000 : 12000,
-      },
-    };
+  if (place.type === "HVO_TANKSTELLE" && tokenizeMeaningful(place.name).length <= 1) {
+    return [];
   }
+  const queries = buildQueryVariants(place, explorationLevel, reloadRound);
+  const maxQueries = place.type === "HVO_TANKSTELLE" ? 1 : explorationLevel >= 3 ? 4 : 3;
+  const groups = await Promise.allSettled(
+    queries.slice(0, maxQueries).map(async (query) => {
+      const body: Record<string, unknown> = {
+        textQuery: query,
+        maxResultCount: 8,
+        languageCode: "de",
+      };
+      if (typeof place.lat === "number" && typeof place.lng === "number") {
+        body.locationBias = {
+          circle: {
+            center: { latitude: place.lat, longitude: place.lng },
+            radius: place.type === "SEHENSWUERDIGKEIT" ? 8000 : place.type === "HVO_TANKSTELLE" ? 18000 : 12000,
+          },
+        };
+      }
 
-  const data = await fetchJsonRequest<{ places?: GooglePlace[] }>(
-    "https://places.googleapis.com/v1/places:searchText",
-    "POST",
-    {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": googleKey,
-      "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos,places.websiteUri",
-    },
-    body
+      const data = await fetchJsonRequest<{ places?: GooglePlace[] }>(
+        "https://places.googleapis.com/v1/places:searchText",
+        "POST",
+        {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleKey,
+          "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos,places.websiteUri",
+        },
+        body
+      );
+      return Array.isArray(data.places) ? data.places : [];
+    })
   );
-  return Array.isArray(data.places) ? data.places : [];
+  return mergeGooglePlaces(groups.flatMap((group) => (group.status === "fulfilled" ? [group.value] : [])));
 }
 
 function mergeGooglePlaces(groups: GooglePlace[][]): GooglePlace[] {
@@ -847,11 +1100,14 @@ function scoreGooglePlaceMatch(place: HeroCandidateInput, candidateName: string,
   const nameScore = similarity(place.name, candidateName);
   const hasSignal = hasSpecificNameSignal(place.name, candidateName);
   const isCamping = place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ";
+  const isHvo = place.type === "HVO_TANKSTELLE";
   const campingLike = looksCampingLike(candidateName);
+  const fuelLike = looksFuelStationLike(candidateName);
 
   let score = Math.round(nameScore * 34) + Math.round(overlap * 34);
   if (hasSignal) score += 12;
   if (isCamping && campingLike) score += 12;
+  if (isHvo && fuelLike) score += 14;
   if (distance !== null) {
     if (distance <= 150) score += 18;
     else if (distance <= 500) score += 12;
@@ -870,15 +1126,19 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
   const sharedTokens = sharedMeaningfulTokenCount(place.name, candidateName);
   const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
   const isCamping = place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ";
+  const isHvo = place.type === "HVO_TANKSTELLE";
 
   if (isCamping && containsHint(candidateName, EXCLUDED_CAMPING_HINTS) && !relaxed) return false;
-  if (!isCamping && containsHint(candidateName, EXCLUDED_SIGHTSEEING_HINTS) && !relaxed) return false;
+  if (!isCamping && !isHvo && containsHint(candidateName, EXCLUDED_SIGHTSEEING_HINTS) && !relaxed) return false;
 
   if (relaxed) {
     if (distance !== null && distance > 25000 && nameScore < 0.2 && overlap < 0.2) return false;
     if (isCamping) {
       if (!looksCampingLike(candidateName)) return false;
       if (!hasSignal && distance !== null && distance > 1500) return false;
+    } else if (isHvo) {
+      if (!looksFuelStationLike(candidateName)) return false;
+      if (!hasSignal && distance !== null && distance > 4000) return false;
     } else if (requiredSharedTokens >= 2 && sharedTokens < requiredSharedTokens) {
       return false;
     }
@@ -892,6 +1152,13 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
     return hasSignal || (looksCampingLike(candidateName) && (distance === null || distance <= 500));
   }
 
+  if (isHvo) {
+    if (!looksFuelStationLike(candidateName)) return false;
+    if (!hasSignal && distance !== null && distance > 2500) return false;
+    if (distance !== null && distance > 10000 && nameScore < 0.3 && overlap < 0.22) return false;
+    return hasSignal || nameScore >= 0.2 || overlap >= 0.2 || (distance !== null && distance <= 1200);
+  }
+
   if (!isCamping && requiredSharedTokens >= 2 && sharedTokens < requiredSharedTokens) return false;
 
   if (!hasSignal && nameScore < 0.35 && overlap < 0.28) return false;
@@ -899,9 +1166,18 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
   return true;
 }
 
-async function findGoogleCandidates(place: HeroCandidateInput, googleKey: string, relaxed = false): Promise<HeroCandidateRecord[]> {
+async function findGoogleCandidates(
+  place: HeroCandidateInput,
+  googleKey: string,
+  relaxed = false,
+  explorationLevel = 1,
+  reloadRound = 0
+): Promise<HeroCandidateRecord[]> {
   if (!googleKey) return [];
-  const [nearby, text] = await Promise.allSettled([runGoogleSearchNearby(place, googleKey), runGoogleSearchText(place, googleKey)]);
+  const [nearby, text] = await Promise.allSettled([
+    runGoogleSearchNearby(place, googleKey),
+    runGoogleSearchText(place, googleKey, explorationLevel, reloadRound),
+  ]);
   const merged = mergeGooglePlaces([
     nearby.status === "fulfilled" ? nearby.value : [],
     text.status === "fulfilled" ? text.value : [],
@@ -976,6 +1252,7 @@ function shouldKeepWikiCandidate(place: HeroCandidateInput, candidate: Wikimedia
   const hasSignal = hasSpecificNameSignal(place.name, candidate.title);
   const sharedTokens = sharedMeaningfulTokenCount(place.name, candidate.title);
   const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
+  if (place.type === "HVO_TANKSTELLE") return false;
   if ((place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ") && !looksCampingLike(`${candidate.title} ${candidate.url}`)) {
     return false;
   }
@@ -1069,7 +1346,7 @@ function signatureDistance(a: string, b: string): number {
 
 async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Promise<HeroCandidateRecord[]> {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
-  const topForSignature = sorted.slice(0, Math.min(64, sorted.length));
+  const topForSignature = sorted.slice(0, Math.min(24, sorted.length));
   const inspections = await Promise.all(
     topForSignature.map(async (candidate) => ({
       candidate,
@@ -1098,13 +1375,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     const currentCount = entityCounts.get(entityKey) ?? 0;
     if (currentCount >= entityCap(candidate)) continue;
 
-    if (!inspection?.signature) {
-      if (candidate.source !== "website") continue;
-      kept.push({ ...candidate, score: candidate.score - 10 });
-      entityCounts.set(entityKey, currentCount + 1);
-      keptSignatures.push({ candidate, signature: null });
-      continue;
-    }
+    if (!inspection?.signature) continue;
 
     const signature = inspection?.signature ?? null;
     if (
@@ -1124,43 +1395,61 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
 
 export async function discoverHeroCandidates(
   place: HeroCandidateInput,
-  options?: { googleKey?: string; limit?: number }
+  options?: {
+    googleKey?: string;
+    limit?: number;
+    excludeKeys?: string[];
+    preferences?: HeroCandidatePreferences;
+    explorationLevel?: number;
+    reloadRound?: number;
+  }
 ): Promise<HeroCandidateRecord[]> {
-  if (place.type === "HVO_TANKSTELLE") return [];
-
   const limit = Math.max(1, Math.min(16, Number(options?.limit ?? 10)));
   const googleKey = String(options?.googleKey ?? "").trim();
+  const explorationLevel = Math.max(1, Math.min(4, Number(options?.explorationLevel ?? 1)));
+  const reloadRound = Math.max(0, Number(options?.reloadRound ?? 0));
+  const excludedKeys = new Set((options?.excludeKeys ?? []).map((item) => String(item ?? "").trim()).filter(Boolean));
+  const shouldUseWiki = place.type === "SEHENSWUERDIGKEIT";
+  const phase = Math.max(0, reloadRound - 1) % 3;
+  let all: HeroCandidateRecord[] = [];
 
-  const [strictGoogle, strictWiki] = await Promise.allSettled([
-    findGoogleCandidates(place, googleKey, false),
-    findWikimediaHeroCandidates(place, false),
-  ]);
-
-  let all = [
-    ...(strictGoogle.status === "fulfilled" ? strictGoogle.value : []),
-    ...(strictWiki.status === "fulfilled" ? strictWiki.value : []),
-  ];
-
-  if (all.length < limit) {
-    const discoveredPages = await findDiscoveredWebsiteCandidates(place).catch(() => []);
-    all = [...all, ...discoveredPages];
-  }
-
-  if (all.length < Math.min(MIN_TARGET_RESULTS, limit)) {
-    const [relaxedGoogle, relaxedWiki, relaxedDiscovered] = await Promise.allSettled([
-      findGoogleCandidates(place, googleKey, true),
-      findWikimediaHeroCandidates(place, true),
-      findDiscoveredWebsiteCandidates(place),
+  if (phase === 0) {
+    const strictGoogle = await findGoogleCandidates(place, googleKey, false, explorationLevel, reloadRound).catch(() => []);
+    all = [...strictGoogle];
+    if (shouldUseWiki && all.length < Math.min(4, limit)) {
+      const strictWiki = await findWikimediaHeroCandidates(place, false).catch(() => []);
+      all = [...all, ...strictWiki];
+    }
+  } else if (phase === 1) {
+    all = await findDiscoveredWebsiteCandidates(place, explorationLevel + 1, reloadRound).catch(() => []);
+  } else {
+    const [relaxedGoogle, discoveredPages] = await Promise.allSettled([
+      findGoogleCandidates(place, googleKey, true, explorationLevel + 1, reloadRound + 1),
+      findDiscoveredWebsiteCandidates(place, explorationLevel + 1, reloadRound + 1),
     ]);
     all = [
-      ...all,
       ...(relaxedGoogle.status === "fulfilled" ? relaxedGoogle.value : []),
-      ...(relaxedWiki.status === "fulfilled" ? relaxedWiki.value : []),
-      ...(relaxedDiscovered.status === "fulfilled" ? relaxedDiscovered.value : []),
+      ...(discoveredPages.status === "fulfilled" ? discoveredPages.value : []),
     ];
   }
 
-  const visuallyDeduped = await dedupeCandidatesVisually(uniqueBy(all, (candidate) => dedupeKey(candidate)));
+  if (all.length < Math.min(MIN_TARGET_RESULTS, limit)) {
+    const topUp = await Promise.allSettled([
+      all.length < limit ? findGoogleCandidates(place, googleKey, true, explorationLevel + 1, reloadRound + 2) : Promise.resolve([]),
+      shouldUseWiki && all.length < Math.min(4, limit) ? findWikimediaHeroCandidates(place, true) : Promise.resolve([]),
+      all.length < Math.min(4, limit) ? findDiscoveredWebsiteCandidates(place, explorationLevel + 2, reloadRound + 2) : Promise.resolve([]),
+    ]);
+    all = [
+      ...all,
+      ...(topUp[0].status === "fulfilled" ? topUp[0].value : []),
+      ...(topUp[1].status === "fulfilled" ? topUp[1].value : []),
+      ...(topUp[2].status === "fulfilled" ? topUp[2].value : []),
+    ];
+  }
+
+  const preferred = applyPreferenceScoring(uniqueBy(all, (candidate) => dedupeKey(candidate)), place.type, options?.preferences);
+  const unseen = preferred.filter((candidate) => !excludedKeys.has(candidateIdentityKey(candidate)));
+  const visuallyDeduped = await dedupeCandidatesVisually(unseen);
 
   return visuallyDeduped
     .sort((a, b) => b.score - a.score)

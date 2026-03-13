@@ -10,9 +10,11 @@ export default function HeroCandidatesPanel(props: {
   candidates: PlaceHeroCandidate[];
   loading: boolean;
   error: string;
+  reloadInfo?: { newCount: number; preservedCount: number } | null;
   onLoad: () => void;
   onSelect: (index: number) => void;
   onChooseHero: (index: number) => void;
+  onFeedback: (index: number, vote: "UP" | "DOWN") => void;
   activeHeroUrl?: string | null;
 }) {
   const supported = props.placeType !== "HVO_TANKSTELLE";
@@ -33,6 +35,11 @@ export default function HeroCandidatesPanel(props: {
         <div>
           <div className="text-sm font-semibold">Hero-Vorschläge</div>
           <div className="text-xs opacity-70">5-10 externe Bildkandidaten zum manuellen Auswählen</div>
+          {props.reloadInfo ? (
+            <div className="mt-1 text-[11px] text-white/60">
+              Neu geladen: {props.reloadInfo.newCount} · Behalten: {props.reloadInfo.preservedCount}
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
@@ -90,10 +97,38 @@ export default function HeroCandidatesPanel(props: {
 
                 <div className="mt-2 flex items-center justify-between gap-2 text-[11px] opacity-80">
                   <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 uppercase">{candidate.source}</span>
-                  <span>Score {candidate.score}</span>
+                  <span>Score {Math.round(Number(candidate.score ?? 0))}</span>
                 </div>
 
                 <div className="mt-1 line-clamp-3 text-[11px] text-white/75">{candidate.reason}</div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => props.onFeedback(originalIndex, "UP")}
+                    className={`rounded-lg border px-2 py-1 text-[11px] ${
+                      candidate.userFeedback === "UP"
+                        ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
+                        : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
+                    }`}
+                    title="Passt gut zu diesem Ort"
+                  >
+                    👍
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => props.onFeedback(originalIndex, "DOWN")}
+                    className={`rounded-lg border px-2 py-1 text-[11px] ${
+                      candidate.userFeedback === "DOWN"
+                        ? "border-red-400/60 bg-red-500/20 text-red-100"
+                        : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
+                    }`}
+                    title="Passt nicht zu diesem Ort"
+                  >
+                    👎
+                  </button>
+                  {candidate.userFeedback === "UP" ? <span className="text-[11px] text-emerald-200/90">Bleibt beim Reload</span> : null}
+                </div>
 
                 <button
                   type="button"

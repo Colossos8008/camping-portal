@@ -10,6 +10,7 @@ import { distanceKm } from "./_lib/geo";
 import { safePlacesFromApi } from "./_lib/place";
 import { getPlaceScore, getPlaceTypeLabel } from "./_lib/place-display";
 import { blankRating } from "./_lib/rating";
+import { normalizeDisplayText } from "./_lib/text";
 
 import FiltersPanel from "./_components/FiltersPanel";
 import PlacesList from "./_components/PlacesList";
@@ -118,7 +119,14 @@ function buildNavUrl(provider: Exclude<NavProvider, "AUTO">, lat: number, lng: n
 }
 
 type EditorSectionId = "BASICS" | "TOGGLES" | "TS" | "IMAGES" | "REVIEW";
-type LightboxImage = { id?: number; filename: string };
+type LightboxImage = {
+  id?: number;
+  filename: string;
+  kind: "hero" | "gallery" | "candidate";
+  source?: string;
+  userFeedback?: "UP" | "DOWN" | null;
+  candidateId?: number;
+};
 
 function collapsedSections(): Record<EditorSectionId, boolean> {
   return { BASICS: false, TOGGLES: false, TS: false, IMAGES: false, REVIEW: false };
@@ -265,6 +273,8 @@ export default function MapPage() {
   const [heroCandidates, setHeroCandidates] = useState<PlaceHeroCandidate[]>([]);
   const [heroCandidatesLoading, setHeroCandidatesLoading] = useState(false);
   const [heroCandidatesError, setHeroCandidatesError] = useState("");
+  const [heroCandidatesReloadInfo, setHeroCandidatesReloadInfo] = useState<{ newCount: number; preservedCount: number } | null>(null);
+  const [heroReloadTick, setHeroReloadTick] = useState(0);
 
   const [isMobile, setIsMobile] = useState<boolean>(() => (typeof window === "undefined" ? false : isMobileNow()));
 
@@ -332,6 +342,12 @@ export default function MapPage() {
   useEffect(() => {
     setSectionOpen(loadSectionState());
   }, []);
+
+  useEffect(() => {
+    if (!statusMsg) return;
+    const timeout = window.setTimeout(() => setStatusMsg(""), 3500);
+    return () => window.clearTimeout(timeout);
+  }, [statusMsg]);
 
   useEffect(() => {
     saveSectionState(sectionOpen);
@@ -678,7 +694,7 @@ export default function MapPage() {
               ? currentForm.heroImageUrl.trim()
               : null,
         thumbnailImageId: currentForm.thumbnailImageId ?? null,
-        coordinateReviewNote: typeof currentForm.coordinateReviewNote === "string" ? currentForm.coordinateReviewNote : "",
+        coordinateReviewNote: normalizeDisplayText(currentForm.coordinateReviewNote),
       };
 
       const trimmedName = String(currentForm.name ?? "").trim();
@@ -721,7 +737,7 @@ export default function MapPage() {
           coordinateReviewStatus: normalizeCoordinateReviewStatus(saved?.coordinateReviewStatus),
           coordinateReviewSource: typeof saved?.coordinateReviewSource === "string" && saved.coordinateReviewSource.trim() ? saved.coordinateReviewSource.trim() : null,
           coordinateReviewReviewedAt: typeof saved?.coordinateReviewReviewedAt === "string" && saved.coordinateReviewReviewedAt.trim() ? saved.coordinateReviewReviewedAt.trim() : null,
-          coordinateReviewNote: typeof saved?.coordinateReviewNote === "string" ? saved.coordinateReviewNote : "",
+          coordinateReviewNote: typeof saved?.coordinateReviewNote === "string" ? normalizeDisplayText(saved.coordinateReviewNote) : "",
         }));
       }
 
@@ -987,10 +1003,34 @@ export default function MapPage() {
   const lbImages = useMemo<LightboxImage[]>(() => {
     const heroFilename = String(form.heroImageUrl ?? "").trim();
     const galleryImages = Array.isArray(headerImages) && headerImages.length ? headerImages : Array.isArray(form.images) ? form.images : [];
+    const heroGalleryIndex = galleryImages.findIndex((img: any) => String(img?.filename ?? "").trim() === heroFilename);
+
+    if (heroGalleryIndex >= 0) {
+      return galleryImages.map((img: any, index: number) => ({
+        id: img.id,
+        filename: img.filename,
+        kind: index === heroGalleryIndex ? ("hero" as const) : ("gallery" as const),
+      }));
+    }
+
     const uniqueGalleryImages = galleryImages.filter((img: any) => String(img?.filename ?? "").trim() !== heroFilename);
 
-    if (!heroFilename) return uniqueGalleryImages;
-    return [{ id: -1, filename: heroFilename }, ...uniqueGalleryImages];
+    if (!heroFilename) {
+      return uniqueGalleryImages.map((img: any) => ({
+        id: img.id,
+        filename: img.filename,
+        kind: "gallery" as const,
+      }));
+    }
+
+    return [
+      { id: -1, filename: heroFilename, kind: "hero" as const },
+      ...uniqueGalleryImages.map((img: any) => ({
+        id: img.id,
+        filename: img.filename,
+        kind: "gallery" as const,
+      })),
+    ];
   }, [form.heroImageUrl, form.images, headerImages]);
 
   const activeLightboxImages = lbOverrideImages ?? lbImages;
@@ -998,17 +1038,38 @@ export default function MapPage() {
   async function loadStoredHeroCandidates(placeId: number) {
     setHeroCandidatesLoading(true);
     setHeroCandidatesError("");
+    setHeroCandidatesReloadInfo(null);
     try {
       const res = await fetch(`/api/places/${placeId}/hero-candidates`, { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error ?? "Hero-Vorschläge konnten nicht geladen werden."));
-      setHeroCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
+      const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+      setHeroCandidates(sortHeroCandidates(candidates));
+      setHeroReloadTick(0);
     } catch (error: any) {
       setHeroCandidates([]);
       setHeroCandidatesError(String(error?.message ?? "Hero-Vorschläge konnten nicht geladen werden."));
     } finally {
       setHeroCandidatesLoading(false);
     }
+  }
+
+  function sortHeroCandidates(items: PlaceHeroCandidate[]): PlaceHeroCandidate[] {
+    const next = [...items];
+    next.sort((a, b) => {
+      const aPinned = a.userFeedback === "UP" ? 1 : 0;
+      const bPinned = b.userFeedback === "UP" ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return Number(b.score ?? 0) - Number(a.score ?? 0);
+    });
+    return next.map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }
+
+  function currentNeutralCandidateKeys(): string[] {
+    return heroCandidates
+      .filter((candidate) => candidate.userFeedback !== "UP" && candidate.userFeedback !== "DOWN")
+      .map((candidate) => `${String(candidate.source ?? "").trim().toLowerCase()}::${String(candidate.url ?? "").trim()}`)
+      .filter(Boolean);
   }
 
   function centerSelectedPlaceOnMap() {
@@ -1023,19 +1084,32 @@ export default function MapPage() {
   }
 
   async function fetchHeroCandidates(force = true) {
-    if (!form.id || form.type === "HVO_TANKSTELLE") return;
+    if (!form.id) return;
     setHeroCandidatesLoading(true);
     setHeroCandidatesError("");
     try {
       const res = await fetch(`/api/places/${form.id}/hero-candidates`, {
         method: force ? "POST" : "GET",
         headers: force ? { "Content-Type": "application/json" } : undefined,
-        body: force ? JSON.stringify({ limit: 8 }) : undefined,
+        body: force
+          ? JSON.stringify({ limit: 10, excludeKeys: currentNeutralCandidateKeys(), reloadRound: heroReloadTick + 1 })
+          : undefined,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error ?? "Hero-Vorschläge konnten nicht geladen werden."));
-      setHeroCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
-      if (force) setStatusMsg(`Hero-Vorschläge geladen: ${Array.isArray(data?.candidates) ? data.candidates.length : 0}`);
+      const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+      setHeroCandidates(sortHeroCandidates(candidates));
+      const reloadInfo = force
+        ? {
+            newCount: Math.max(0, Number(data?.newCandidatesLoaded ?? 0)),
+            preservedCount: Math.max(0, Number(data?.preservedPositiveCount ?? 0)),
+          }
+        : null;
+      setHeroCandidatesReloadInfo(reloadInfo);
+      if (force) {
+        setHeroReloadTick((value) => value + 1);
+        setStatusMsg(`Hero-Vorschläge neu geladen: ${reloadInfo?.newCount ?? 0} neu, ${reloadInfo?.preservedCount ?? 0} behalten`);
+      }
     } catch (error: any) {
       setHeroCandidatesError(String(error?.message ?? "Hero-Vorschläge konnten nicht geladen werden."));
     } finally {
@@ -1067,11 +1141,81 @@ export default function MapPage() {
     }
   }
 
+  async function rateHeroCandidateById(candidateId: number, vote: "UP" | "DOWN") {
+    if (!candidateId || !form.id) return;
+    const candidate = heroCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+
+    try {
+      const res = await fetch(`/api/places/${form.id}/hero-candidates/${candidateId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vote }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error ?? "Bildbewertung konnte nicht gespeichert werden."));
+
+      setHeroCandidates((current) => {
+        if (vote === "DOWN") {
+          return current.filter((item) => item.id !== candidateId);
+        }
+
+        return sortHeroCandidates(
+          current.map((item) =>
+            item.id === candidateId
+              ? {
+                  ...item,
+                  userFeedback: "UP" as const,
+                }
+              : item
+          )
+        );
+      });
+
+      setLbOverrideImages((current) => {
+        if (!current) return current;
+
+        const next = current
+          .map((item) =>
+            item.candidateId === candidateId
+              ? {
+                  ...item,
+                  userFeedback: vote,
+                }
+              : item
+          )
+          .filter((item) => !(vote === "DOWN" && item.candidateId === candidateId));
+
+        if (!next.length) {
+          setLbOpen(false);
+          return null;
+        }
+
+        setLbIndex((currentIndex) => Math.min(currentIndex, next.length - 1));
+        return next;
+      });
+
+      setStatusMsg(vote === "UP" ? "Bild positiv bewertet - bleibt beim Neuladen erhalten" : "Bild negativ bewertet - wird entfernt");
+    } catch (error: any) {
+      setErrorMsg(String(error?.message ?? "Bildbewertung konnte nicht gespeichert werden."));
+    }
+  }
+
+  async function rateHeroCandidate(index: number, vote: "UP" | "DOWN") {
+    const candidate = heroCandidates[index];
+    if (!candidate?.id) return;
+    await rateHeroCandidateById(candidate.id, vote);
+  }
+
   function openCandidateLightbox(index: number) {
     if (!heroCandidates.length) return;
     const images = heroCandidates.map((candidate) => ({
       id: candidate.id ?? undefined,
       filename: String(candidate.url ?? "").trim(),
+      kind: "candidate" as const,
+      source: candidate.source,
+      userFeedback: candidate.userFeedback ?? null,
+      candidateId: candidate.id ?? undefined,
     }));
     setLbOverrideImages(images);
     setLbIndex(Math.max(0, Math.min(index, images.length - 1)));
@@ -1079,8 +1223,10 @@ export default function MapPage() {
   }
 
   useEffect(() => {
-    if (!selectedPlace?.id || selectedPlace.type === "HVO_TANKSTELLE") {
+    if (!selectedPlace?.id) {
       setHeroCandidates([]);
+      setHeroCandidatesReloadInfo(null);
+      setHeroReloadTick(0);
       setHeroCandidatesError("");
       return;
     }
@@ -1097,9 +1243,15 @@ export default function MapPage() {
     setLbOpen(true);
   }
 
+  function openHeroLightbox() {
+    if (!lbImages.length) return;
+    const heroIndex = lbImages.findIndex((item) => item.kind === "hero");
+    openLightbox(heroIndex >= 0 ? heroIndex : 0);
+  }
+
   function openLightboxById(imageId: number) {
     if (!lbImages.length) return;
-    const idx = lbImages.findIndex((x: any) => Number(x.id) === Number(imageId));
+    const idx = lbImages.findIndex((x: any) => x.kind === "gallery" && Number(x.id) === Number(imageId));
     openLightbox(idx >= 0 ? idx : 0);
   }
 
@@ -1405,12 +1557,16 @@ export default function MapPage() {
             candidates={heroCandidates}
             loading={heroCandidatesLoading}
             error={heroCandidatesError}
+            reloadInfo={heroCandidatesReloadInfo}
             onLoad={() => {
               void fetchHeroCandidates(true);
             }}
             onSelect={openCandidateLightbox}
             onChooseHero={(index) => {
               void chooseHeroCandidate(index);
+            }}
+            onFeedback={(index, vote) => {
+              void rateHeroCandidate(index, vote);
             }}
             activeHeroUrl={typeof form.datasetHeroImageUrl === "string" && form.datasetHeroImageUrl.trim() ? form.datasetHeroImageUrl : form.heroImageUrl}
           />
@@ -1546,7 +1702,8 @@ export default function MapPage() {
               imagesCount={Array.isArray(form.images) ? form.images.length : 0}
               selectedPlace={selectedPlace}
               distanceKm={selectedDistanceKm}
-              onOpenLightbox={openLightbox}
+              onOpenHeroLightbox={openHeroLightbox}
+              onOpenLightboxByImageId={openLightboxById}
               onOpenCandidateLightbox={openCandidateLightbox}
               onOpenNav={() => setNavOpen(true)}
               onSave={save}
@@ -1587,12 +1744,6 @@ export default function MapPage() {
     </div>
   ) : (
     <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4 px-4 py-4 lg:flex-row lg:min-h-0">
-      {statusMsg ? (
-        <div className="fixed left-1/2 top-4 z-[1400] w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-center text-sm text-emerald-100 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur">
-          {statusMsg}
-        </div>
-      ) : null}
-
       <div className="w-[320px] shrink-0 lg:min-h-0">
         <PlacesList
           places={mapPlaces as any}
@@ -1669,8 +1820,9 @@ export default function MapPage() {
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}
                 selectedPlace={selectedPlace}
                 distanceKm={selectedDistanceKm}
-                onOpenLightbox={openLightbox}
-                onOpenCandidateLightbox={openCandidateLightbox}
+              onOpenHeroLightbox={openHeroLightbox}
+              onOpenLightboxByImageId={openLightboxById}
+              onOpenCandidateLightbox={openCandidateLightbox}
                 onOpenNav={() => setNavOpen(true)}
                 onSave={save}
                 onCenterOnMap={centerSelectedPlaceOnMap}
@@ -1761,6 +1913,9 @@ export default function MapPage() {
         onClose={closeLightbox}
         onPrev={lbPrev}
         onNext={lbNext}
+        onRate={(candidateId, vote) => {
+          void rateHeroCandidateById(candidateId, vote);
+        }}
       />
     </div>
   );

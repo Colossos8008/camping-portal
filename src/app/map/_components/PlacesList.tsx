@@ -1,4 +1,3 @@
-// src/app/map/_components/PlacesList.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -14,7 +13,7 @@ function ts21HaltungBadge(p: Place) {
   return (
     <div
       className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold leading-none text-white/90"
-      title="Toertchensystem - Haltung"
+      title="Törtchensystem - Haltung"
     >
       <span className="text-[11px]">{stance.icon}</span>
       <span>{stance.label}</span>
@@ -30,9 +29,9 @@ function reviewBadge(p: Place) {
     return (
       <span
         className="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-emerald-200"
-        title="Koordinate bestaetigt"
+        title="Koordinate bestätigt"
       >
-        bestaetigt
+        bestätigt
       </span>
     );
   }
@@ -52,7 +51,7 @@ function reviewBadge(p: Place) {
     return (
       <span
         className="inline-flex items-center rounded-full border border-rose-400/20 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-rose-200"
-        title="Koordinate geprueft, aber verworfen"
+        title="Koordinate geprüft, aber verworfen"
       >
         verworfen
       </span>
@@ -62,9 +61,9 @@ function reviewBadge(p: Place) {
   return (
     <span
       className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-medium leading-none text-white/70"
-      title="Koordinate ungeprueft"
+      title="Koordinate ungeprüft"
     >
-      ungeprueft
+      ungeprüft
     </span>
   );
 }
@@ -87,16 +86,12 @@ export default function PlacesList(props: {
   selectedId: number | null;
   onSelect: (id: number) => void;
   scrollToSelectedToken?: number;
-
   sortMode: SortMode;
   setSortMode: (m: SortMode) => void;
-
   geoStatus: string;
   onRequestMyLocation: () => void;
-
   hasMyPos: boolean;
   onZoomToMyPos: () => void;
-
   showMyRings: boolean;
   setShowMyRings: (v: boolean) => void;
 }) {
@@ -129,10 +124,7 @@ export default function PlacesList(props: {
         </select>
 
         <div className="mt-2 flex items-center gap-2">
-          <button
-            onClick={props.onRequestMyLocation}
-            className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15"
-          >
+          <button onClick={props.onRequestMyLocation} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15">
             Eigenposition holen
           </button>
 
@@ -211,17 +203,13 @@ export default function PlacesList(props: {
                   {ts21HaltungBadge(p)}
 
                   <div className="mt-1 text-[10px] opacity-70" title="Entfernung von deiner Eigenposition">
-                    📏 {hasDist ? dist : "—"}
+                    📏 {hasDist ? dist : "-"}
                   </div>
                 </div>
               </div>
             </button>
           );
         })}
-
-        {props.places.length === 0 ? (
-          <div className="px-2 py-6 text-sm opacity-70">Keine Treffer (Filter pruefen) - oder rechts auf + Neu.</div>
-        ) : null}
       </div>
     </div>
   );

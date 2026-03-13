@@ -11,6 +11,7 @@ import {
   TS21Scores,
   TS21Value,
 } from "./types";
+import { normalizeDisplayText } from "./text";
 
 export const PLACE_TYPE_LABEL: Record<PlaceType, string> = {
   CAMPINGPLATZ: "Campingplatz",
@@ -81,7 +82,7 @@ function safeTs2(raw: any, placeId: number, type: PlaceType): PlaceTS2 | null {
     id: Number.isFinite(id) ? id : 0,
     placeId: Number.isFinite(pid) ? pid : placeId,
     haltung: normalizeTSHaltung(raw.haltung),
-    note: typeof raw.note === "string" ? raw.note : String(raw.note ?? ""),
+    note: normalizeDisplayText(raw.note),
     createdAt: typeof raw.createdAt === "string" ? raw.createdAt : undefined,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
   };
@@ -101,7 +102,7 @@ function safeTs21(raw: any, placeId: number, type: PlaceType): PlaceTS21 | null 
   const effectiveDna = dna && explorer ? true : dna;
   const effectiveExplorer = dna && explorer ? false : explorer;
 
-  const dnaExplorerNote = typeof raw.dnaExplorerNote === "string" ? raw.dnaExplorerNote : String(raw.dnaExplorerNote ?? "");
+  const dnaExplorerNote = normalizeDisplayText(raw.dnaExplorerNote);
 
   return {
     id: Number.isFinite(id) ? id : 0,
@@ -115,7 +116,7 @@ function safeTs21(raw: any, placeId: number, type: PlaceType): PlaceTS21 | null 
     explorer: effectiveExplorer,
     dnaExplorerNote,
 
-    note: typeof raw.note === "string" ? raw.note : String(raw.note ?? ""),
+    note: normalizeDisplayText(raw.note),
     createdAt: typeof raw.createdAt === "string" ? raw.createdAt : undefined,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
   } as PlaceTS21;
@@ -137,7 +138,7 @@ export function safePlacesFromApi(input: any): Place[] {
 
       return {
         id: p.id,
-        name: String(p.name ?? ""),
+        name: normalizeDisplayText(p.name),
         type,
         lat: p.lat,
         lng: p.lng,
@@ -168,22 +169,42 @@ export function safePlacesFromApi(input: any): Place[] {
         sightVisitModePrimary: normalizeSightVisitMode(p.sightVisitModePrimary),
         sightVisitModeSecondary: normalizeSightVisitMode(p.sightVisitModeSecondary),
         crowdRiskScore: asNullableNumber(p.crowdRiskScore),
-        bestVisitHint: typeof p.bestVisitHint === "string" && p.bestVisitHint.trim() ? p.bestVisitHint.trim() : null,
-        summaryWhyItMatches: typeof p.summaryWhyItMatches === "string" && p.summaryWhyItMatches.trim() ? p.summaryWhyItMatches.trim() : null,
+        bestVisitHint:
+          typeof p.bestVisitHint === "string" && normalizeDisplayText(p.bestVisitHint).trim()
+            ? normalizeDisplayText(p.bestVisitHint).trim()
+            : null,
+        summaryWhyItMatches:
+          typeof p.summaryWhyItMatches === "string" && normalizeDisplayText(p.summaryWhyItMatches).trim()
+            ? normalizeDisplayText(p.summaryWhyItMatches).trim()
+            : null,
         sightSource: typeof p.sightSource === "string" && p.sightSource.trim() ? p.sightSource.trim() : null,
         sightExternalId: typeof p.sightExternalId === "string" && p.sightExternalId.trim() ? p.sightExternalId.trim() : null,
-        sightCategory: typeof p.sightCategory === "string" && p.sightCategory.trim() ? p.sightCategory.trim() : null,
-        sightDescription: typeof p.sightDescription === "string" && p.sightDescription.trim() ? p.sightDescription.trim() : null,
-        sightTags: Array.isArray(p.sightTags) ? p.sightTags.map((x: any) => String(x)).filter((x: string) => x.trim().length > 0) : [],
-        sightRegion: typeof p.sightRegion === "string" && p.sightRegion.trim() ? p.sightRegion.trim() : null,
-        sightCountry: typeof p.sightCountry === "string" && p.sightCountry.trim() ? p.sightCountry.trim() : null,
+        sightCategory:
+          typeof p.sightCategory === "string" && normalizeDisplayText(p.sightCategory).trim()
+            ? normalizeDisplayText(p.sightCategory).trim()
+            : null,
+        sightDescription:
+          typeof p.sightDescription === "string" && normalizeDisplayText(p.sightDescription).trim()
+            ? normalizeDisplayText(p.sightDescription).trim()
+            : null,
+        sightTags: Array.isArray(p.sightTags)
+          ? p.sightTags.map((x: any) => normalizeDisplayText(x)).filter((x: string) => x.trim().length > 0)
+          : [],
+        sightRegion:
+          typeof p.sightRegion === "string" && normalizeDisplayText(p.sightRegion).trim()
+            ? normalizeDisplayText(p.sightRegion).trim()
+            : null,
+        sightCountry:
+          typeof p.sightCountry === "string" && normalizeDisplayText(p.sightCountry).trim()
+            ? normalizeDisplayText(p.sightCountry).trim()
+            : null,
         coordinateReviewStatus:
           p.coordinateReviewStatus === "CORRECTED" || p.coordinateReviewStatus === "CONFIRMED" || p.coordinateReviewStatus === "REJECTED"
             ? p.coordinateReviewStatus
             : "UNREVIEWED",
         coordinateReviewSource: typeof p.coordinateReviewSource === "string" && p.coordinateReviewSource.trim() ? p.coordinateReviewSource.trim() : null,
         coordinateReviewReviewedAt: typeof p.coordinateReviewReviewedAt === "string" && p.coordinateReviewReviewedAt.trim() ? p.coordinateReviewReviewedAt.trim() : null,
-        coordinateReviewNote: typeof p.coordinateReviewNote === "string" ? p.coordinateReviewNote : null,
+        coordinateReviewNote: typeof p.coordinateReviewNote === "string" ? normalizeDisplayText(p.coordinateReviewNote) : null,
       } as Place;
     })
     .filter(Boolean) as Place[];

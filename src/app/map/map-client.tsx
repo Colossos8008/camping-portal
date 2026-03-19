@@ -807,7 +807,7 @@ export default function MapClient(props: Props) {
       const bounds = mapInstance.getBounds();
       const visiblePlaces = placesRef.current.filter((place) => bounds.contains([place.lat, place.lng]));
       const widthKm = mapViewportWidthKm(mapInstance);
-      const nextAggregateMode = visiblePlaces.length > 1;
+      const nextAggregateMode = visiblePlaces.length > 3;
       setAggregateMode(nextAggregateMode);
 
       if (!nextAggregateMode) {

@@ -804,8 +804,10 @@ export default function MapClient(props: Props) {
     }
 
     async function refreshAggregates() {
+      const bounds = mapInstance.getBounds();
+      const visiblePlaces = placesRef.current.filter((place) => bounds.contains([place.lat, place.lng]));
       const widthKm = mapViewportWidthKm(mapInstance);
-      const nextAggregateMode = widthKm > 10;
+      const nextAggregateMode = visiblePlaces.length > 1;
       setAggregateMode(nextAggregateMode);
 
       if (!nextAggregateMode) {
@@ -813,11 +815,8 @@ export default function MapClient(props: Props) {
         return;
       }
 
-      const bounds = mapInstance.getBounds();
       const localFallback = aggregatePlacesByZoom(
-        placesRef.current
-          .filter((place) => bounds.contains([place.lat, place.lng]))
-          .map((place) => ({
+        visiblePlaces.map((place) => ({
             id: place.id,
             type: place.type,
             lat: place.lat,

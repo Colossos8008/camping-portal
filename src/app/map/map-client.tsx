@@ -6,6 +6,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { isGooglePhotoReference } from "@/lib/hero-image";
 import { isHeroDebugPoiId, isHeroDebugPoiName } from "@/lib/hero-debug";
+import { aggregatePlacesByZoom } from "./_lib/map-aggregates";
+import type { MapAggregate } from "./_lib/types";
 import { getSupabasePublicUrl } from "./_lib/image-url";
 import { getCampingStance, getPlaceScore, getPlaceTypeLabel, getSightseeingMeta } from "./_lib/place-display";
 
@@ -35,6 +37,9 @@ type Place = {
 
   distanceKm?: number | null;
   updatedAt?: string | null;
+  activeTripOrder?: number | null;
+  activeTripStatus?: string | null;
+  activeTripColor?: string | null;
 };
 
 type Props = {
@@ -51,36 +56,87 @@ type Props = {
   myPosFocusToken: number;
 
   showMyRings: boolean;
+  tripRoute?: Array<{ lat: number; lng: number }>;
+  tripColor?: string | null;
+  aggregateQuery: {
+    showStellplatz: boolean;
+    showCampingplatz: boolean;
+    showSehens: boolean;
+    showHvoTankstelle: boolean;
+    dog: boolean;
+    san: boolean;
+    year: boolean;
+    online: boolean;
+    gastro: boolean;
+    reviewFilter: "ALL" | "UNREVIEWED" | "CORRECTED" | "CONFIRMED" | "REJECTED";
+    selectedTripId: number | null;
+    tripOnlyMode: boolean;
+  };
 };
 
+const markerIconCache = new Map<string, L.Icon | L.DivIcon>();
+const MAP_MARKER_ASPECT_RATIO = 530 / 361;
+const MARKER_BOX_PADDING_X = 12;
+const MARKER_BOX_PADDING_Y = 8;
+
 function makeDivIcon(html: string, size: number) {
+  const pinHeight = Math.round(size * 1.32);
   return L.divIcon({
     className: "cp-marker",
     html,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    iconSize: [size, pinHeight],
+    iconAnchor: [size / 2, pinHeight - 2],
   });
 }
 
-function typeGlyphHtml(t: PlaceType, pixelSize: number) {
-  if (t === "SEHENSWUERDIGKEIT") {
-    return `<img
-      src="/icons/sehenswuerdigkeit-marker.svg"
-      alt="Sehenswuerdigkeit"
+function makeImageIcon(type: PlaceType, size: number) {
+  const cacheKey = `${type}:${size}`;
+  const hit = markerIconCache.get(cacheKey);
+  if (hit) return hit;
+  const pinHeight = Math.round(size * MAP_MARKER_ASPECT_RATIO);
+  const iconWidth = size + MARKER_BOX_PADDING_X;
+  const iconHeight = pinHeight + MARKER_BOX_PADDING_Y;
+  const icon = L.divIcon({
+    className: "cp-marker-native",
+    html: `<img
+      src="${markerAssetSrc(type)}"
+      alt=""
       draggable="false"
-      style="width:${pixelSize}px;height:${pixelSize}px;display:block;filter:drop-shadow(0 6px 12px rgba(0,0,0,0.22));"
-    />`;
-  }
-
-  return `<span style="font-size:${pixelSize}px;line-height:1;display:block;">${typeEmoji(t)}</span>`;
+      style="
+        width:${size}px;
+        height:${pinHeight}px;
+        display:block;
+        margin:0 auto;
+        filter:drop-shadow(0 8px 14px rgba(0,0,0,0.28));
+        pointer-events:none;
+        user-select:none;
+      "
+    />`,
+    iconSize: [iconWidth, iconHeight],
+    iconAnchor: [iconWidth / 2, pinHeight - 1],
+    popupAnchor: [0, -pinHeight + 10],
+  });
+  markerIconCache.set(cacheKey, icon);
+  return icon;
 }
 
-function typeEmoji(t: PlaceType) {
-  if (t === "STELLPLATZ") return "🅿️";
-  if (t === "CAMPINGPLATZ") return "⛺";
-  if (t === "HVO_TANKSTELLE") return "⛽";
-  return "📍";
+function markerAssetSrc(t: PlaceType) {
+  if (t === "CAMPINGPLATZ") return "/icons/map-marker-camping.svg";
+  if (t === "STELLPLATZ") return "/icons/map-marker-stellplatz.svg";
+  if (t === "HVO_TANKSTELLE") return "/icons/map-marker-hvo.svg";
+  return "/icons/map-marker-sehenswuerdigkeit.svg";
 }
+
+function typeGlyphHtml(t: PlaceType, pixelSize: number) {
+  return `<img
+    src="${markerAssetSrc(t)}"
+    alt=""
+    draggable="false"
+    style="width:${pixelSize}px;height:${pixelSize}px;display:block;filter:drop-shadow(0 6px 12px rgba(0,0,0,0.22));"
+  />`;
+}
+
+
 
 function haltungEmoji(h: TSHaltung | null | undefined) {
   if (h === "EXPLORER") return "🧭";
@@ -130,58 +186,164 @@ function heroFilename(p: Place): string | null {
 type MarkerVariant = "NORMAL" | "HOVER" | "SELECTED";
 
 function markerSize(v: MarkerVariant) {
-  if (v === "SELECTED") return 40;
-  if (v === "HOVER") return 38;
-  return 32;
+  if (v === "SELECTED") return 50;
+  if (v === "HOVER") return 46;
+  return 40;
 }
 
 function markerHtml(p: Place, v: MarkerVariant) {
-  const glyph = typeGlyphHtml(
-    p.type,
-    p.type === "SEHENSWUERDIGKEIT"
-      ? v === "SELECTED"
-        ? 26
-        : v === "HOVER"
-          ? 24
-          : 22
-      : v === "NORMAL"
-        ? 16
-        : 18,
-  );
+  const tripColor = typeof p.activeTripColor === "string" && p.activeTripColor.trim() ? p.activeTripColor : null;
+  const glyph = typeGlyphHtml(p.type, v === "SELECTED" ? 40 : v === "HOVER" ? 38 : 32);
+
+  const badge =
+    typeof p.activeTripOrder === "number" && Number.isFinite(p.activeTripOrder)
+      ? `<div style="
+          position:absolute;right:-5px;top:-7px;
+          min-width:19px;height:19px;padding:0 5px;border-radius:999px;
+          display:flex;align-items:center;justify-content:center;
+          background:${tripColor ?? "#f97316"};color:white;font-size:11px;font-weight:900;
+          border:2px solid rgba(0,0,0,0.72);
+          box-shadow:0 8px 18px rgba(0,0,0,0.38);
+        ">${Math.round(p.activeTripOrder)}</div>`
+      : "";
+  const tripOutline = tripColor
+    ? `<div style="position:absolute;inset:0;border-radius:999px;box-shadow:0 0 0 2px ${tripColor} inset;"></div>`
+    : "";
 
   if (v === "SELECTED") {
-    return `<div style="
-      width:40px;height:40px;border-radius:999px;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(255,255,255,0.30);
-      border:2px solid rgba(255,255,255,0.92);
-      box-shadow:0 16px 30px rgba(0,0,0,0.55);
-      font-size:18px;
-      transform:translateZ(0);
-    ">${glyph}</div>`;
+    return `<div style="position:relative;width:40px;height:50px;filter:drop-shadow(0 12px 22px rgba(0,0,0,0.42));">
+      <div style="position:relative;width:40px;height:50px;transform:translateZ(0);">
+        ${glyph}
+        ${tripOutline}
+      </div>
+      ${badge}
+    </div>`;
   }
 
   if (v === "HOVER") {
-    return `<div style="
-      width:38px;height:38px;border-radius:999px;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(255,255,255,0.16);
-      border:2px solid rgba(255,255,255,0.62);
-      box-shadow:0 16px 34px rgba(0,0,0,0.60);
-      font-size:18px;
-      transform:translateZ(0);
-    ">${glyph}</div>`;
+    return `<div style="position:relative;width:38px;height:48px;filter:drop-shadow(0 10px 18px rgba(0,0,0,0.36));opacity:.96;">
+      <div style="position:relative;width:38px;height:48px;transform:translateZ(0);">
+        ${glyph}
+        ${tripOutline}
+      </div>
+      ${badge}
+    </div>`;
   }
 
+  return `<div style="position:relative;width:32px;height:42px;filter:drop-shadow(0 8px 14px rgba(0,0,0,0.32));">
+    <div style="position:relative;width:32px;height:42px;transform:translateZ(0);">
+      ${glyph}
+      ${tripOutline}
+    </div>
+    ${badge}
+  </div>`;
+}
+
+function simplifiedMarkerColor(type: PlaceType) {
+  if (type === "CAMPINGPLATZ") return "#3ac41b";
+  if (type === "STELLPLATZ") return "#0071d2";
+  if (type === "SEHENSWUERDIGKEIT") return "#fb7102";
+  return "#159c92";
+}
+
+function darkenHex(hex: string, amount = 0.22) {
+  const normalized = hex.replace("#", "");
+  const full = normalized.length === 3 ? normalized.split("").map((char) => char + char).join("") : normalized;
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+  const r = clamp(parseInt(full.slice(0, 2), 16) * (1 - amount));
+  const g = clamp(parseInt(full.slice(2, 4), 16) * (1 - amount));
+  const b = clamp(parseInt(full.slice(4, 6), 16) * (1 - amount));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function mapViewportWidthKm(map: L.Map) {
+  const bounds = map.getBounds();
+  const centerLat = bounds.getCenter().lat;
+  return haversineKm(centerLat, bounds.getWest(), centerLat, bounds.getEast());
+}
+
+function aggregateBadgeHtml(item: MapAggregate) {
+  const color = simplifiedMarkerColor(item.dominantType);
+  const darker = darkenHex(color, 0.22);
+  const size = item.count >= 250 ? 46 : item.count >= 100 ? 42 : item.count >= 25 ? 38 : item.count >= 10 ? 34 : 30;
+  const fontSize = item.count >= 100 ? 11 : 12;
+  const count = item.count > 999 ? "999+" : String(item.count);
+
   return `<div style="
-    width:32px;height:32px;border-radius:999px;
-    display:flex;align-items:center;justify-content:center;
-    background:rgba(0,0,0,0.45);
-    border:1px solid rgba(255,255,255,0.32);
-    box-shadow:0 12px 24px rgba(0,0,0,0.40);
-    font-size:16px;
-    transform:translateZ(0);
-  ">${glyph}</div>`;
+    width:${size}px;
+    height:${size}px;
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(180deg, ${color}, ${darker});
+    color:white;
+    border:2px solid rgba(255,255,255,0.96);
+    box-shadow:0 12px 28px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.22);
+    font-size:${fontSize}px;
+    font-weight:900;
+    letter-spacing:0.2px;
+    position:relative;
+  ">
+    <div style="
+      position:absolute;
+      inset:2px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.16);
+      pointer-events:none;
+    "></div>
+    ${count}
+  </div>`;
+}
+
+function makeAggregateIcon(item: MapAggregate) {
+  const size = item.count >= 250 ? 46 : item.count >= 100 ? 42 : item.count >= 25 ? 38 : item.count >= 10 ? 34 : 30;
+  return L.divIcon({
+    className: "cp-aggregate-marker",
+    html: aggregateBadgeHtml(item),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+function aggregateCellPx(widthKm: number, aggregateQuery: Props["aggregateQuery"]) {
+  let cellPx = 56;
+  if (widthKm > 240) cellPx = 92;
+  else if (widthKm > 160) cellPx = 84;
+  else if (widthKm > 100) cellPx = 76;
+  else if (widthKm > 50) cellPx = 68;
+  else if (widthKm > 20) cellPx = 60;
+
+  if (aggregateQuery.showHvoTankstelle) cellPx += 8;
+  return String(cellPx);
+}
+
+function aggregateCellPxNumber(widthKm: number, aggregateQuery: Props["aggregateQuery"]) {
+  return Number(aggregateCellPx(widthKm, aggregateQuery));
+}
+
+function simplifiedCanvasStyle(p: Place) {
+  const tripColor = typeof p.activeTripColor === "string" && p.activeTripColor.trim() ? p.activeTripColor : "#f97316";
+  const isTripStop = typeof p.activeTripOrder === "number" && Number.isFinite(p.activeTripOrder);
+  const baseColor = isTripStop ? tripColor : simplifiedMarkerColor(p.type);
+  return {
+    radius: isTripStop ? 7 : 5,
+    color: isTripStop ? tripColor : "#fff7ed",
+    weight: isTripStop ? 2 : 1.5,
+    opacity: 0.95,
+    fillColor: baseColor,
+    fillOpacity: isTripStop ? 0.7 : 0.9,
+  };
 }
 
 function hoverTooltipHtml(p: Place) {
@@ -515,6 +677,11 @@ export default function MapClient(props: Props) {
   const tileRef = useRef<L.TileLayer | null>(null);
 
   const markersRef = useRef<Map<number, L.Marker>>(new Map());
+  const aggregateLayerRef = useRef<L.LayerGroup | null>(null);
+  const aggregateAbortRef = useRef<AbortController | null>(null);
+  const aggregateFetchSeqRef = useRef(0);
+  const placesRef = useRef<Place[]>(props.places);
+  const aggregatesRef = useRef<MapAggregate[]>([]);
   const hoveredIdRef = useRef<number | null>(null);
 
   const tempLayerRef = useRef<L.LayerGroup | null>(null);
@@ -527,9 +694,11 @@ export default function MapClient(props: Props) {
 
   const myPosMarkerRef = useRef<L.Marker | null>(null);
   const myPosRingsRef = useRef<L.LayerGroup | null>(null);
+  const tripRouteRef = useRef<L.Polyline | null>(null);
 
   const isMobileRef = useRef<boolean>(false);
   const lastSelectMsRef = useRef<number>(0);
+  const [mapReady, setMapReady] = useState(false);
 
   // SEARCH (Nominatim)
   const [searchQ, setSearchQ] = useState("");
@@ -537,12 +706,23 @@ export default function MapClient(props: Props) {
   const [searchErr, setSearchErr] = useState<string>("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
+  const [aggregateMode, setAggregateMode] = useState(false);
+  const [aggregates, setAggregates] = useState<MapAggregate[]>([]);
+  const [aggregateStatus, setAggregateStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchMarkerRef = useRef<L.Marker | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = props.selectedId;
   }, [props.selectedId]);
+
+  useEffect(() => {
+    placesRef.current = props.places;
+  }, [props.places]);
+
+  useEffect(() => {
+    aggregatesRef.current = aggregates;
+  }, [aggregates]);
 
   useEffect(() => {
     pickModeRef.current = props.pickMode;
@@ -573,16 +753,27 @@ export default function MapClient(props: Props) {
     return props.places.find((p) => p.id === props.selectedId) ?? null;
   }, [props.places, props.selectedId]);
 
+  const showAggregateMarkers = aggregateMode && aggregates.length > 0;
+
+  const markerPlaces = useMemo(() => {
+    if (!showAggregateMarkers) return props.places;
+    return props.places.filter(
+      (place) => place.id === props.selectedId || (typeof place.activeTripOrder === "number" && Number.isFinite(place.activeTripOrder))
+    );
+  }, [props.places, props.selectedId, showAggregateMarkers]);
+
   useEffect(() => {
     if (!rootRef.current) return;
 
     if (!mapRef.current) {
       const map = L.map(rootRef.current, {
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: true,
+        preferCanvas: true,
       });
 
       mapRef.current = map;
+      L.control.zoom({ position: "topleft" }).addTo(map);
 
       const tile = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -593,9 +784,111 @@ export default function MapClient(props: Props) {
       tileRef.current = tile;
 
       map.setView([50.33, 7.6], 11);
+      setMapReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const mapInstance = map;
+
+    function clearAggregates() {
+      if (aggregateAbortRef.current) {
+        try {
+          aggregateAbortRef.current.abort();
+        } catch {}
+      }
+      setAggregateStatus("idle");
+      setAggregates([]);
     }
 
-  }, []);
+    async function refreshAggregates() {
+      const widthKm = mapViewportWidthKm(mapInstance);
+      const nextAggregateMode = widthKm > 10;
+      setAggregateMode(nextAggregateMode);
+
+      if (!nextAggregateMode) {
+        clearAggregates();
+        return;
+      }
+
+      const bounds = mapInstance.getBounds();
+      const localFallback = aggregatePlacesByZoom(
+        placesRef.current
+          .filter((place) => bounds.contains([place.lat, place.lng]))
+          .map((place) => ({
+            id: place.id,
+            type: place.type,
+            lat: place.lat,
+            lng: place.lng,
+          })),
+        { zoom: mapInstance.getZoom(), cellPx: aggregateCellPxNumber(widthKm, props.aggregateQuery) }
+      );
+      if (!aggregatesRef.current.length) setAggregateStatus("loading");
+      const ac = new AbortController();
+      const fetchSeq = aggregateFetchSeqRef.current + 1;
+      aggregateFetchSeqRef.current = fetchSeq;
+      aggregateAbortRef.current = ac;
+
+      const params = new URLSearchParams({
+        minLat: String(bounds.getSouth()),
+        maxLat: String(bounds.getNorth()),
+        minLng: String(bounds.getWest()),
+        maxLng: String(bounds.getEast()),
+        zoom: String(mapInstance.getZoom()),
+        cellPx: aggregateCellPx(widthKm, props.aggregateQuery),
+        STELLPLATZ: props.aggregateQuery.showStellplatz ? "1" : "0",
+        CAMPINGPLATZ: props.aggregateQuery.showCampingplatz ? "1" : "0",
+        SEHENSWUERDIGKEIT: props.aggregateQuery.showSehens ? "1" : "0",
+        HVO_TANKSTELLE: props.aggregateQuery.showHvoTankstelle ? "1" : "0",
+        dog: props.aggregateQuery.dog ? "1" : "0",
+        san: props.aggregateQuery.san ? "1" : "0",
+        year: props.aggregateQuery.year ? "1" : "0",
+        online: props.aggregateQuery.online ? "1" : "0",
+        gastro: props.aggregateQuery.gastro ? "1" : "0",
+        review: props.aggregateQuery.reviewFilter,
+        tripOnly: props.aggregateQuery.tripOnlyMode ? "1" : "0",
+      });
+
+      if (props.aggregateQuery.selectedTripId != null) {
+        params.set("tripId", String(props.aggregateQuery.selectedTripId));
+      }
+
+      try {
+        const res = await fetch(`/api/map-aggregates?${params.toString()}`, {
+          cache: "no-store",
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          setAggregates(localFallback);
+          setAggregateStatus("ready");
+          return;
+        }
+        const data = await res.json();
+        if (aggregateFetchSeqRef.current !== fetchSeq) return;
+        const nextAggregates = Array.isArray(data?.aggregates) ? (data.aggregates as MapAggregate[]) : [];
+        setAggregates(nextAggregates.length ? nextAggregates : localFallback);
+        setAggregateStatus("ready");
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        setAggregates(localFallback);
+        setAggregateStatus("ready");
+      }
+    }
+
+    const handleAfterMove = () => {
+      void refreshAggregates();
+    };
+
+    void refreshAggregates();
+    mapInstance.on("moveend zoomend resize", handleAfterMove);
+
+    return () => {
+      mapInstance.off("moveend zoomend resize", handleAfterMove);
+      clearAggregates();
+    };
+  }, [mapReady, props.aggregateQuery]);
 
   function setMarkerVisual(id: number, p: Place) {
     const m = markersRef.current.get(id);
@@ -605,7 +898,8 @@ export default function MapClient(props: Props) {
     const isHover = hoveredIdRef.current === id;
     const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
 
-    m.setIcon(makeDivIcon(markerHtml(p, v), markerSize(v)));
+    m.setIcon(makeImageIcon(p.type, markerSize(v)));
+    m.setZIndexOffset(isSelected ? 1200 : isHover ? 900 : 0);
   }
 
   function safeSelect(p: Place, e?: any, marker?: L.Marker) {
@@ -687,62 +981,73 @@ export default function MapClient(props: Props) {
 
     const aliveIds = new Set<number>();
 
-    for (const p of props.places) {
+    for (const p of markerPlaces) {
       aliveIds.add(p.id);
-
-      const marker = markersRef.current.get(p.id);
+      const existing = markersRef.current.get(p.id);
       const isSelected = props.selectedId === p.id;
       const isHover = hoveredIdRef.current === p.id;
       const v: MarkerVariant = isSelected ? "SELECTED" : isHover ? "HOVER" : "NORMAL";
 
-      if (!marker) {
-        const m = L.marker([p.lat, p.lng], {
-          icon: makeDivIcon(markerHtml(p, v), markerSize(v)),
-          keyboard: false,
-        });
+      const marker = existing ?? L.marker([p.lat, p.lng], {
+        icon: makeImageIcon(p.type, markerSize(v)),
+        keyboard: false,
+      });
 
-        m.addTo(map);
+      marker.setLatLng([p.lat, p.lng]);
+      marker.setIcon(makeImageIcon(p.type, markerSize(v)));
+      marker.setZIndexOffset(isSelected ? 1200 : isHover ? 900 : 0);
 
-        // Tooltips: Desktop ja - Mobile nein
-        applyTooltipMode(m, p);
+      applyTooltipMode(marker, p);
 
-        // Selection: Desktop click - Mobile pointerup/touchend
-        m.off("click");
-        m.off("touchend");
-        m.off("pointerup");
+      marker.off("click");
+      marker.off("touchend");
+      marker.off("pointerup");
+      marker.on("click", (e: any) => safeSelect(p, e, marker));
+      marker.on("touchend", (e: any) => safeSelect(p, e, marker));
+      marker.on("pointerup", (e: any) => safeSelect(p, e, marker));
 
-        m.on("click", (e: any) => safeSelect(p, e, m));
-        m.on("touchend", (e: any) => safeSelect(p, e, m));
-        m.on("pointerup", (e: any) => safeSelect(p, e, m));
-
-        markersRef.current.set(p.id, m);
-      } else {
-        marker.setLatLng([p.lat, p.lng]);
-
-        // Marker UI
-        setMarkerVisual(p.id, p);
-
-        // Tooltip-Modus aktualisieren (wichtig bei Resize / Deploy-States)
-        applyTooltipMode(marker, p);
-
-        // Selection-Handler sicherstellen
-        marker.off("click");
-        marker.off("touchend");
-        marker.off("pointerup");
-
-        marker.on("click", (e: any) => safeSelect(p, e, marker));
-        marker.on("touchend", (e: any) => safeSelect(p, e, marker));
-        marker.on("pointerup", (e: any) => safeSelect(p, e, marker));
-      }
+      markersRef.current.set(p.id, marker);
+      if (!map.hasLayer(marker)) marker.addTo(map);
     }
 
-    for (const [id, m] of markersRef.current.entries()) {
+    for (const [id, marker] of markersRef.current.entries()) {
       if (!aliveIds.has(id)) {
-        m.remove();
+        marker.remove();
         markersRef.current.delete(id);
       }
     }
-  }, [props.places, props.selectedId, props.pickMode, props.onSelect]);
+  }, [markerPlaces, props.onSelect, props.selectedId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!showAggregateMarkers) {
+      if (aggregateLayerRef.current) {
+        aggregateLayerRef.current.clearLayers();
+        aggregateLayerRef.current.remove();
+        aggregateLayerRef.current = null;
+      }
+      return;
+    }
+
+    const layer = aggregateLayerRef.current ?? L.layerGroup().addTo(map);
+    aggregateLayerRef.current = layer;
+    layer.clearLayers();
+
+    for (const item of aggregates) {
+      const marker = L.marker([item.lat, item.lng], {
+        icon: makeAggregateIcon(item),
+        keyboard: false,
+      });
+
+      marker.on("click", () => {
+        map.setView([item.lat, item.lng], Math.min(map.getZoom() + 2, 16), { animate: true });
+      });
+
+      marker.addTo(layer);
+    }
+  }, [aggregates, showAggregateMarkers]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -763,7 +1068,7 @@ export default function MapClient(props: Props) {
 
     function handleRootMouseMove(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".cp-marker")) return;
+      if (target?.closest(".cp-marker, .cp-marker-native, .leaflet-marker-icon, .cp-aggregate-marker")) return;
       closeHoveredTooltip();
     }
 
@@ -875,6 +1180,38 @@ export default function MapClient(props: Props) {
     map.setView([props.myPos.lat, props.myPos.lng], Math.max(map.getZoom(), 12), { animate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.myPosFocusToken]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const route = Array.isArray(props.tripRoute) ? props.tripRoute : [];
+    if (route.length < 2) {
+      if (tripRouteRef.current) {
+        tripRouteRef.current.remove();
+        tripRouteRef.current = null;
+      }
+      return;
+    }
+
+    const color = typeof props.tripColor === "string" && props.tripColor.trim() ? props.tripColor : "#f97316";
+    const latLngs = route.map((point) => [point.lat, point.lng] as [number, number]);
+
+    if (!tripRouteRef.current) {
+      tripRouteRef.current = L.polyline(latLngs, {
+        color,
+        weight: 4,
+        opacity: 0.8,
+        dashArray: "10 8",
+        lineJoin: "round",
+      }).addTo(map);
+    } else {
+      tripRouteRef.current.setLatLngs(latLngs);
+      tripRouteRef.current.setStyle({ color });
+    }
+
+    tripRouteRef.current.bringToBack();
+  }, [props.tripColor, props.tripRoute]);
 
   // PICK MODE
   useEffect(() => {
@@ -1118,7 +1455,7 @@ export default function MapClient(props: Props) {
       <div ref={rootRef} className="h-full w-full" />
 
       {/* SEARCH OVERLAY (Nominatim - OSM) */}
-      <div className="pointer-events-none absolute left-3 right-3 top-3" style={{ zIndex: 5000 }}>
+      <div className="pointer-events-none absolute left-16 right-3 top-3 sm:left-3" style={{ zIndex: 4000 }}>
         <div className="pointer-events-auto mx-auto max-w-[640px]">
           <div className="rounded-2xl border border-white/10 bg-black/55 backdrop-blur px-3 py-2 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
             <div className="flex items-center gap-2">
@@ -1198,6 +1535,18 @@ export default function MapClient(props: Props) {
 
           <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur">
             Klick auf die Karte - setzt Koordinaten
+          </div>
+        </div>
+      ) : null}
+
+      {aggregateMode ? (
+        <div className="pointer-events-none absolute right-3 top-20 z-[4200]">
+          <div className="rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-white/90 shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur">
+            {aggregateStatus === "ready"
+              ? `Überblick • ${aggregates.length} Cluster`
+              : aggregateStatus === "error"
+                ? "Überblick Fehler"
+                : "Überblick lädt…"}
           </div>
         </div>
       ) : null}

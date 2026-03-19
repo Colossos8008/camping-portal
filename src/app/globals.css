@@ -22,6 +22,8 @@
 html,
 body {
   height: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
 }
 
 body {
@@ -81,4 +83,18 @@ a:hover {
 
 .dark ::-webkit-scrollbar-thumb {
   background-color: #4b5563;
+}
+
+.leaflet-marker-icon.cp-marker-native,
+.leaflet-div-icon.cp-marker-native {
+  border: 0;
+  background: transparent;
+  will-change: transform;
+  overflow: visible !important;
+}
+
+.leaflet-div-icon.cp-marker-native img,
+.leaflet-marker-icon.cp-marker-native img {
+  display: block;
+  max-width: none !important;
 }

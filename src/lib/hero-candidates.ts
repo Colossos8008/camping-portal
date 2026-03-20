@@ -847,12 +847,48 @@ async function discoverPagesFromDuckDuckGo(
   return uniqueBy(discovered, (entry) => entry.url).slice(0, MAX_SEARCH_RESULT_PAGES);
 }
 
+async function discoverPagesFromJinaDuckDuckGo(
+  place: HeroCandidateInput,
+  explorationLevel = 1,
+  reloadRound = 0
+): Promise<SearchResultPage[]> {
+  const queries = uniqueBy(
+    [...buildQueryVariants(place, explorationLevel, reloadRound), `${place.name} site officiel photos`, `${place.name} galerie`],
+    (value) => normalize(value)
+  );
+
+  const discovered: SearchResultPage[] = [];
+
+  for (const query of queries) {
+    if (discovered.length >= MAX_SEARCH_RESULT_PAGES) break;
+    try {
+      const searchUrl = `https://r.jina.ai/http://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const text = await fetchText(searchUrl, 15000);
+      const resultRegex = /## \[([^\]]+)\]\(([^)]+)\)/g;
+      for (const match of text.matchAll(resultRegex)) {
+        if (discovered.length >= MAX_SEARCH_RESULT_PAGES) break;
+        const title = String(match[1] ?? "").trim();
+        const target = decodeDuckDuckGoTarget(String(match[2] ?? "").trim());
+        if (!title || !target || !shouldKeepSearchResultUrl(target)) continue;
+        discovered.push({ url: target, title });
+      }
+    } catch {
+      // skip failed query
+    }
+  }
+
+  return uniqueBy(discovered, (entry) => entry.url).slice(0, MAX_SEARCH_RESULT_PAGES);
+}
+
 async function findDiscoveredWebsiteCandidates(
   place: HeroCandidateInput,
   explorationLevel = 1,
   reloadRound = 0
 ): Promise<HeroCandidateRecord[]> {
-  const pages = await discoverPagesFromDuckDuckGo(place, explorationLevel, reloadRound);
+  let pages = await discoverPagesFromDuckDuckGo(place, explorationLevel, reloadRound);
+  if (!pages.length) {
+    pages = await discoverPagesFromJinaDuckDuckGo(place, explorationLevel, reloadRound);
+  }
   if (!pages.length) return [];
   const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
 

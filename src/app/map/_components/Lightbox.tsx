@@ -17,15 +17,19 @@ export default function Lightbox(props: {
   index: number;
   images: LightboxItem[];
   placeId: number | null;
+  choosingHero?: boolean;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
   onRate?: (candidateId: number, vote: "UP" | "DOWN") => void;
+  onChooseHero?: (image: LightboxItem) => void;
 }) {
-  const { open, index, images, placeId, onClose, onPrev, onNext, onRate } = props;
+  const { open, index, images, placeId, choosingHero, onClose, onPrev, onNext, onRate, onChooseHero } = props;
   const current = images[index] ?? null;
   const src = current?.filename ? getSupabasePublicUrl(current.filename, { placeId }) : "";
   const canRate = current?.kind === "candidate" && typeof current.candidateId === "number";
+  const canChooseHero = current != null && !!onChooseHero && (current.kind === "candidate" || typeof current.id === "number");
+  const isActiveHero = current?.kind === "hero";
 
   useEffect(() => {
     if (!open) return;
@@ -98,32 +102,53 @@ export default function Lightbox(props: {
                 : "Galeriebild"}
           </div>
 
-          {canRate ? (
+          {canRate || canChooseHero ? (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onRate?.(current.candidateId as number, "DOWN")}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs ${
-                  current.userFeedback === "DOWN"
-                    ? "border-red-400/60 bg-red-500/20 text-red-100"
-                    : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10"
-                }`}
-                title="Passt nicht zu diesem Ort"
-              >
-                👎
-              </button>
-              <button
-                type="button"
-                onClick={() => onRate?.(current.candidateId as number, "UP")}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs ${
-                  current.userFeedback === "UP"
-                    ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
-                    : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10"
-                }`}
-                title="Passt gut zu diesem Ort"
-              >
-                👍
-              </button>
+              {canChooseHero ? (
+                <button
+                  type="button"
+                  onClick={() => onChooseHero?.(current)}
+                  disabled={choosingHero || isActiveHero}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs ${
+                    isActiveHero
+                      ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
+                      : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10 disabled:opacity-60"
+                  }`}
+                  title={isActiveHero ? "Dieses Bild ist bereits das Hero-Bild" : "Dieses Bild als Hero setzen"}
+                >
+                  {isActiveHero ? "Aktives Hero-Bild" : choosingHero ? "Setzt..." : "Als Hero setzen"}
+                </button>
+              ) : null}
+
+              {canRate ? (
+                <button
+                  type="button"
+                  onClick={() => onRate?.(current.candidateId as number, "DOWN")}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs ${
+                    current.userFeedback === "DOWN"
+                      ? "border-red-400/60 bg-red-500/20 text-red-100"
+                      : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10"
+                  }`}
+                  title="Passt nicht zu diesem Ort"
+                >
+                  👎
+                </button>
+              ) : null}
+
+              {canRate ? (
+                <button
+                  type="button"
+                  onClick={() => onRate?.(current.candidateId as number, "UP")}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs ${
+                    current.userFeedback === "UP"
+                      ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
+                      : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10"
+                  }`}
+                  title="Passt gut zu diesem Ort"
+                >
+                  👍
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>

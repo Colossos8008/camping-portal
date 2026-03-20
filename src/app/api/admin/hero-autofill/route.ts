@@ -81,6 +81,8 @@ type PlaceRecord = {
   lat: number | null;
   lng: number | null;
   heroImageUrl: string | null;
+  thumbnailImageId: number | null;
+  images: Array<{ id: number; filename: string }>;
 };
 
 type SourceAttemptDebug = {
@@ -1169,6 +1171,15 @@ export async function POST(req: Request) {
         lat: true,
         lng: true,
         heroImageUrl: true,
+        thumbnailImageId: true,
+        images: {
+          select: {
+            id: true,
+            filename: true,
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: 6,
+        },
       },
     })) as PlaceRecord[];
 
@@ -1185,10 +1196,35 @@ export async function POST(req: Request) {
     const perPlaceResults = await runWithConcurrency(places, placeConcurrency, async (place): Promise<HeroResult> => {
       const existingHeroUrl = place.heroImageUrl;
       const existingHeroIsPlaceholder = isPlaceholderHeroUrl(existingHeroUrl);
+      const hasStoredGalleryHero =
+        Number.isFinite(Number(place.thumbnailImageId)) ||
+        (Array.isArray(place.images) && place.images.some((image) => typeof image?.filename === "string" && image.filename.trim()));
       const isCamping = place.type === "CAMPINGPLATZ";
       const shouldRefreshExisting = isCamping && (options.refresh || options.refreshCamping);
       const shouldCleanupPlaceholder = isCamping && existingHeroIsPlaceholder && (options.cleanupPlaceholders || options.cleanupCampingPlaceholders);
       const wikimediaRejectReasons: string[] = [];
+
+      if (hasStoredGalleryHero && !options.force) {
+        return {
+          id: String(place.id),
+          name: place.name,
+          placeId: String(place.id),
+          placeName: place.name,
+          status: "SKIPPED",
+          reason: "Stored gallery/thumbnail hero retained",
+          chosenUrl: existingHeroUrl ?? undefined,
+          selectionDebug: {
+            sourcesTried: options.provider === "google" ? ["google"] : options.provider === "wikimedia" ? ["wikimedia"] : ["google", "wikimedia"],
+            totalCandidates: 0,
+            removedPlaceholder: false,
+            discardedExistingHero: false,
+            existingHeroWasPlaceholder: existingHeroIsPlaceholder,
+            sourceDebug: [],
+            noSelectionReason: "Existing local gallery hero retained (force=false)",
+          },
+          action: "skipped",
+        };
+      }
 
       if (existingHeroUrl && !options.force && !shouldRefreshExisting && !shouldCleanupPlaceholder) {
         return {

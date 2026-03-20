@@ -7,6 +7,8 @@ import {
   SightRelevanceType,
   SightVisitMode,
   TSHaltung,
+  TripPlacement,
+  TripPlaceStatus,
   TS21Source,
   TS21Scores,
   TS21Value,
@@ -68,6 +70,34 @@ function normalizeTS21Scores(raw: any): TS21Scores {
   const out: TS21Scores = {};
   for (const k of Object.keys(src)) out[String(k)] = normTS21Value((src as any)[k]);
   return out;
+}
+
+function normalizeTripPlaceStatus(v: any): TripPlaceStatus {
+  return v === "BOOKED" || v === "CONFIRMED" || v === "VISITED" ? v : "GEPLANT";
+}
+
+function safeTripPlacement(raw: any, placeId: number): TripPlacement | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const id = Number(raw.id);
+  const tripId = Number(raw.tripId);
+  const pid = Number(raw.placeId ?? placeId);
+  const sortOrder = Number(raw.sortOrder);
+  const dayNumber = Number(raw.dayNumber);
+
+  if (!Number.isFinite(tripId) || !Number.isFinite(sortOrder)) return null;
+
+  return {
+    id: Number.isFinite(id) ? id : 0,
+    tripId,
+    placeId: Number.isFinite(pid) ? pid : placeId,
+    sortOrder,
+    dayNumber: Number.isFinite(dayNumber) ? Math.max(1, Math.round(dayNumber)) : 1,
+    status: normalizeTripPlaceStatus(raw.status),
+    note: normalizeDisplayText(raw.note),
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : undefined,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
+  };
 }
 
 function safeTs2(raw: any, placeId: number, type: PlaceType): PlaceTS2 | null {
@@ -152,6 +182,9 @@ export function safePlacesFromApi(input: any): Place[] {
         ratingDetail: p.ratingDetail ?? null,
         ts2: safeTs2(p.ts2, p.id, type),
         ts21: safeTs21(p.ts21, p.id, type),
+        tripPlacements: Array.isArray(p.tripPlacements)
+          ? p.tripPlacements.map((item: any) => safeTripPlacement(item, p.id)).filter(Boolean)
+          : [],
 
         images: Array.isArray(p.images) ? p.images : [],
         heroImageUrl: typeof p.heroImageUrl === "string" && p.heroImageUrl.trim() ? p.heroImageUrl.trim() : null,

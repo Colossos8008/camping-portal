@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { buildGooglePhotoMediaUrl } from "@/lib/hero-image";
+import { isExactGenericGooglePlaceName } from "@/lib/google-place-name-guard";
 
 export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "HVO_TANKSTELLE";
 
@@ -86,6 +87,7 @@ type ImageInspection = {
 };
 
 const FETCH_TIMEOUT_MS = 9000;
+const GOOGLE_API_COOLDOWN_MS = 1000 * 60 * 30;
 const MAX_WIKIMEDIA_CANDIDATES = 16;
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
 const GOOGLE_THUMB_WIDTH = 480;
@@ -117,6 +119,11 @@ const BAD_HINTS = [
   "opengraph",
   "share image",
   "social share",
+  "placeholder",
+  "disambig",
+  "blank",
+  "no image",
+  "thumbnail placeholder",
 ];
 const EXCLUDED_CAMPING_HINTS = ["hotel", "cottage", "bedroom", "spa", "apartment", "ferienwohnung", "guesthouse", "villa", "lodge", "resort", "hostel"];
 const EXCLUDED_SIGHTSEEING_HINTS = ["selfie", "portrait", "logo", "plan", "map"];
@@ -238,6 +245,29 @@ const PREFERENCE_HINTS = uniqueBy(
   ],
   (value) => normalize(value)
 );
+
+let googleApiBlockedUntil = 0;
+
+function isGoogleApiTemporarilyBlocked(now = Date.now()): boolean {
+  return googleApiBlockedUntil > now;
+}
+
+function markGoogleApiTemporarilyBlocked(now = Date.now()): void {
+  googleApiBlockedUntil = Math.max(googleApiBlockedUntil, now + GOOGLE_API_COOLDOWN_MS);
+}
+
+function isGoogleQuotaError(error: unknown): boolean {
+  const message = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("http 429") ||
+    message.includes("too many requests") ||
+    message.includes("rate limit") ||
+    message.includes("quota") ||
+    message.includes("resource_exhausted") ||
+    message.includes("billing") ||
+    message.includes("exceeded")
+  );
+}
 
 function normalize(value: string): string {
   return String(value ?? "")
@@ -498,7 +528,7 @@ function isHttpUrl(input: string): boolean {
 
 function isLikelyImageUrl(url: string): boolean {
   const lower = url.toLowerCase();
-  return /\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) || lower.includes("/image") || lower.includes("/media");
+  return /\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(lower) || lower.includes("/image/") || lower.includes("/media");
 }
 
 async function fetchJsonRequest<T>(
@@ -998,7 +1028,7 @@ async function findWikimediaCandidates(placeName: string): Promise<WikimediaCand
 }
 
 async function runGoogleSearchNearby(place: HeroCandidateInput, googleKey: string): Promise<GooglePlace[]> {
-  if (!googleKey || typeof place.lat !== "number" || typeof place.lng !== "number") return [];
+  if (!googleKey || isGoogleApiTemporarilyBlocked() || typeof place.lat !== "number" || typeof place.lng !== "number") return [];
   const body: Record<string, unknown> = {
     maxResultCount: 12,
     locationRestriction: {
@@ -1025,7 +1055,13 @@ async function runGoogleSearchNearby(place: HeroCandidateInput, googleKey: strin
       "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos,places.websiteUri",
     },
     body
-  );
+  ).catch((error) => {
+    if (isGoogleQuotaError(error)) {
+      markGoogleApiTemporarilyBlocked();
+      return { places: [] };
+    }
+    throw error;
+  });
   return Array.isArray(data.places) ? data.places : [];
 }
 
@@ -1035,7 +1071,7 @@ async function runGoogleSearchText(
   explorationLevel = 1,
   reloadRound = 0
 ): Promise<GooglePlace[]> {
-  if (!googleKey) return [];
+  if (!googleKey || isGoogleApiTemporarilyBlocked()) return [];
   if (place.type === "HVO_TANKSTELLE" && tokenizeMeaningful(place.name).length <= 1) {
     return [];
   }
@@ -1066,7 +1102,13 @@ async function runGoogleSearchText(
           "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos,places.websiteUri",
         },
         body
-      );
+      ).catch((error) => {
+        if (isGoogleQuotaError(error)) {
+          markGoogleApiTemporarilyBlocked();
+          return { places: [] };
+        }
+        throw error;
+      });
       return Array.isArray(data.places) ? data.places : [];
     })
   );
@@ -1103,11 +1145,13 @@ function scoreGooglePlaceMatch(place: HeroCandidateInput, candidateName: string,
   const isHvo = place.type === "HVO_TANKSTELLE";
   const campingLike = looksCampingLike(candidateName);
   const fuelLike = looksFuelStationLike(candidateName);
+  const exactGenericTypeMatch = isExactGenericGooglePlaceName(place.type, candidateName);
 
   let score = Math.round(nameScore * 34) + Math.round(overlap * 34);
   if (hasSignal) score += 12;
   if (isCamping && campingLike) score += 12;
   if (isHvo && fuelLike) score += 14;
+  if (exactGenericTypeMatch && tokenizeMeaningful(place.name).length > 0) score -= 40;
   if (distance !== null) {
     if (distance <= 150) score += 18;
     else if (distance <= 500) score += 12;
@@ -1127,9 +1171,11 @@ function shouldKeepGooglePlace(place: HeroCandidateInput, candidateName: string,
   const requiredSharedTokens = Math.min(2, tokenizeMeaningful(place.name).length);
   const isCamping = place.type === "CAMPINGPLATZ" || place.type === "STELLPLATZ";
   const isHvo = place.type === "HVO_TANKSTELLE";
+  const exactGenericTypeMatch = isExactGenericGooglePlaceName(place.type, candidateName);
 
   if (isCamping && containsHint(candidateName, EXCLUDED_CAMPING_HINTS) && !relaxed) return false;
   if (!isCamping && !isHvo && containsHint(candidateName, EXCLUDED_SIGHTSEEING_HINTS) && !relaxed) return false;
+  if (exactGenericTypeMatch && tokenizeMeaningful(place.name).length > 0) return false;
 
   if (relaxed) {
     if (distance !== null && distance > 25000 && nameScore < 0.2 && overlap < 0.2) return false;
@@ -1173,7 +1219,7 @@ async function findGoogleCandidates(
   explorationLevel = 1,
   reloadRound = 0
 ): Promise<HeroCandidateRecord[]> {
-  if (!googleKey) return [];
+  if (!googleKey || isGoogleApiTemporarilyBlocked()) return [];
   const [nearby, text] = await Promise.allSettled([
     runGoogleSearchNearby(place, googleKey),
     runGoogleSearchText(place, googleKey, explorationLevel, reloadRound),
@@ -1370,6 +1416,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     if (hasBadHints(combinedText)) continue;
     if (width && height && (width < 500 || height < 320)) continue;
     if (width && height && width / Math.max(1, height) < 0.7) continue;
+    if (format === "svg") continue;
     if (format === "png" && hasAlpha) continue;
     const entityKey = entityKeyFromCandidate(candidate);
     const currentCount = entityCounts.get(entityKey) ?? 0;

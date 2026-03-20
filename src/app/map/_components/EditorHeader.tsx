@@ -17,7 +17,7 @@ export default function EditorHeader(props: {
 
   heroImage: { filename: string } | null;
   placeId: number | null;
-  headerImages: { id: number; filename: string }[];
+  headerImages: { id?: number; filename: string }[];
   heroCandidateImages: { id?: number; filename: string; source: string }[];
 
   imagesCount: number;
@@ -31,6 +31,7 @@ export default function EditorHeader(props: {
   onOpenNav: () => void;
   onSave: () => void;
   onCenterOnMap: () => void;
+  onJumpToTripAssignment?: () => void;
   onDelete: () => void;
   onNew: () => void;
 
@@ -144,6 +145,16 @@ export default function EditorHeader(props: {
               Zentrieren
             </button>
 
+            {props.onJumpToTripAssignment ? (
+              <button
+                type="button"
+                onClick={props.onJumpToTripAssignment}
+                className="rounded-lg border border-sky-400/25 bg-sky-500/10 px-2.5 py-1.5 text-[11px] hover:bg-sky-500/15"
+              >
+                Zum Trip hinzufuegen
+              </button>
+            ) : null}
+
             {props.canDelete ? (
               <button
                 type="button"
@@ -171,7 +182,19 @@ export default function EditorHeader(props: {
                 {props.headerImages.slice(0, 12).map((img, idx) => {
                   const src = getSupabasePublicUrl(String(img.filename ?? ""), { placeId: props.placeId });
                   return (
-                    <button key={img.id} type="button" onClick={() => props.onOpenLightboxByImageId(img.id)} className="shrink-0" title="Bild öffnen">
+                    <button
+                      key={`${img.id ?? "hero"}-${img.filename}`}
+                      type="button"
+                      onClick={() => {
+                        if (typeof img.id === "number") {
+                          props.onOpenLightboxByImageId(img.id);
+                          return;
+                        }
+                        props.onOpenHeroLightbox();
+                      }}
+                      className="shrink-0"
+                      title="Bild öffnen"
+                    >
                       {src ? (
                         <img
                           src={src}

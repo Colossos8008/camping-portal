@@ -37,6 +37,19 @@ export const PLACE_BASE_SELECT = {
   updatedAt: true,
   ratingDetail: true,
   ts2: true,
+  tripPlacements: {
+    select: {
+      id: true,
+      tripId: true,
+      placeId: true,
+      sortOrder: true,
+      dayNumber: true,
+      status: true,
+      note: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
   images: true,
   thumbnailImage: true,
 } as const;

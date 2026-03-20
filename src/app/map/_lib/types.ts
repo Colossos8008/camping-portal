@@ -3,6 +3,7 @@ export type PlaceType = "STELLPLATZ" | "CAMPINGPLATZ" | "SEHENSWUERDIGKEIT" | "H
 export type TSHaltung = "DNA" | "EXPLORER";
 
 export type TS21Source = "AI" | "USER";
+export type TripPlaceStatus = "GEPLANT" | "BOOKED" | "CONFIRMED" | "VISITED";
 
 export type SightRelevanceType = "ICON" | "STRONG_MATCH" | "GOOD_MATCH" | "OPTIONAL" | "LOW_MATCH";
 export type SightVisitMode = "EASY_STOP" | "SMART_WINDOW" | "OUTSIDE_BEST" | "MAIN_DESTINATION" | "WEATHER_WINDOW";
@@ -37,6 +38,28 @@ export type PlaceImage = {
   updatedAt?: string;
 };
 
+export type TripPlacement = {
+  id: number;
+  tripId: number;
+  placeId: number;
+  sortOrder: number;
+  dayNumber: number;
+  status: TripPlaceStatus;
+  note: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Trip = {
+  id: number;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  places?: TripPlacement[];
+};
+
 export type PlaceHeroCandidate = {
   id?: number;
   source: "google" | "wikimedia" | "website";
@@ -69,6 +92,7 @@ export type Place = {
   ts21?: PlaceTS21 | null;
 
   images?: PlaceImage[];
+  tripPlacements?: TripPlacement[];
   heroImageUrl?: string | null;
   datasetHeroImageUrl?: string | null;
   thumbnailImageId?: number | null;
@@ -104,3 +128,12 @@ export type Place = {
 };
 
 export type SortMode = "SCORE" | "ALPHA" | "DIST";
+
+export type MapAggregate = {
+  key: string;
+  lat: number;
+  lng: number;
+  count: number;
+  dominantType: PlaceType;
+  counts: Record<PlaceType, number>;
+};

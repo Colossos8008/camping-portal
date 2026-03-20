@@ -6,70 +6,15 @@ import { formatDistanceKm } from "../_lib/geo";
 import { getCampingStance, getPlaceScore, getPlaceTypeLabel, getSightseeingMeta } from "../_lib/place-display";
 import FeatureIcons from "./FeatureIcons";
 
-function ts21HaltungBadge(p: Place) {
-  const stance = getCampingStance(p);
-  if (!stance) return null;
-
-  return (
-    <div
-      className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold leading-none text-white/90"
-      title="Törtchensystem - Haltung"
-    >
-      <span className="text-[11px]">{stance.icon}</span>
-      <span>{stance.label}</span>
-    </div>
-  );
-}
-
-function reviewBadge(p: Place) {
-  const rawStatus = (p as any)?.coordinateReviewStatus;
-  const status = rawStatus === "CONFIRMED" || rawStatus === "CORRECTED" || rawStatus === "REJECTED" ? rawStatus : "UNREVIEWED";
-
-  if (status === "CONFIRMED") {
-    return (
-      <span
-        className="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-emerald-200"
-        title="Koordinate bestätigt"
-      >
-        bestätigt
-      </span>
-    );
-  }
-
-  if (status === "CORRECTED") {
-    return (
-      <span
-        className="inline-flex items-center rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-amber-200"
-        title="Koordinate korrigiert"
-      >
-        korrigiert
-      </span>
-    );
-  }
-
-  if (status === "REJECTED") {
-    return (
-      <span
-        className="inline-flex items-center rounded-full border border-rose-400/20 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-rose-200"
-        title="Koordinate geprüft, aber verworfen"
-      >
-        verworfen
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-medium leading-none text-white/70"
-      title="Koordinate ungeprüft"
-    >
-      ungeprüft
-    </span>
-  );
+function tripStatusLabel(status: string) {
+  if (status === "BOOKED") return "angefragt";
+  if (status === "CONFIRMED") return "bestaetigt";
+  if (status === "VISITED") return "besucht";
+  return "geplant";
 }
 
 function sightInfo(p: Place) {
-  if ((p as any)?.type !== "SEHENSWUERDIGKEIT") return null;
+  if (p.type !== "SEHENSWUERDIGKEIT") return null;
 
   const score = getPlaceScore(p);
   const meta = getSightseeingMeta(p);
@@ -88,74 +33,49 @@ export default function PlacesList(props: {
   scrollToSelectedToken?: number;
   sortMode: SortMode;
   setSortMode: (m: SortMode) => void;
-  geoStatus: string;
-  onRequestMyLocation: () => void;
-  hasMyPos: boolean;
-  onZoomToMyPos: () => void;
-  showMyRings: boolean;
-  setShowMyRings: (v: boolean) => void;
+  selectedTripId?: number | null;
 }) {
-  const listRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     if (!props.scrollToSelectedToken || props.selectedId == null) return;
     const node = itemRefs.current.get(props.selectedId);
     if (!node) return;
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
+    node.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [props.scrollToSelectedToken, props.selectedId]);
 
   return (
-    <div className="h-full overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="text-sm font-semibold">Orte</div>
-        <div className="text-xs opacity-70">{props.places.length} Treffer</div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+      <div className="border-b border-white/10 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Orte</div>
+            <div className="text-[11px] text-white/55">{props.places.length} Treffer</div>
+          </div>
 
-      <div className="px-4 pb-2">
-        <select
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-          value={props.sortMode}
-          onChange={(e) => props.setSortMode(e.target.value as SortMode)}
-        >
-          <option value="SCORE">Sortierung: Score</option>
-          <option value="ALPHA">Sortierung: Alphabetisch</option>
-          <option value="DIST">Sortierung: Entfernung</option>
-        </select>
-
-        <div className="mt-2 flex items-center gap-2">
-          <button onClick={props.onRequestMyLocation} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15">
-            Eigenposition holen
-          </button>
-
-          <button
-            onClick={props.onZoomToMyPos}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-60"
-            disabled={!props.hasMyPos}
-            title={props.hasMyPos ? "Zu mir zoomen" : "Erst Eigenposition holen"}
+          <select
+            className="rounded-full border border-white/10 bg-black/30 px-3 py-2 text-xs outline-none"
+            value={props.sortMode}
+            onChange={(e) => props.setSortMode(e.target.value as SortMode)}
           >
-            Zu mir
-          </button>
-
-          <div className="text-xs opacity-70">{props.geoStatus}</div>
+            <option value="SCORE">Score</option>
+            <option value="ALPHA">A-Z</option>
+            <option value="DIST">Distanz</option>
+          </select>
         </div>
 
-        <label className="mt-2 flex items-center gap-2 text-xs opacity-85">
-          <input
-            type="checkbox"
-            checked={props.showMyRings}
-            onChange={(e) => props.setShowMyRings(e.target.checked)}
-            disabled={!props.hasMyPos}
-          />
-          Entfernungsringe anzeigen
-        </label>
       </div>
 
-      <div ref={listRef} className="h-[calc(100%-48px-74px)] overflow-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 overscroll-contain [webkit-overflow-scrolling:touch]">
         {props.places.map((p) => {
           const dist = formatDistanceKm((p as any).distanceKm);
-          const hasDist = typeof (p as any).distanceKm === "number" && Number.isFinite((p as any).distanceKm);
           const score = getPlaceScore(p);
+          const stance = getCampingStance(p);
+          const sightseeing = sightInfo(p);
+          const activeTripPlacement =
+            props.selectedTripId != null
+              ? (p.tripPlacements ?? []).find((item) => item.tripId === props.selectedTripId) ?? null
+              : null;
 
           return (
             <button
@@ -165,45 +85,51 @@ export default function PlacesList(props: {
                 else itemRefs.current.delete(p.id);
               }}
               onClick={() => props.onSelect(p.id)}
-              className={`mb-2 w-full rounded-xl border px-3 py-3 text-left ${
-                p.id === props.selectedId ? "border-white/30 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+              className={`mb-2 w-full rounded-2xl border px-3 py-2.5 text-left transition ${
+                p.id === props.selectedId ? "border-white/30 bg-white/12" : "border-white/10 bg-white/5 hover:bg-white/10"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{p.name}</div>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <div className="text-[11px] opacity-70">{getPlaceTypeLabel(p.type)}</div>
-                    {reviewBadge(p)}
-                  </div>
-                  <FeatureIcons {...p} />
-                </div>
-
-                <div className="shrink-0 text-right text-[11px] opacity-90">
-                  {score ? (
-                    <div title={score.title}>
-                      <span title={score.title} className="mr-1" aria-hidden="true">
-                        {score.icon}
-                      </span>
-                      {score.value}/{score.max}
-                    </div>
-                  ) : null}
-
-                  {(() => {
-                    const si = sightInfo(p);
-                    if (!si) return null;
-                    return (
-                      <div className="mt-1 space-y-1">
-                        {si.relevance ? <div className="text-[10px] opacity-80">{si.relevance}</div> : null}
-                        {si.modePrimary ? <div className="text-[10px] opacity-80">{si.modePrimary}</div> : null}
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{p.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-white/60">
+                        <span>{getPlaceTypeLabel(p.type)}</span>
+                        {activeTripPlacement ? (
+                          <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-100">
+                            #{activeTripPlacement.sortOrder} {tripStatusLabel(activeTripPlacement.status)}
+                          </span>
+                        ) : null}
+                        {stance ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/80">
+                            {stance.icon} {stance.label}
+                          </span>
+                        ) : null}
                       </div>
-                    );
-                  })()}
+                    </div>
 
-                  {ts21HaltungBadge(p)}
+                    <div className="shrink-0 text-right text-[11px] text-white/75">
+                      {score ? (
+                        <div title={score.title}>
+                          <span className="mr-1" aria-hidden="true">
+                            {score.icon}
+                          </span>
+                          {score.value}/{score.max}
+                        </div>
+                      ) : null}
+                      <div className="mt-0.5">{dist ? dist : "-"}</div>
+                    </div>
+                  </div>
 
-                  <div className="mt-1 text-[10px] opacity-70" title="Entfernung von deiner Eigenposition">
-                    📏 {hasDist ? dist : "-"}
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <FeatureIcons {...p} />
+                    {sightseeing ? (
+                      <div className="text-right text-[10px] text-white/50">
+                        {sightseeing.relevance ? <div>{sightseeing.relevance}</div> : null}
+                        {sightseeing.modePrimary ? <div>{sightseeing.modePrimary}</div> : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

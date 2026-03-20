@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
-import { isGoogleStreetViewReference, normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { buildPlaceHeroProxyPath, isGoogleStreetViewReference, normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { isSuspiciousGenericGooglePlaceMatch } from "@/lib/google-place-name-guard";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
 import { isHeroDebugPoiName } from "@/lib/hero-debug";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +17,7 @@ type TSHaltung = "DNA" | "EXPLORER";
 type TS21Source = "AI" | "USER";
 type SightRelevanceType = "ICON" | "STRONG_MATCH" | "GOOD_MATCH" | "OPTIONAL" | "LOW_MATCH";
 type SightVisitMode = "EASY_STOP" | "SMART_WINDOW" | "OUTSIDE_BEST" | "MAIN_DESTINATION" | "WEATHER_WINDOW";
+type TripPlaceStatus = "GEPLANT" | "BOOKED" | "CONFIRMED" | "VISITED";
 
 // TS 2.1 Einzelwertung
 type TS21Value = "S" | "O" | "X";
@@ -87,6 +89,14 @@ type CoordinateFeedbackFile = {
   generatedAt?: string;
   notes?: string;
   items?: CoordinateFeedbackItem[];
+};
+
+type TripPlacementInput = {
+  tripId: number;
+  sortOrder: number;
+  dayNumber: number;
+  status: TripPlaceStatus;
+  note: string;
 };
 
 const FEEDBACK_FILE = resolve(process.cwd(), "data/review/poi-coordinate-feedback-v1.json");
@@ -297,6 +307,143 @@ function normalizeScore0to100(v: any): number | null | undefined {
 function normalizeReviewDecision(v: any): CoordinateReviewDecision | null {
   if (v === "CORRECTED" || v === "CONFIRMED" || v === "REJECTED") return v;
   return null;
+}
+
+function normalizePlaceForResponse(place: any) {
+  const suppressStoredHero = isSuspiciousGenericGooglePlaceMatch({
+    placeName: String(place?.name ?? ""),
+    placeType: (place?.type ?? "CAMPINGPLATZ") as PlaceType,
+    reason: String(place?.heroReason ?? ""),
+  });
+  const rawHeroImageUrl = String(place?.heroImageUrl ?? "").trim() || null;
+  const hasGalleryFallback =
+    (typeof place?.thumbnailImage?.filename === "string" && place.thumbnailImage.filename.trim()) ||
+    (Array.isArray(place?.images) && place.images.some((image: any) => typeof image?.filename === "string" && image.filename.trim()));
+  const publicStoredHeroUrl = !suppressStoredHero && rawHeroImageUrl ? normalizePlaceHeroImageUrlForPublic(place?.id, rawHeroImageUrl) : null;
+  const galleryFallbackProxyPath = !rawHeroImageUrl && hasGalleryFallback ? buildPlaceHeroProxyPath(place?.id) : null;
+
+  return {
+    ...place,
+    heroImageUrl: publicStoredHeroUrl ?? galleryFallbackProxyPath ?? null,
+    datasetHeroImageUrl: !suppressStoredHero ? rawHeroImageUrl : null,
+    heroScore: !suppressStoredHero && rawHeroImageUrl ? place?.heroScore ?? null : null,
+    heroReason: !suppressStoredHero && rawHeroImageUrl ? place?.heroReason ?? null : null,
+  };
+}
+
+function normalizeTripPlaceStatus(v: any): TripPlaceStatus {
+  if (v === "BOOKED" || v === "CONFIRMED" || v === "VISITED") return v;
+  return "GEPLANT";
+}
+
+function normalizeTripPlacements(v: any): TripPlacementInput[] | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v)) return [];
+
+  const out: TripPlacementInput[] = [];
+
+  for (const item of v) {
+    const tripId = Number(item?.tripId);
+    const sortOrder = Number(item?.sortOrder);
+    const dayNumber = Number(item?.dayNumber);
+    if (!Number.isFinite(tripId) || !Number.isFinite(sortOrder)) continue;
+    out.push({
+      tripId,
+      sortOrder: Math.max(1, Math.round(sortOrder)),
+      dayNumber: Number.isFinite(dayNumber) ? Math.max(1, Math.round(dayNumber)) : 1,
+      status: normalizeTripPlaceStatus(item?.status),
+      note: asString(item?.note),
+    });
+  }
+
+  return out;
+}
+
+function mergeTripPlacementRows(
+  placeId: number,
+  remainingRows: Array<{ placeId: number; sortOrder: number; dayNumber: number; status: TripPlaceStatus; note: string }>,
+  requestedRows: TripPlacementInput[]
+) {
+  const merged = [...remainingRows]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((row) => ({
+      placeId: row.placeId,
+      sortOrder: row.sortOrder,
+      dayNumber: row.dayNumber,
+      status: row.status,
+      note: row.note,
+    }));
+
+  for (const row of [...requestedRows].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    const insertAt = Math.max(0, Math.min(merged.length, Math.round(row.sortOrder) - 1));
+    merged.splice(insertAt, 0, {
+      placeId,
+      sortOrder: row.sortOrder,
+      dayNumber: row.dayNumber,
+      status: row.status,
+      note: row.note,
+    });
+  }
+
+  return merged.map((row, index) => ({
+    placeId: row.placeId,
+    sortOrder: index + 1,
+    dayNumber: Number.isFinite(Number(row.dayNumber)) ? Math.max(1, Math.round(Number(row.dayNumber))) : 1,
+    status: normalizeTripPlaceStatus(row.status),
+    note: asString(row.note),
+  }));
+}
+
+async function syncTripPlacementsForPlace(
+  tx: any,
+  placeId: number,
+  requestedPlacements: TripPlacementInput[] | undefined
+) {
+  if (requestedPlacements === undefined) return;
+
+  const existingOwnRows: Array<{ tripId: number }> = await tx.tripPlace.findMany({
+    where: { placeId },
+    select: { tripId: true },
+  });
+
+  const affectedTripIds = [...new Set([...existingOwnRows.map((row) => Number(row.tripId)), ...requestedPlacements.map((row) => Number(row.tripId))])]
+    .filter((tripId) => Number.isFinite(tripId));
+
+  for (const tripId of affectedTripIds) {
+    const remainingRows: Array<{ placeId: number; sortOrder: number; dayNumber: number; status: TripPlaceStatus; note: string }> =
+      await tx.tripPlace.findMany({
+        where: {
+          tripId,
+          NOT: { placeId },
+        },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          placeId: true,
+          sortOrder: true,
+          dayNumber: true,
+          status: true,
+          note: true,
+        },
+      });
+
+    const requestedForTrip = requestedPlacements.filter((row) => Number(row.tripId) === tripId);
+    const finalRows = mergeTripPlacementRows(placeId, remainingRows, requestedForTrip);
+
+    await tx.tripPlace.deleteMany({ where: { tripId } });
+
+    if (finalRows.length) {
+      await tx.tripPlace.createMany({
+        data: finalRows.map((row) => ({
+          tripId,
+          placeId: row.placeId,
+          sortOrder: row.sortOrder,
+          dayNumber: row.dayNumber,
+          status: row.status,
+          note: row.note,
+        })),
+      });
+    }
+  }
 }
 
 function normalizeReviewStatus(decision: string | undefined): CoordinateReviewStatus {
@@ -576,9 +723,7 @@ export async function GET(req: NextRequest) {
       const coordinateReviewMeta = resolveCoordinateReviewMeta(place, coordinateReviewMetaByPlaceKey);
 
       return {
-        ...place,
-        heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, place?.heroImageUrl),
-        datasetHeroImageUrl: String(place?.heroImageUrl ?? "").trim() || null,
+        ...normalizePlaceForResponse(place),
         coordinateReviewStatus: coordinateReviewMeta.status,
         coordinateReviewSource: coordinateReviewMeta.source,
         coordinateReviewReviewedAt: coordinateReviewMeta.reviewedAt,
@@ -599,7 +744,7 @@ export async function GET(req: NextRequest) {
       .map((place: any) => ({
         id: Number(place?.id),
         name: String(place?.name ?? ""),
-        datasetHeroImageUrl: String(place?.heroImageUrl ?? "").trim() || null,
+        datasetHeroImageUrl: String(place?.datasetHeroImageUrl ?? "").trim() || null,
       }));
 
     return NextResponse.json({ places: normalizedPlaces, targetedHeroDebug });
@@ -677,22 +822,29 @@ export async function POST(req: NextRequest) {
     ...(shouldHaveTS ? { ts2: { create: { ...(ts2 ?? blankTS2()) } } } : {}),
   };
 
+  const tripPlacements = normalizeTripPlacements(body?.tripPlacements);
+
   if (shouldHaveTS && canTs21) {
     const ts21 = normalizeTS21Detail(body?.ts21);
     data.ts21 = { create: { ...(ts21 ?? blankTS21()) } };
   }
 
   try {
-    const created = await prisma.place.create({
-      data,
-      select: placeSelect(canTs21),
+    const created = await prisma.$transaction(async (tx: any) => {
+      const inserted = await tx.place.create({
+        data,
+        select: { id: true },
+      });
+
+      await syncTripPlacementsForPlace(tx, inserted.id, tripPlacements);
+
+      return tx.place.findUniqueOrThrow({
+        where: { id: inserted.id },
+        select: placeSelect(canTs21),
+      });
     });
 
-    const normalizedCreated = {
-      ...created,
-      heroImageUrl: normalizePlaceHeroImageUrlForPublic(created?.id, (created as any)?.heroImageUrl),
-      datasetHeroImageUrl: String((created as any)?.heroImageUrl ?? "").trim() || null,
-    };
+    const normalizedCreated = normalizePlaceForResponse(created);
 
     if (!canTs21) return NextResponse.json({ ...normalizedCreated, ts21: null });
     return NextResponse.json(normalizedCreated);
@@ -781,6 +933,8 @@ export async function PUT(req: NextRequest) {
   if (body?.sightRegion !== undefined) data.sightRegion = asOptionalString(body?.sightRegion) ?? null;
   if (body?.sightCountry !== undefined) data.sightCountry = asOptionalString(body?.sightCountry) ?? null;
 
+  const tripPlacements = normalizeTripPlacements(body?.tripPlacements);
+
   if (body?.ratingDetail !== undefined) {
     const rd = normalizeRatingDetail(body?.ratingDetail);
     data.ratingDetail = {
@@ -831,10 +985,19 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const updated = await prisma.place.update({
-      where: { id: idNum },
-      data,
-      select: placeSelect(canTs21),
+    const updated = await prisma.$transaction(async (tx: any) => {
+      await tx.place.update({
+        where: { id: idNum },
+        data,
+        select: { id: true },
+      });
+
+      await syncTripPlacementsForPlace(tx, idNum, tripPlacements);
+
+      return tx.place.findUniqueOrThrow({
+        where: { id: idNum },
+        select: placeSelect(canTs21),
+      });
     });
 
     let coordinateReviewStatus: CoordinateReviewStatus = "UNREVIEWED";
@@ -909,9 +1072,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const normalizedUpdated = {
-      ...updated,
-      heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
-      datasetHeroImageUrl: String((updated as any)?.heroImageUrl ?? "").trim() || null,
+      ...normalizePlaceForResponse(updated),
       coordinateReviewStatus,
       coordinateReviewSource,
       coordinateReviewReviewedAt,

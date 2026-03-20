@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 const DEFAULT_PLACEHOLDER = "/hero-placeholder.jpg";
 const GOOGLE_PHOTO_MAX_WIDTH = 1600;
+const SUPABASE_BUCKET = "place-images";
 
 function parsePlaceId(req: NextRequest): number {
   const parts = req.nextUrl.pathname.split("/").filter(Boolean);
@@ -38,6 +39,22 @@ function isHttpUrl(input: string | null | undefined): boolean {
 
 function cacheControl(maxAgeSeconds: number): string {
   return `public, max-age=${Math.max(60, maxAgeSeconds)}, s-maxage=${Math.max(300, maxAgeSeconds)}, stale-while-revalidate=86400`;
+}
+
+function encodeStoragePath(path: string): string {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function buildSupabasePublicImageUrl(path: string | null | undefined): string | null {
+  const normalizedPath = String(path ?? "").trim().replace(/^\/+/, "");
+  if (!normalizedPath) return null;
+  const baseUrl = String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim().replace(/\/$/, "");
+  if (!baseUrl) return null;
+  return `${baseUrl}/storage/v1/object/public/${SUPABASE_BUCKET}/${encodeStoragePath(normalizedPath)}`;
 }
 
 function getDebugFlag(req: NextRequest): boolean {
@@ -138,6 +155,29 @@ async function streamRemoteImage(url: string): Promise<Response | null> {
   return new Response(body, { status: 200, headers });
 }
 
+async function streamStoredImage(filename: string, apiKey: string): Promise<Response | null> {
+  const trimmed = String(filename ?? "").trim();
+  if (!trimmed) return null;
+
+  const googlePhotoResource = extractGooglePhotoResourceName(trimmed);
+  if (googlePhotoResource && apiKey) {
+    return streamGooglePhoto(googlePhotoResource, apiKey);
+  }
+
+  const googleStreetViewLocation = extractGoogleStreetViewLocation(trimmed);
+  if (googleStreetViewLocation && apiKey) {
+    return streamGoogleStreetView(googleStreetViewLocation.lat, googleStreetViewLocation.lng, apiKey);
+  }
+
+  if (isWikimediaSpecialFilePathUrl(trimmed) || isHttpUrl(trimmed)) {
+    return streamRemoteImage(trimmed);
+  }
+
+  const publicUrl = buildSupabasePublicImageUrl(trimmed);
+  if (!publicUrl) return null;
+  return streamRemoteImage(publicUrl);
+}
+
 
 function appendDecisionHeaders(res: Response | NextResponse, meta: { placeId: number; source: string; targeted: boolean; usedPlaceholder: boolean; placeUpdatedAt?: Date | null }): Response | NextResponse {
   res.headers.set("X-Hero-Place-Id", String(meta.placeId));
@@ -165,7 +205,25 @@ export async function GET(req: NextRequest) {
 
   const place = await prisma.place.findUnique({
     where: { id: placeId },
-    select: { id: true, name: true, heroImageUrl: true, updatedAt: true },
+    select: {
+      id: true,
+      name: true,
+      heroImageUrl: true,
+      updatedAt: true,
+      thumbnailImage: {
+        select: {
+          id: true,
+          filename: true,
+        },
+      },
+      images: {
+        select: {
+          id: true,
+          filename: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+    },
   });
 
   if (!place) {
@@ -173,6 +231,10 @@ export async function GET(req: NextRequest) {
   }
 
   const heroImageUrl = String(place.heroImageUrl ?? "").trim();
+  const storedFallbackImageCandidates = [
+    ...(place.thumbnailImage?.filename ? [String(place.thumbnailImage.filename).trim()] : []),
+    ...((place.images ?? []).map((image: { filename?: string | null }) => String(image?.filename ?? "").trim()).filter(Boolean)),
+  ].filter((value, index, all) => all.indexOf(value) === index && value !== heroImageUrl);
   const targetedDebugPoi = isHeroDebugPoiName(place.name);
   const googlePhotoResource = extractGooglePhotoResourceName(heroImageUrl);
   const googleStreetViewLocation = extractGoogleStreetViewLocation(heroImageUrl);
@@ -268,6 +330,23 @@ export async function GET(req: NextRequest) {
       } catch {
         // keep existing fallback behavior
       }
+    }
+  }
+
+  for (const fallbackImage of storedFallbackImageCandidates) {
+    try {
+      const response = await streamStoredImage(fallbackImage, googleApiKey);
+      if (response) {
+        return appendDecisionHeaders(response, {
+          placeId,
+          source: fallbackImage === String(place.thumbnailImage?.filename ?? "").trim() ? "thumbnail-image" : "gallery-image",
+          targeted: targetedDebugPoi,
+          usedPlaceholder: false,
+          placeUpdatedAt: place.updatedAt,
+        });
+      }
+    } catch {
+      // keep trying other stored images before placeholder
     }
   }
 

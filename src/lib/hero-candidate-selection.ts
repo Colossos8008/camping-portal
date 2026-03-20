@@ -11,7 +11,7 @@ export type HeroCandidate = {
 export const HERO_SCORE_THRESHOLDS: Record<PlaceType, { preferredMin: number; acceptableMin: number }> = {
   CAMPINGPLATZ: { preferredMin: 30, acceptableMin: 6 },
   STELLPLATZ: { preferredMin: 30, acceptableMin: 6 },
-  HVO_TANKSTELLE: { preferredMin: 8, acceptableMin: 0 },
+  HVO_TANKSTELLE: { preferredMin: 8, acceptableMin: 8 },
   SEHENSWUERDIGKEIT: { preferredMin: 18, acceptableMin: 4 },
 };
 

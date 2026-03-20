@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeSelect } from "@/lib/place-select";
-import { isGoogleStreetViewReference, normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { buildPlaceHeroProxyPath, isGoogleStreetViewReference, normalizePlaceHeroImageUrlForPublic } from "@/lib/hero-image";
+import { isSuspiciousGenericGooglePlaceMatch } from "@/lib/google-place-name-guard";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
 
 export const runtime = "nodejs";
@@ -392,11 +393,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const place = await getPlaceById(idNum);
     if (!place) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({
-      ...place,
-      heroImageUrl: normalizePlaceHeroImageUrlForPublic(place?.id, (place as any)?.heroImageUrl),
-      datasetHeroImageUrl: String((place as any)?.heroImageUrl ?? "").trim() || null,
-    });
+    return NextResponse.json(normalizePlaceForResponse(place));
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
@@ -534,11 +531,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       select: placeSelect(canTs21),
     });
 
-    const normalizedUpdated = {
-      ...updated,
-      heroImageUrl: normalizePlaceHeroImageUrlForPublic(updated?.id, (updated as any)?.heroImageUrl),
-      datasetHeroImageUrl: String((updated as any)?.heroImageUrl ?? "").trim() || null,
-    };
+    const normalizedUpdated = normalizePlaceForResponse(updated);
 
     if (!canTs21) return NextResponse.json({ ...normalizedUpdated, ts21: null });
     return NextResponse.json(normalizedUpdated);
@@ -558,4 +551,26 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   } catch (e: any) {
     return NextResponse.json({ error: "Delete fehlgeschlagen", details: e?.message ?? String(e) }, { status: 500 });
   }
+}
+
+function normalizePlaceForResponse(place: any) {
+  const suppressStoredHero = isSuspiciousGenericGooglePlaceMatch({
+    placeName: String(place?.name ?? ""),
+    placeType: (place?.type ?? "CAMPINGPLATZ") as PlaceType,
+    reason: String(place?.heroReason ?? ""),
+  });
+  const rawHeroImageUrl = String(place?.heroImageUrl ?? "").trim() || null;
+  const hasGalleryFallback =
+    (typeof place?.thumbnailImage?.filename === "string" && place.thumbnailImage.filename.trim()) ||
+    (Array.isArray(place?.images) && place.images.some((image: any) => typeof image?.filename === "string" && image.filename.trim()));
+  const publicStoredHeroUrl = !suppressStoredHero && rawHeroImageUrl ? normalizePlaceHeroImageUrlForPublic(place?.id, rawHeroImageUrl) : null;
+  const galleryFallbackProxyPath = !rawHeroImageUrl && hasGalleryFallback ? buildPlaceHeroProxyPath(place?.id) : null;
+
+  return {
+    ...place,
+    heroImageUrl: publicStoredHeroUrl ?? galleryFallbackProxyPath ?? null,
+    datasetHeroImageUrl: !suppressStoredHero ? rawHeroImageUrl : null,
+    heroScore: !suppressStoredHero && rawHeroImageUrl ? place?.heroScore ?? null : null,
+    heroReason: !suppressStoredHero && rawHeroImageUrl ? place?.heroReason ?? null : null,
+  };
 }

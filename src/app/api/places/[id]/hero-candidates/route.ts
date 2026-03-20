@@ -7,6 +7,7 @@ import {
   type HeroCandidateRecord,
   type PlaceType,
 } from "@/lib/hero-candidates";
+import { isSuspiciousGenericGooglePlaceMatch } from "@/lib/google-place-name-guard";
 
 export const runtime = "nodejs";
 
@@ -14,20 +15,30 @@ function parsePlaceId(ctx: { params: Promise<{ id: string }> | { id: string } })
   return Promise.resolve((ctx as any).params).then((params) => Number((params as any)?.id));
 }
 
-function normalizeStoredCandidates(items: any[]): HeroCandidateRecord[] {
-  return items.map((item: any, index: number) => ({
-    id: typeof item.id === "number" ? item.id : undefined,
-    source: item.source === "google" || item.source === "website" ? item.source : "wikimedia",
-    url: String(item.url ?? ""),
-    thumbUrl: String(item.thumbUrl ?? "").trim() || undefined,
-    width: typeof item.width === "number" ? item.width : undefined,
-    height: typeof item.height === "number" ? item.height : undefined,
-    score: normalizePersistedScore(item.score, item.userFeedback),
-    reason: String(item.reason ?? ""),
-    rank: typeof item.rank === "number" ? item.rank : index + 1,
-    userFeedback:
-      item.userFeedback === "UP" || item.userFeedback === "DOWN" ? item.userFeedback : null,
-  }));
+function normalizeStoredCandidates(place: { name: string; type: PlaceType }, items: any[]): HeroCandidateRecord[] {
+  return items
+    .map((item: any, index: number) => ({
+      id: typeof item.id === "number" ? item.id : undefined,
+      source: item.source === "google" || item.source === "website" ? item.source : "wikimedia",
+      url: String(item.url ?? ""),
+      thumbUrl: String(item.thumbUrl ?? "").trim() || undefined,
+      width: typeof item.width === "number" ? item.width : undefined,
+      height: typeof item.height === "number" ? item.height : undefined,
+      score: normalizePersistedScore(item.score, item.userFeedback),
+      reason: String(item.reason ?? ""),
+      rank: typeof item.rank === "number" ? item.rank : index + 1,
+      userFeedback:
+        item.userFeedback === "UP" || item.userFeedback === "DOWN" ? item.userFeedback : null,
+    }))
+    .filter(
+      (item) =>
+        !isSuspiciousGenericGooglePlaceMatch({
+          placeName: place.name,
+          placeType: place.type,
+          reason: item.reason,
+          source: item.source,
+        })
+    );
 }
 
 function candidateKey(item: { source?: string | null; url?: string | null }): string {
@@ -64,6 +75,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     where: { id: placeId },
     select: {
       id: true,
+      name: true,
       type: true,
       heroCandidates: {
         where: { isRejected: false },
@@ -77,7 +89,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   return NextResponse.json({
     placeId: place.id,
     supported: true,
-    candidates: normalizeStoredCandidates(place.heroCandidates),
+    candidates: normalizeStoredCandidates({ name: place.name, type: place.type as PlaceType }, place.heroCandidates),
   });
 }
 
@@ -199,11 +211,29 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   );
   const positiveByKey = new Map(
     existing
+      .filter(
+        (item) =>
+          !isSuspiciousGenericGooglePlaceMatch({
+            placeName: place.name,
+            placeType: place.type as PlaceType,
+            reason: String(item.reason ?? ""),
+            source: String(item.source ?? ""),
+          })
+      )
       .filter((item) => item.userFeedback === "UP" && !item.isRejected)
       .map((item) => [candidateKey(item), item])
   );
 
-  const filteredDiscovered = combinedDiscovered.filter((candidate) => !rejectedKeys.has(candidateKey(candidate)));
+  const filteredDiscovered = combinedDiscovered.filter(
+    (candidate) =>
+      !rejectedKeys.has(candidateKey(candidate)) &&
+      !isSuspiciousGenericGooglePlaceMatch({
+        placeName: place.name,
+        placeType: place.type as PlaceType,
+        reason: candidate.reason,
+        source: candidate.source,
+      })
+  );
   const merged: HeroCandidateRecord[] = [];
   const seen = new Set<string>();
 
@@ -292,7 +322,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   return NextResponse.json({
     placeId: place.id,
     supported: true,
-    candidates: normalizeStoredCandidates(stored),
+    candidates: normalizeStoredCandidates({ name: place.name, type: place.type as PlaceType }, stored),
     newCandidatesLoaded,
     preservedPositiveCount: positiveByKey.size,
   });

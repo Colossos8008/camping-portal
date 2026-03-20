@@ -33,11 +33,11 @@ export default function HeroCandidatesPanel(props: {
     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold">Hero-Vorschläge</div>
-          <div className="text-xs opacity-70">5-10 externe Bildkandidaten zum manuellen Auswählen</div>
+          <div className="text-sm font-semibold">Hero-Vorschlaege</div>
+          <div className="text-xs opacity-70">5-10 externe Bildkandidaten zum manuellen Auswaehlen</div>
           {props.reloadInfo ? (
             <div className="mt-1 text-[11px] text-white/60">
-              Neu geladen: {props.reloadInfo.newCount} · Behalten: {props.reloadInfo.preservedCount}
+              Neu geladen: {props.reloadInfo.newCount} - Behalten: {props.reloadInfo.preservedCount}
             </div>
           ) : null}
         </div>
@@ -47,13 +47,13 @@ export default function HeroCandidatesPanel(props: {
           disabled={!supported || !props.placeId || props.loading}
           className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs hover:bg-white/15 disabled:opacity-50"
         >
-          {props.loading ? "Lädt..." : props.candidates.length ? "Neu laden" : "Vorschläge laden"}
+          {props.loading ? "Laedt..." : props.candidates.length ? "Neu laden" : "Vorschlaege laden"}
         </button>
       </div>
 
       {!supported ? (
         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs opacity-80">
-          Für HVO-Tankstellen sind Hero-Vorschläge deaktiviert.
+          Fuer HVO-Tankstellen sind Hero-Vorschlaege deaktiviert.
         </div>
       ) : null}
 
@@ -76,7 +76,7 @@ export default function HeroCandidatesPanel(props: {
                   type="button"
                   onClick={() => props.onSelect(originalIndex)}
                   className="block w-full text-left"
-                  title="Bild groß ansehen"
+                  title="Bild gross ansehen"
                 >
                   {src ? (
                     <img
@@ -112,8 +112,9 @@ export default function HeroCandidatesPanel(props: {
                         : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
                     }`}
                     title="Passt gut zu diesem Ort"
+                    aria-label="Passt gut"
                   >
-                    👍
+                    Gut
                   </button>
                   <button
                     type="button"
@@ -124,8 +125,9 @@ export default function HeroCandidatesPanel(props: {
                         : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
                     }`}
                     title="Passt nicht zu diesem Ort"
+                    aria-label="Passt nicht"
                   >
-                    👎
+                    Schlecht
                   </button>
                   {candidate.userFeedback === "UP" ? <span className="text-[11px] text-emerald-200/90">Bleibt beim Reload</span> : null}
                 </div>
@@ -145,7 +147,7 @@ export default function HeroCandidatesPanel(props: {
 
       {supported && !props.loading && !props.error && visibleCandidates.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs opacity-80">
-          {props.candidates.length > 0 ? "Die geladenen Vorschläge konnten nicht angezeigt werden." : "Noch keine Vorschläge geladen."}
+          {props.candidates.length > 0 ? "Die geladenen Vorschlaege konnten nicht angezeigt werden." : "Noch keine Vorschlaege geladen."}
         </div>
       ) : null}
     </div>

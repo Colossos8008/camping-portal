@@ -144,6 +144,9 @@ const GENERIC_TOKENS = new Set([
   "of",
   "am",
   "an",
+  "route",
+  "viewpoint",
+  "lookout",
   "im",
   "in",
   "bei",
@@ -1403,6 +1406,7 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
 
   const kept: HeroCandidateRecord[] = [];
   const keptSignatures: CandidateSignature[] = [];
+  const fallbackWithoutSignature: HeroCandidateRecord[] = [];
   const entityCounts = new Map<string, number>();
 
   for (const candidate of sorted) {
@@ -1422,7 +1426,10 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     const currentCount = entityCounts.get(entityKey) ?? 0;
     if (currentCount >= entityCap(candidate)) continue;
 
-    if (!inspection?.signature) continue;
+    if (!inspection?.signature) {
+      fallbackWithoutSignature.push(candidate);
+      continue;
+    }
 
     const signature = inspection?.signature ?? null;
     if (
@@ -1435,6 +1442,19 @@ async function dedupeCandidatesVisually(candidates: HeroCandidateRecord[]): Prom
     kept.push(candidate);
     entityCounts.set(entityKey, currentCount + 1);
     keptSignatures.push({ candidate, signature });
+  }
+
+  if (kept.length >= 4) {
+    return kept;
+  }
+
+  for (const candidate of fallbackWithoutSignature) {
+    const entityKey = entityKeyFromCandidate(candidate);
+    const currentCount = entityCounts.get(entityKey) ?? 0;
+    if (currentCount >= entityCap(candidate)) continue;
+    kept.push(candidate);
+    entityCounts.set(entityKey, currentCount + 1);
+    if (kept.length >= 8) break;
   }
 
   return kept;

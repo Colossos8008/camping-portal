@@ -105,6 +105,15 @@ type SightseeingQualityResponse = {
   failures?: SightseeingQualityFailure[];
 };
 
+type SightseeingQualityRepairResponse = {
+  ok: boolean;
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+  stdoutTail: string;
+  stderrTail: string;
+};
+
 const PLACE_TYPES: Array<{ type: PlaceType; label: string }> = [
   { type: "CAMPINGPLATZ", label: "Campingplatz" },
   { type: "STELLPLATZ", label: "Stellplatz" },
@@ -150,6 +159,9 @@ export default function ImportPage() {
   const [qualityBusy, setQualityBusy] = useState(false);
   const [qualityResp, setQualityResp] = useState<SightseeingQualityResponse | null>(null);
   const [qualityError, setQualityError] = useState<string | null>(null);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [repairResp, setRepairResp] = useState<SightseeingQualityRepairResponse | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
 
   const hasErrors = useMemo(
     () => (resp?.results ?? []).some((r) => r.status === "error"),
@@ -392,6 +404,47 @@ export default function ImportPage() {
       setQualityError(e?.message ?? "Request failed");
     } finally {
       setQualityBusy(false);
+    }
+  }
+
+  async function runSightseeingRepair() {
+    setRepairBusy(true);
+    setRepairResp(null);
+    setRepairError(null);
+
+    try {
+      const res = await fetch("/api/admin/sightseeing-quality-repair", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      const raw = await res.text();
+
+      let json: SightseeingQualityRepairResponse | null = null;
+      try {
+        json = JSON.parse(raw) as SightseeingQualityRepairResponse;
+      } catch {
+        // not JSON
+      }
+
+      if (!json) {
+        setRepairError(`API did not return JSON (HTTP ${res.status} ${res.statusText})`);
+        return;
+      }
+
+      setRepairResp(json);
+      if (!json.ok) {
+        setRepairError("Auto-Repair failed");
+        return;
+      }
+
+      await loadSightseeingQuality();
+    } catch (e: any) {
+      setRepairError(e?.message ?? "Request failed");
+    } finally {
+      setRepairBusy(false);
     }
   }
 
@@ -774,16 +827,31 @@ export default function ImportPage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={loadSightseeingQuality}
-              disabled={qualityBusy}
+              disabled={qualityBusy || repairBusy}
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: "1px solid rgba(0,0,0,0.2)",
-                cursor: qualityBusy ? "not-allowed" : "pointer",
+                cursor: qualityBusy || repairBusy ? "not-allowed" : "pointer",
                 fontWeight: 700,
               }}
             >
               {qualityBusy ? "Pruefe..." : "Qualitaet pruefen"}
+            </button>
+
+            <button
+              onClick={runSightseeingRepair}
+              disabled={repairBusy || qualityBusy}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+                cursor: repairBusy || qualityBusy ? "not-allowed" : "pointer",
+                fontWeight: 700,
+                background: "rgba(37,99,235,0.08)",
+              }}
+            >
+              {repairBusy ? "Repariere..." : "Auto-Repair"}
             </button>
 
             {qualityResp && (
@@ -806,6 +874,49 @@ export default function ImportPage() {
         {qualityError && (
           <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>
             Fehler: {qualityError}
+          </div>
+        )}
+
+        {repairError && (
+          <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>
+            Repair-Fehler: {repairError}
+          </div>
+        )}
+
+        {repairResp && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 10,
+              background: repairResp.ok ? "rgba(34,197,94,0.08)" : "rgba(220,20,60,0.06)",
+              border: repairResp.ok
+                ? "1px solid rgba(34,197,94,0.2)"
+                : "1px solid rgba(220,20,60,0.18)",
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>
+              {repairResp.ok ? "Auto-Repair abgeschlossen" : "Auto-Repair fehlgeschlagen"}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+              Dauer: {Math.round(repairResp.durationMs / 1000)}s | Exit-Code: {repairResp.exitCode ?? "-"}
+            </div>
+            {repairResp.stdoutTail && (
+              <>
+                <div style={{ marginTop: 10, fontWeight: 700 }}>stdout</div>
+                <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
+                  {repairResp.stdoutTail}
+                </pre>
+              </>
+            )}
+            {repairResp.stderrTail && (
+              <>
+                <div style={{ marginTop: 10, fontWeight: 700 }}>stderr</div>
+                <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
+                  {repairResp.stderrTail}
+                </pre>
+              </>
+            )}
           </div>
         )}
 

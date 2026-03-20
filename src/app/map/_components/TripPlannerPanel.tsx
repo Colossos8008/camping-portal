@@ -30,6 +30,9 @@ type Props = {
   color: string;
   stops: TripStop[];
   groups: TripDayGroup[];
+  routingStatus: "idle" | "loading" | "ready" | "error";
+  routingProvider?: string | null;
+  routingError?: string | null;
   tripOnlyMode: boolean;
   selectedPlaceId: number | null;
   selectedTripId: number | null;
@@ -130,6 +133,14 @@ export default function TripPlannerPanel(props: Props) {
             <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">{formatDistanceKm(totalDistanceKm) ?? "0 km"}</div>
             <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">{props.groups.length || 1} Tage</div>
             <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">{formatDriveDuration(totalDriveMinutes)}</div>
+            {props.routingStatus === "loading" ? (
+              <div className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-sky-100/85">Route wird berechnet...</div>
+            ) : null}
+            {props.routingStatus === "ready" && props.routingProvider ? (
+              <div className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2.5 py-1 text-emerald-100/85">
+                Routing: {props.routingProvider === "google" ? "Google" : props.routingProvider === "osrm" ? "OSRM" : props.routingProvider}
+              </div>
+            ) : null}
             <label className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-white/75">
               <input
                 type="checkbox"
@@ -139,6 +150,13 @@ export default function TripPlannerPanel(props: Props) {
               />
               Nur Trip-Orte
             </label>
+          </div>
+        ) : null}
+
+        {props.trip && props.routingStatus === "error" ? (
+          <div className="mt-2 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-50/90">
+            Routing derzeit nicht verfuegbar. Kilometer, Minuten und Linienzug koennen gerade fehlen.
+            {props.routingError ? <div className="mt-1 text-[10px] text-amber-100/70">{props.routingError}</div> : null}
           </div>
         ) : null}
       </div>

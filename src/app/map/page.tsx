@@ -82,6 +82,7 @@ type TripStopBase = {
 type TripRoutingState = {
   legs: RoutedLeg[];
   polyline: RoutePoint[];
+  provider?: string | null;
 };
 
 function normalizeCoordinateReviewStatus(v: any): CoordinateReviewStatus {
@@ -374,6 +375,8 @@ export default function MapPage() {
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [tripOnlyMode, setTripOnlyMode] = useState(true);
   const [tripRouting, setTripRouting] = useState<TripRoutingState>({ legs: [], polyline: [] });
+  const [tripRoutingStatus, setTripRoutingStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [tripRoutingError, setTripRoutingError] = useState<string | null>(null);
   const [listScrollSelectedToken, setListScrollSelectedToken] = useState(0);
 
   const [selectTick, setSelectTick] = useState(0);
@@ -674,6 +677,8 @@ export default function MapPage() {
 
     if (routePoints.length < 2) {
       setTripRouting({ legs: [], polyline: [] });
+      setTripRoutingStatus("idle");
+      setTripRoutingError(null);
       return;
     }
 
@@ -681,10 +686,14 @@ export default function MapPage() {
     const cached = tripRoutingCacheRef.current.get(cacheKey);
     if (cached) {
       setTripRouting(cached);
+      setTripRoutingStatus("ready");
+      setTripRoutingError(null);
       return;
     }
 
     const ac = new AbortController();
+    setTripRoutingStatus("loading");
+    setTripRoutingError(null);
 
     void (async () => {
       try {
@@ -720,14 +729,18 @@ export default function MapPage() {
                 .filter((point) => Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng)))
                 .map((point) => ({ lat: Number(point.lat), lng: Number(point.lng) }))
             : [],
+          provider: typeof (payload as any)?.provider === "string" && String((payload as any).provider).trim() ? String((payload as any).provider).trim() : null,
         };
 
         tripRoutingCacheRef.current.set(cacheKey, nextState);
         setTripRouting(nextState);
+        setTripRoutingStatus("ready");
       } catch (error: any) {
         if (ac.signal.aborted) return;
         console.error("Trip routing failed", error);
         setTripRouting({ legs: [], polyline: [] });
+        setTripRoutingStatus("error");
+        setTripRoutingError(typeof error?.message === "string" && error.message.trim() ? error.message.trim() : "Routing fehlgeschlagen");
       }
     })();
 
@@ -743,8 +756,7 @@ export default function MapPage() {
         legDistanceKm != null || legDriveMinutes > 0
           ? [formatDistanceKm(legDistanceKm), legDriveMinutes > 0 ? formatDriveDuration(legDriveMinutes) : null].filter(Boolean).join(" • ")
           : null;
-      const legSuffix =
-        myPos && index === 0 ? "von deiner Position" : index > 0 ? "vom letzten Stopp" : null;
+      const legSuffix = myPos && index === 0 ? "von Zuhause" : index > 0 ? "vom letzten Stopp" : null;
 
       return {
         ...stop,
@@ -2766,6 +2778,9 @@ export default function MapPage() {
               color={selectedTripColor}
               stops={selectedTripStops}
               groups={selectedTripGroups}
+              routingStatus={tripRoutingStatus}
+              routingProvider={tripRouting.provider ?? null}
+              routingError={tripRoutingError}
               tripOnlyMode={tripOnlyMode}
               selectedPlaceId={selectedId}
               selectedTripId={selectedTripId}
@@ -2813,6 +2828,9 @@ export default function MapPage() {
               color={selectedTripColor}
               stops={selectedTripStops}
               groups={selectedTripGroups}
+              routingStatus={tripRoutingStatus}
+              routingProvider={tripRouting.provider ?? null}
+              routingError={tripRoutingError}
               tripOnlyMode={tripOnlyMode}
               selectedPlaceId={selectedId}
               selectedTripId={selectedTripId}
@@ -3047,6 +3065,9 @@ export default function MapPage() {
         color={selectedTripColor}
         stops={selectedTripStops}
         groups={selectedTripGroups}
+        routingStatus={tripRoutingStatus}
+        routingProvider={tripRouting.provider ?? null}
+        routingError={tripRoutingError}
         tripOnlyMode={tripOnlyMode}
         selectedPlaceId={selectedId}
         selectedTripId={selectedTripId}

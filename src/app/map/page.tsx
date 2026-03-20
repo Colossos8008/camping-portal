@@ -1317,6 +1317,87 @@ export default function MapPage() {
     if (nextPlacementId != null) setActiveTripPlacementId(nextPlacementId);
   }
 
+  function buildUpsertedTripPlacementForm(currentForm: typeof form, partial: Partial<TripFormPlacement>) {
+    if (selectedTripId == null) return { nextForm: currentForm, nextPlacementId: null as number | null };
+
+    const placements: TripFormPlacement[] = Array.isArray(currentForm?.tripPlacements) ? [...currentForm.tripPlacements] : [];
+    const index =
+      activeTripPlacementId != null
+        ? placements.findIndex((item) => Number(item.id) === activeTripPlacementId)
+        : placements.findIndex((item) => item.tripId === selectedTripId);
+    const maxSortOrder = Math.max(
+      0,
+      ...placements.filter((item) => item.tripId === selectedTripId).map((item) => Number(item.sortOrder) || 0),
+      ...((selectedTrip?.places ?? []).map((item) => Number(item.sortOrder) || 0))
+    );
+    const currentPlacement =
+      index >= 0
+        ? placements[index]
+        : {
+            id: nextTempTripPlacementId(),
+            tripId: selectedTripId,
+            sortOrder: maxSortOrder + 1,
+            dayNumber: 1,
+            status: "GEPLANT" as TripPlaceStatus,
+            note: "",
+          };
+
+    const nextPlacement = {
+      ...currentPlacement,
+      ...partial,
+      id: Number.isFinite(Number(partial.id)) ? Number(partial.id) : currentPlacement.id,
+      tripId: selectedTripId,
+    };
+
+    if (index >= 0) placements[index] = nextPlacement;
+    else placements.push(nextPlacement);
+
+    return {
+      nextForm: { ...currentForm, tripPlacements: placements },
+      nextPlacementId: Number(nextPlacement.id),
+    };
+  }
+
+  function buildAddedTripPlacementForm(currentForm: typeof form) {
+    if (selectedTripId == null) return { nextForm: currentForm, nextPlacementId: null as number | null };
+
+    const nextId = nextTempTripPlacementId();
+    const placements: TripFormPlacement[] = Array.isArray(currentForm?.tripPlacements) ? [...currentForm.tripPlacements] : [];
+    const maxSortOrder = Math.max(
+      0,
+      ...placements.filter((item) => item.tripId === selectedTripId).map((item) => Number(item.sortOrder) || 0),
+      ...((selectedTrip?.places ?? []).map((item) => Number(item.sortOrder) || 0))
+    );
+
+    placements.push({
+      id: nextId,
+      tripId: selectedTripId,
+      sortOrder: maxSortOrder + 1,
+      dayNumber: activeFormTripPlacement?.dayNumber ?? 1,
+      status: activeFormTripPlacement?.status ?? ("GEPLANT" as TripPlaceStatus),
+      note: "",
+    });
+
+    return {
+      nextForm: { ...currentForm, tripPlacements: placements },
+      nextPlacementId: nextId,
+    };
+  }
+
+  async function persistTripPlacementForm(nextForm: typeof form, nextPlacementId: number | null, successMessage: string) {
+    setForm(nextForm);
+    if (nextPlacementId != null) setActiveTripPlacementId(nextPlacementId);
+    return await save(nextForm, { successMessage });
+  }
+
+  async function addOrCreateTripPlacementAndSave() {
+    if (selectedTripId == null || saving) return;
+    const { nextForm, nextPlacementId } = activeFormTripPlacements.length
+      ? buildAddedTripPlacementForm(form)
+      : buildUpsertedTripPlacementForm(form, {});
+    await persistTripPlacementForm(nextForm, nextPlacementId, "Trip-Stopp gespeichert");
+  }
+
   function addTripPlacementToForm() {
     if (selectedTripId == null) return;
     const nextId = nextTempTripPlacementId();
@@ -2233,8 +2314,11 @@ export default function MapPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={activeFormTripPlacements.length ? addTripPlacementToForm : () => upsertTripPlacementForForm({})}
+                      onClick={() => {
+                        void addOrCreateTripPlacementAndSave();
+                      }}
                       className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10"
+                      disabled={saving}
                     >
                       {activeFormTripPlacements.length ? "Weiteren Stopp hinzufuegen" : "Zum Trip hinzufuegen"}
                     </button>

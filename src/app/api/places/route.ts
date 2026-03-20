@@ -778,7 +778,12 @@ export async function POST(req: NextRequest) {
   if (wantTs21 && !canTs21) return ts21NotSupportedResponse();
 
   const heroImageUrl = normalizeHeroImageUrl(body?.heroImageUrl);
-  if (heroImageUrl === null && typeof body?.heroImageUrl === "string" && body.heroImageUrl.trim() !== "") {
+  if (
+    heroImageUrl === null &&
+    typeof body?.heroImageUrl === "string" &&
+    body.heroImageUrl.trim() !== "" &&
+    !isHeroProxyPath(body.heroImageUrl)
+  ) {
     return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
   }
 
@@ -895,7 +900,12 @@ export async function PUT(req: NextRequest) {
 
   if (body?.heroImageUrl !== undefined) {
     const heroImageUrl = normalizeHeroImageUrl(body?.heroImageUrl);
-    if (heroImageUrl === null && typeof body?.heroImageUrl === "string" && body.heroImageUrl.trim() !== "") {
+    if (
+      heroImageUrl === null &&
+      typeof body?.heroImageUrl === "string" &&
+      body.heroImageUrl.trim() !== "" &&
+      !isHeroProxyPath(body.heroImageUrl)
+    ) {
       return NextResponse.json({ error: "heroImageUrl ungültig" }, { status: 400 });
     }
     data.heroImageUrl = heroImageUrl;

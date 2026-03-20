@@ -6,7 +6,8 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "re
 import Ts21Editor, { TS21Detail } from "./ts21-editor";
 
 import type { Place, PlaceHeroCandidate, PlaceType, SortMode, Trip, TripPlaceStatus } from "./_lib/types";
-import { distanceKm, estimateDriveMinutesFromKm, formatDistanceKm } from "./_lib/geo";
+import { distanceKm, formatDistanceKm, formatDriveDuration } from "./_lib/geo";
+import type { RoutePoint, RoutedLeg } from "./_lib/routing";
 import { safePlacesFromApi } from "./_lib/place";
 import { getPlaceScore, getPlaceTypeLabel } from "./_lib/place-display";
 import { blankRating } from "./_lib/rating";
@@ -63,6 +64,24 @@ type TripFormPlacement = {
   dayNumber: number;
   status: TripPlaceStatus;
   note: string;
+};
+
+type TripStopBase = {
+  tripPlaceId: number;
+  placeId: number;
+  name: string;
+  typeLabel: string;
+  sortOrder: number;
+  dayNumber: number;
+  status: TripPlaceStatus;
+  note: string;
+  lat: number;
+  lng: number;
+};
+
+type TripRoutingState = {
+  legs: RoutedLeg[];
+  polyline: RoutePoint[];
 };
 
 function normalizeCoordinateReviewStatus(v: any): CoordinateReviewStatus {
@@ -354,6 +373,7 @@ export default function MapPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [tripOnlyMode, setTripOnlyMode] = useState(true);
+  const [tripRouting, setTripRouting] = useState<TripRoutingState>({ legs: [], polyline: [] });
   const [listScrollSelectedToken, setListScrollSelectedToken] = useState(0);
 
   const [selectTick, setSelectTick] = useState(0);
@@ -407,6 +427,7 @@ export default function MapPage() {
 
   const editorPanelRef = useRef<HTMLDivElement | null>(null);
   const mapPanelRef = useRef<HTMLDivElement | null>(null);
+  const tripRoutingCacheRef = useRef<Map<string, TripRoutingState>>(new Map());
 
   const editorScrollRef = useRef<HTMLDivElement | null>(null);
   const tripAssignmentRef = useRef<HTMLDivElement | null>(null);
@@ -615,11 +636,10 @@ export default function MapPage() {
     }
     return activeFormTripPlacements[0] ?? null;
   }, [activeFormTripPlacements, activeTripPlacementId]);
-  const selectedTripStops = useMemo(() => {
+  const selectedTripBaseStops = useMemo(() => {
     if (!selectedTrip) return [];
 
     const placesById = new Map(places.map((place) => [place.id, place]));
-    let previousPoint: { lat: number; lng: number } | null = myPos ? { lat: myPos.lat, lng: myPos.lng } : null;
 
     return [...(selectedTrip.places ?? [])]
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -628,15 +648,6 @@ export default function MapPage() {
         if (!place) return null;
 
         const dayNumber = Number.isFinite(Number(stop.dayNumber)) ? Math.max(1, Number(stop.dayNumber)) : 1;
-        const legDistanceKm =
-          previousPoint != null ? distanceKm(previousPoint.lat, previousPoint.lng, place.lat, place.lng) : null;
-        const legLabel =
-          previousPoint != null
-            ? dayNumber === 1 && stop.sortOrder === 1 && myPos
-              ? `${formatDistanceKm(legDistanceKm) ?? "-"} von deiner Position`
-              : `${formatDistanceKm(legDistanceKm) ?? "-"} vom letzten Stopp`
-            : null;
-        previousPoint = { lat: place.lat, lng: place.lng };
 
         return {
           tripPlaceId: stop.id,
@@ -647,29 +658,102 @@ export default function MapPage() {
           dayNumber,
           status: stop.status,
           note: stop.note,
-          legDistanceKm,
-          legDriveMinutes: estimateDriveMinutesFromKm(legDistanceKm),
-          legLabel,
           lat: place.lat,
           lng: place.lng,
         };
       })
-      .filter(Boolean) as Array<{
-      tripPlaceId: number;
-      placeId: number;
-      name: string;
-      typeLabel: string;
-      sortOrder: number;
-      dayNumber: number;
-      status: TripPlaceStatus;
-      note: string;
-      legDistanceKm: number | null;
-      legDriveMinutes: number;
-      legLabel: string | null;
-      lat: number;
-      lng: number;
-    }>;
-  }, [myPos, places, selectedTrip]);
+      .filter(Boolean) as TripStopBase[];
+  }, [places, selectedTrip]);
+
+  useEffect(() => {
+    const stops = selectedTripBaseStops;
+    const routePoints = [
+      ...(myPos ? ([{ lat: myPos.lat, lng: myPos.lng }] as RoutePoint[]) : []),
+      ...stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+    ];
+
+    if (routePoints.length < 2) {
+      setTripRouting({ legs: [], polyline: [] });
+      return;
+    }
+
+    const cacheKey = JSON.stringify(routePoints.map((point) => [Number(point.lat.toFixed(6)), Number(point.lng.toFixed(6))]));
+    const cached = tripRoutingCacheRef.current.get(cacheKey);
+    if (cached) {
+      setTripRouting(cached);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/trips/route", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ points: routePoints }),
+          signal: ac.signal,
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? `Routing fehlgeschlagen (${response.status})`);
+        }
+
+        const payload = (await response.json().catch(() => null)) as TripRoutingState | null;
+        const nextState: TripRoutingState = {
+          legs: Array.isArray(payload?.legs)
+            ? payload!.legs.map((leg) => ({
+                distanceKm: typeof leg?.distanceKm === "number" && Number.isFinite(leg.distanceKm) ? leg.distanceKm : null,
+                durationMinutes: Number.isFinite(Number(leg?.durationMinutes)) ? Math.max(0, Math.round(Number(leg!.durationMinutes))) : 0,
+                polyline: Array.isArray(leg?.polyline)
+                  ? leg.polyline
+                      .filter((point) => Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng)))
+                      .map((point) => ({ lat: Number(point.lat), lng: Number(point.lng) }))
+                  : [],
+              }))
+            : [],
+          polyline: Array.isArray(payload?.polyline)
+            ? payload!.polyline
+                .filter((point) => Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng)))
+                .map((point) => ({ lat: Number(point.lat), lng: Number(point.lng) }))
+            : [],
+        };
+
+        tripRoutingCacheRef.current.set(cacheKey, nextState);
+        setTripRouting(nextState);
+      } catch (error: any) {
+        if (ac.signal.aborted) return;
+        console.error("Trip routing failed", error);
+        setTripRouting({ legs: [], polyline: [] });
+      }
+    })();
+
+    return () => ac.abort();
+  }, [myPos, selectedTripBaseStops]);
+
+  const selectedTripStops = useMemo(() => {
+    return selectedTripBaseStops.map((stop, index) => {
+      const leg = myPos ? tripRouting.legs[index] : index > 0 ? tripRouting.legs[index - 1] : null;
+      const legDistanceKm = leg?.distanceKm ?? null;
+      const legDriveMinutes = leg?.durationMinutes ?? 0;
+      const legPrefix =
+        legDistanceKm != null || legDriveMinutes > 0
+          ? [formatDistanceKm(legDistanceKm), legDriveMinutes > 0 ? formatDriveDuration(legDriveMinutes) : null].filter(Boolean).join(" • ")
+          : null;
+      const legSuffix =
+        myPos && index === 0 ? "von deiner Position" : index > 0 ? "vom letzten Stopp" : null;
+
+      return {
+        ...stop,
+        legDistanceKm,
+        legDriveMinutes,
+        legLabel: legPrefix && legSuffix ? `${legPrefix} ${legSuffix}` : null,
+      };
+    });
+  }, [myPos, selectedTripBaseStops, tripRouting.legs]);
 
   useEffect(() => {
     if (!activeFormTripPlacements.length) {
@@ -696,10 +780,7 @@ export default function MapPage() {
     }
     return Array.from(groups.values()).sort((a, b) => a.dayNumber - b.dayNumber);
   }, [selectedTripStops]);
-  const selectedTripRoute = useMemo(
-    () => selectedTripStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
-    [selectedTripStops]
-  );
+  const selectedTripRoute = useMemo(() => tripRouting.polyline, [tripRouting.polyline]);
   const favoriteIdSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const favoritesCount = favoriteIds.length;
   const selectedPlaceIsFavorite = selectedId != null && favoriteIdSet.has(selectedId);

@@ -1201,8 +1201,8 @@ export default function MapClient(props: Props) {
         color,
         weight: 4,
         opacity: 0.8,
-        dashArray: "10 8",
         lineJoin: "round",
+        lineCap: "round",
       }).addTo(map);
     } else {
       tripRouteRef.current.setLatLngs(latLngs);

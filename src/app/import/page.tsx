@@ -77,6 +77,34 @@ type HeroAutofillResponse = {
   capApplied?: { requestedLimit: number; appliedLimit: number; hardCap: number } | null;
 };
 
+type SightseeingQualityFailure = {
+  id: number;
+  name: string;
+  descriptionOk: boolean;
+  descriptionLength: number;
+  heroOk: boolean;
+  heroStatus: number | null;
+  heroLocation: string | null;
+  heroContentType: string | null;
+  heroUsedPlaceholder: string | null;
+  thumbnailImageId: number | null;
+  heroImageUrl: string | null;
+};
+
+type SightseeingQualityResponse = {
+  ok: boolean;
+  error?: string;
+  checkedAt?: string;
+  total?: number;
+  passed?: number;
+  failed?: number;
+  counts?: {
+    missingDescription: number;
+    brokenHero: number;
+  };
+  failures?: SightseeingQualityFailure[];
+};
+
 const PLACE_TYPES: Array<{ type: PlaceType; label: string }> = [
   { type: "CAMPINGPLATZ", label: "Campingplatz" },
   { type: "STELLPLATZ", label: "Stellplatz" },
@@ -119,6 +147,9 @@ export default function ImportPage() {
   const [heroBusy, setHeroBusy] = useState(false);
   const [heroResp, setHeroResp] = useState<HeroAutofillResponse | null>(null);
   const [heroError, setHeroError] = useState<string | null>(null);
+  const [qualityBusy, setQualityBusy] = useState(false);
+  const [qualityResp, setQualityResp] = useState<SightseeingQualityResponse | null>(null);
+  const [qualityError, setQualityError] = useState<string | null>(null);
 
   const hasErrors = useMemo(
     () => (resp?.results ?? []).some((r) => r.status === "error"),
@@ -322,6 +353,45 @@ export default function ImportPage() {
       setHeroError(e?.message ?? "Request failed");
     } finally {
       setHeroBusy(false);
+    }
+  }
+
+  async function loadSightseeingQuality() {
+    setQualityBusy(true);
+    setQualityError(null);
+    setQualityResp(null);
+
+    try {
+      const res = await fetch("/api/admin/sightseeing-quality-report", {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      });
+
+      const raw = await res.text();
+
+      let json: SightseeingQualityResponse | null = null;
+      try {
+        json = JSON.parse(raw) as SightseeingQualityResponse;
+      } catch {
+        // not JSON
+      }
+
+      if (!json) {
+        setQualityError(`API did not return JSON (HTTP ${res.status} ${res.statusText})`);
+        return;
+      }
+
+      setQualityResp(json);
+      if (!json.ok) {
+        setQualityError(json.error ?? "Quality check failed");
+      }
+    } catch (e: any) {
+      setQualityError(e?.message ?? "Request failed");
+    } finally {
+      setQualityBusy(false);
     }
   }
 
@@ -681,6 +751,138 @@ export default function ImportPage() {
                 </tbody>
               </table>
             </div>
+          </>
+        )}
+      </section>
+
+      <section
+        style={{
+          marginTop: 16,
+          padding: 16,
+          border: "1px solid rgba(0,0,0,0.15)",
+          borderRadius: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ fontSize: 18, margin: 0 }}>Sightseeing Quality</h2>
+            <p style={{ marginTop: 6, marginBottom: 0, opacity: 0.8 }}>
+              Prueft alle Sehenswuerdigkeiten gegen echte Beschreibungen und den Hero-Endpoint ohne Placeholder-Fallback.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={loadSightseeingQuality}
+              disabled={qualityBusy}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+                cursor: qualityBusy ? "not-allowed" : "pointer",
+                fontWeight: 700,
+              }}
+            >
+              {qualityBusy ? "Pruefe..." : "Qualitaet pruefen"}
+            </button>
+
+            {qualityResp && (
+              <button
+                onClick={() => navigator.clipboard.writeText(JSON.stringify(qualityResp, null, 2))}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(0,0,0,0.2)",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                JSON kopieren
+              </button>
+            )}
+          </div>
+        </div>
+
+        {qualityError && (
+          <div style={{ marginTop: 12, color: "crimson", fontWeight: 800 }}>
+            Fehler: {qualityError}
+          </div>
+        )}
+
+        {qualityResp?.ok && (
+          <>
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Badge label={`Total: ${qualityResp.total ?? 0}`} />
+              <Badge label={`Passed: ${qualityResp.passed ?? 0}`} tone={(qualityResp.failed ?? 0) > 0 ? undefined : "ok"} />
+              <Badge label={`Failed: ${qualityResp.failed ?? 0}`} tone={(qualityResp.failed ?? 0) > 0 ? "bad" : "ok"} />
+              <Badge label={`Missing description: ${qualityResp.counts?.missingDescription ?? 0}`} tone={(qualityResp.counts?.missingDescription ?? 0) > 0 ? "bad" : "ok"} />
+              <Badge label={`Broken hero: ${qualityResp.counts?.brokenHero ?? 0}`} tone={(qualityResp.counts?.brokenHero ?? 0) > 0 ? "bad" : "ok"} />
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 13, opacity: 0.8 }}>
+              Checked at: {qualityResp.checkedAt ? new Date(qualityResp.checkedAt).toLocaleString("de-DE") : "-"}
+            </div>
+
+            {(qualityResp.failures?.length ?? 0) === 0 ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.2)",
+                  fontWeight: 700,
+                }}
+              >
+                Alle Sehenswuerdigkeiten bestehen den Check.
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Place</th>
+                      <th style={th}>Beschreibung</th>
+                      <th style={th}>Hero</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>Quelle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {qualityResp.failures?.map((failure) => (
+                      <tr key={failure.id}>
+                        <td style={td}>
+                          <div style={{ fontWeight: 700 }}>{failure.name}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>ID: {failure.id}</div>
+                        </td>
+                        <td style={td}>
+                          <div>{failure.descriptionOk ? "OK" : "Zu kurz/fehlt"}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>Laenge: {failure.descriptionLength}</div>
+                        </td>
+                        <td style={td}>
+                          <div>{failure.heroOk ? "OK" : "Fehlerhaft"}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>
+                            Placeholder: {failure.heroUsedPlaceholder === "1" ? "ja" : "nein"}
+                          </div>
+                        </td>
+                        <td style={td}>
+                          <div>HTTP: {failure.heroStatus ?? "-"}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>
+                            {failure.heroContentType ?? failure.heroLocation ?? "-"}
+                          </div>
+                        </td>
+                        <td style={td}>
+                          <div>thumbnailImageId: {failure.thumbnailImageId ?? "-"}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12, wordBreak: "break-all" }}>
+                            {failure.heroImageUrl ?? "-"}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </section>

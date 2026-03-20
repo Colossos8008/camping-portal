@@ -79,6 +79,7 @@ export type Place = {
   type: PlaceType;
   lat: number;
   lng: number;
+  isFavorite?: boolean;
 
   dogAllowed: boolean;
   sanitary: boolean;
@@ -127,7 +128,7 @@ export type Place = {
   distanceKm?: number | null;
 };
 
-export type SortMode = "SCORE" | "ALPHA" | "DIST";
+export type SortMode = "SCORE" | "ALPHA" | "DIST" | "FAVORITES";
 
 export type MapAggregate = {
   key: string;

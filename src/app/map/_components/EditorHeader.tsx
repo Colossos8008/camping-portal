@@ -22,6 +22,7 @@ export default function EditorHeader(props: {
 
   imagesCount: number;
   selectedPlace: Place | null;
+  isFavorite: boolean;
 
   distanceKm: number | null;
 
@@ -29,6 +30,7 @@ export default function EditorHeader(props: {
   onOpenLightboxByImageId: (imageId: number) => void;
   onOpenCandidateLightbox: (index: number) => void;
   onOpenNav: () => void;
+  onToggleFavorite: () => void;
   onSave: () => void;
   onCenterOnMap: () => void;
   onJumpToTripAssignment?: () => void;
@@ -124,6 +126,20 @@ export default function EditorHeader(props: {
               title={props.canNavigate ? "Navigation starten" : "Koordinaten fehlen"}
             >
               Navi
+            </button>
+
+            <button
+              type="button"
+              onClick={props.onToggleFavorite}
+              className={`rounded-lg border px-2.5 py-1.5 text-[11px] disabled:opacity-60 ${
+                props.isFavorite
+                  ? "border-amber-300/35 bg-amber-400/15 text-amber-50 hover:bg-amber-400/20"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
+              disabled={!props.placeId}
+              title={props.placeId ? "Ort als Favorit merken" : "Erst Ort speichern"}
+            >
+              {props.isFavorite ? "Favorit" : "Merken"}
             </button>
 
             <button

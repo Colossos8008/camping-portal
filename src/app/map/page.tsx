@@ -259,6 +259,28 @@ function saveSectionState(next: Record<EditorSectionId, boolean>) {
   } catch {}
 }
 
+function loadFavoriteIds(): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem("cp.favorites.v1");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((value) => Number(value))
+      .filter((value, index, arr) => Number.isFinite(value) && arr.indexOf(value) === index);
+  } catch {
+    return [];
+  }
+}
+
+function saveFavoriteIds(ids: number[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem("cp.favorites.v1", JSON.stringify(ids));
+  } catch {}
+}
+
 function Section(props: {
   id: EditorSectionId;
   title: string;
@@ -355,7 +377,9 @@ export default function MapPage() {
   const [fYear, setFYear] = useState(false);
   const [fOnline, setFOnline] = useState(false);
   const [fGastro, setFGastro] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<CoordinateReviewFilter>("ALL");
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -473,6 +497,10 @@ export default function MapPage() {
   }, []);
 
   useEffect(() => {
+    setFavoriteIds(loadFavoriteIds());
+  }, []);
+
+  useEffect(() => {
     if (!statusMsg) return;
     const timeout = window.setTimeout(() => setStatusMsg(""), 3500);
     return () => window.clearTimeout(timeout);
@@ -481,6 +509,10 @@ export default function MapPage() {
   useEffect(() => {
     saveSectionState(sectionOpen);
   }, [sectionOpen]);
+
+  useEffect(() => {
+    saveFavoriteIds(favoriteIds);
+  }, [favoriteIds]);
 
   function setSection(id: EditorSectionId, v: boolean) {
     setSectionOpen((s) => ({ ...s, [id]: v }));
@@ -668,14 +700,17 @@ export default function MapPage() {
     () => selectedTripStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
     [selectedTripStops]
   );
+  const favoriteIdSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  const favoritesCount = favoriteIds.length;
+  const selectedPlaceIsFavorite = selectedId != null && favoriteIdSet.has(selectedId);
 
   const placesWithDistance = useMemo(() => {
-    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null } as any));
+    if (!myPos) return places.map((p) => ({ ...p, distanceKm: null, isFavorite: favoriteIdSet.has(p.id) } as any));
     return places.map((p) => {
       const km = distanceKm(myPos.lat, myPos.lng, p.lat, p.lng);
-      return { ...p, distanceKm: Number.isFinite(km) ? km : null } as any;
+      return { ...p, distanceKm: Number.isFinite(km) ? km : null, isFavorite: favoriteIdSet.has(p.id) } as any;
     });
-  }, [places, myPos]);
+  }, [favoriteIdSet, places, myPos]);
 
   const filteredPlaces = useMemo(() => {
     return placesWithDistance.filter((p: Place) => {
@@ -689,6 +724,7 @@ export default function MapPage() {
       if (fYear && !p.yearRound) return false;
       if (fOnline && !p.onlineBooking) return false;
       if (fGastro && !p.gastronomy) return false;
+      if (favoritesOnly && !p.isFavorite) return false;
       if (reviewFilter !== "ALL" && normalizeCoordinateReviewStatus((p as any)?.coordinateReviewStatus) !== reviewFilter) return false;
       if (selectedTripId != null && tripOnlyMode && !(p.tripPlacements ?? []).some((item) => item.tripId === selectedTripId)) return false;
 
@@ -705,6 +741,7 @@ export default function MapPage() {
     fYear,
     fOnline,
     fGastro,
+    favoritesOnly,
     reviewFilter,
     selectedTripId,
     tripOnlyMode,
@@ -727,8 +764,11 @@ export default function MapPage() {
 
   const sortedPlaces = useMemo(() => {
     const list = [...filteredPlaces];
+    const favoriteRank = (place: Place) => (place.isFavorite ? 0 : 1);
 
-    if (sortMode === "ALPHA") {
+    if (sortMode === "FAVORITES") {
+      list.sort((a: any, b: any) => favoriteRank(a) - favoriteRank(b) || a.name.localeCompare(b.name, "de"));
+    } else if (sortMode === "ALPHA") {
       list.sort((a: any, b: any) => a.name.localeCompare(b.name, "de"));
     } else if (sortMode === "DIST") {
       list.sort((a: any, b: any) => {
@@ -915,6 +955,17 @@ export default function MapPage() {
       setSectionOpen({ BASICS: true, TOGGLES: true, TS: false, IMAGES: false, REVIEW: false });
       return;
     }
+  }
+
+  function toggleSelectedPlaceFavorite() {
+    if (selectedId == null) return;
+
+    setFavoriteIds((current) => {
+      const next = current.includes(selectedId) ? current.filter((id) => id !== selectedId) : [...current, selectedId];
+      return next.sort((a, b) => a - b);
+    });
+    setStatusMsg(selectedPlaceIsFavorite ? "Favorit entfernt" : "Als Favorit gespeichert");
+    setErrorMsg("");
   }
 
   function newPlace() {
@@ -2464,6 +2515,9 @@ export default function MapPage() {
             setFOnline={setFOnline}
             fGastro={fGastro}
             setFGastro={setFGastro}
+            favoritesOnly={favoritesOnly}
+            setFavoritesOnly={setFavoritesOnly}
+            favoritesCount={favoritesCount}
             reviewFilter={reviewFilter}
             setReviewFilter={setReviewFilter}
             geoStatus={geoStatus}
@@ -2515,11 +2569,13 @@ export default function MapPage() {
               heroCandidateImages={heroCandidateHeaderImages}
               imagesCount={Array.isArray(form.images) ? form.images.length : 0}
               selectedPlace={selectedPlace}
+              isFavorite={selectedPlaceIsFavorite}
               distanceKm={selectedDistanceKm}
               onOpenHeroLightbox={openHeroLightbox}
               onOpenLightboxByImageId={openLightboxById}
               onOpenCandidateLightbox={openCandidateLightbox}
               onOpenNav={() => setNavOpen(true)}
+              onToggleFavorite={toggleSelectedPlaceFavorite}
               onSave={save}
               onCenterOnMap={centerSelectedPlaceOnMap}
               onJumpToTripAssignment={scrollToTripAssignment}
@@ -2666,6 +2722,9 @@ export default function MapPage() {
             setFOnline={setFOnline}
             fGastro={fGastro}
             setFGastro={setFGastro}
+            favoritesOnly={favoritesOnly}
+            setFavoritesOnly={setFavoritesOnly}
+            favoritesCount={favoritesCount}
             reviewFilter={reviewFilter}
             setReviewFilter={setReviewFilter}
             geoStatus={geoStatus}
@@ -2693,11 +2752,13 @@ export default function MapPage() {
                 heroCandidateImages={heroCandidateHeaderImages}
                 imagesCount={Array.isArray(form.images) ? form.images.length : 0}
                 selectedPlace={selectedPlace}
+                isFavorite={selectedPlaceIsFavorite}
                 distanceKm={selectedDistanceKm}
-              onOpenHeroLightbox={openHeroLightbox}
-              onOpenLightboxByImageId={openLightboxById}
-              onOpenCandidateLightbox={openCandidateLightbox}
+                onOpenHeroLightbox={openHeroLightbox}
+                onOpenLightboxByImageId={openLightboxById}
+                onOpenCandidateLightbox={openCandidateLightbox}
                 onOpenNav={() => setNavOpen(true)}
+                onToggleFavorite={toggleSelectedPlaceFavorite}
                 onSave={save}
                 onCenterOnMap={centerSelectedPlaceOnMap}
                 onJumpToTripAssignment={scrollToTripAssignment}
@@ -2867,6 +2928,9 @@ export default function MapPage() {
         setFOnline={setFOnline}
         fGastro={fGastro}
         setFGastro={setFGastro}
+        favoritesOnly={favoritesOnly}
+        setFavoritesOnly={setFavoritesOnly}
+        favoritesCount={favoritesCount}
         reviewFilter={reviewFilter}
         setReviewFilter={setReviewFilter}
         geoStatus={geoStatus}
@@ -2902,11 +2966,13 @@ export default function MapPage() {
         heroCandidateImages={heroCandidateHeaderImages}
         imagesCount={Array.isArray(form.images) ? form.images.length : 0}
         selectedPlace={selectedPlace}
+        isFavorite={selectedPlaceIsFavorite}
         distanceKm={selectedDistanceKm}
         onOpenHeroLightbox={openHeroLightbox}
         onOpenLightboxByImageId={openLightboxById}
         onOpenCandidateLightbox={openCandidateLightbox}
         onOpenNav={() => setNavOpen(true)}
+        onToggleFavorite={toggleSelectedPlaceFavorite}
         onSave={save}
         onCenterOnMap={centerSelectedPlaceOnMap}
         onJumpToTripAssignment={scrollToTripAssignment}
@@ -3014,6 +3080,17 @@ export default function MapPage() {
           className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
         >
           Filter
+        </button>
+        <button
+          type="button"
+          onClick={() => setFavoritesOnly((current) => !current)}
+          className={`rounded-full border px-3 py-2 text-xs ${
+            favoritesOnly
+              ? "border-amber-300/35 bg-amber-400/15 text-amber-50"
+              : "border-white/10 bg-white/5 text-white/85 hover:bg-white/10"
+          }`}
+        >
+          {favoritesOnly ? "Favoriten aktiv" : "Favoriten"} {favoritesCount ? `${favoritesCount}` : ""}
         </button>
         <button
           type="button"

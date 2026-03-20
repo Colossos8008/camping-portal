@@ -58,6 +58,7 @@ export default function PlacesList(props: {
             value={props.sortMode}
             onChange={(e) => props.setSortMode(e.target.value as SortMode)}
           >
+            <option value="FAVORITES">Favoriten</option>
             <option value="SCORE">Score</option>
             <option value="ALPHA">A-Z</option>
             <option value="DIST">Distanz</option>
@@ -96,6 +97,11 @@ export default function PlacesList(props: {
                       <div className="truncate text-sm font-semibold">{p.name}</div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-white/60">
                         <span>{getPlaceTypeLabel(p.type)}</span>
+                        {p.isFavorite ? (
+                          <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100">
+                            Favorit
+                          </span>
+                        ) : null}
                         {activeTripPlacement ? (
                           <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-100">
                             #{activeTripPlacement.sortOrder} {tripStatusLabel(activeTripPlacement.status)}

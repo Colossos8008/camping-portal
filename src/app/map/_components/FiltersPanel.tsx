@@ -26,6 +26,9 @@ export default function FiltersPanel(props: {
   setFOnline: Dispatch<SetStateAction<boolean>>;
   fGastro: boolean;
   setFGastro: Dispatch<SetStateAction<boolean>>;
+  favoritesOnly: boolean;
+  setFavoritesOnly: Dispatch<SetStateAction<boolean>>;
+  favoritesCount: number;
   reviewFilter: CoordinateReviewFilter;
   setReviewFilter: Dispatch<SetStateAction<CoordinateReviewFilter>>;
   geoStatus: string;
@@ -114,6 +117,10 @@ export default function FiltersPanel(props: {
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={props.fGastro} onChange={(e) => props.setFGastro(e.target.checked)} />
               Gastro
+            </label>
+            <label className="col-span-2 flex items-center gap-2">
+              <input type="checkbox" checked={props.favoritesOnly} onChange={(e) => props.setFavoritesOnly(e.target.checked)} />
+              Nur Favoriten anzeigen ({props.favoritesCount})
             </label>
 
             <div className="col-span-2 my-1 h-px bg-white/10" />

@@ -4,6 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabasePublicUrl } from "../_lib/image-url";
 import type { PlaceHeroCandidate } from "../_lib/types";
 
+function ThumbsUpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 10v10" />
+      <path d="M12 10 14.8 4.8A1.7 1.7 0 0 1 18 5.6V10h2a2 2 0 0 1 1.94 2.48l-1.12 5A2 2 0 0 1 18.87 19H9a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z" />
+      <path d="M4 10h3v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" />
+    </svg>
+  );
+}
+
+function ThumbsDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 14V4" />
+      <path d="m12 14-2.8 5.2A1.7 1.7 0 0 0 6 18.4V14H4a2 2 0 0 1-1.94-2.48l1.12-5A2 2 0 0 1 5.13 5H15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2z" />
+      <path d="M20 5h-3v9h3a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z" />
+    </svg>
+  );
+}
+
 export default function HeroCandidatesPanel(props: {
   placeId: number | null;
   placeType: string;
@@ -106,7 +126,7 @@ export default function HeroCandidatesPanel(props: {
                   <button
                     type="button"
                     onClick={() => props.onFeedback(originalIndex, "UP")}
-                    className={`rounded-lg border px-2 py-1 text-[11px] ${
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
                       candidate.userFeedback === "UP"
                         ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
                         : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
@@ -114,12 +134,13 @@ export default function HeroCandidatesPanel(props: {
                     title="Passt gut zu diesem Ort"
                     aria-label="Passt gut"
                   >
-                    Gut
+                    <ThumbsUpIcon />
+                    <span>Gut</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => props.onFeedback(originalIndex, "DOWN")}
-                    className={`rounded-lg border px-2 py-1 text-[11px] ${
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
                       candidate.userFeedback === "DOWN"
                         ? "border-red-400/60 bg-red-500/20 text-red-100"
                         : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
@@ -127,7 +148,8 @@ export default function HeroCandidatesPanel(props: {
                     title="Passt nicht zu diesem Ort"
                     aria-label="Passt nicht"
                   >
-                    Schlecht
+                    <ThumbsDownIcon />
+                    <span>Schlecht</span>
                   </button>
                   {candidate.userFeedback === "UP" ? <span className="text-[11px] text-emerald-200/90">Bleibt beim Reload</span> : null}
                 </div>

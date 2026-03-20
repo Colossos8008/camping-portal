@@ -4,7 +4,9 @@ import { decodeGooglePolyline, parseGoogleDurationMinutes, type RoutePoint, type
 export const runtime = "nodejs";
 
 const GOOGLE_ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
+const OSRM_ROUTE_API_URL = "https://router.project-osrm.org/route/v1/driving";
 const MAX_POINTS_PER_REQUEST = 27;
+const OSRM_MAX_POINTS_PER_REQUEST = 100;
 
 function isValidPoint(value: unknown): value is RoutePoint {
   return (
@@ -91,11 +93,89 @@ async function computeChunk(points: RoutePoint[], apiKey: string): Promise<{ leg
   };
 }
 
+async function computeChunkWithOsrm(points: RoutePoint[]): Promise<{ legs: RoutedLeg[]; polyline: RoutePoint[] }> {
+  const coordinates = points.map((point) => `${point.lng},${point.lat}`).join(";");
+  const url = `${OSRM_ROUTE_API_URL}/${coordinates}?overview=full&geometries=polyline&steps=false`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const details = await res.text().catch(() => "");
+    throw new Error(details || `OSRM returned ${res.status}`);
+  }
+
+  const json = (await res.json().catch(() => null)) as {
+    code?: string;
+    routes?: Array<{
+      geometry?: string;
+      legs?: Array<{ distance?: number; duration?: number }>;
+    }>;
+    message?: string;
+  } | null;
+
+  if (json?.code !== "Ok") {
+    throw new Error(json?.message || json?.code || "OSRM routing failed");
+  }
+
+  const route = Array.isArray(json?.routes) ? json?.routes[0] : null;
+  const rawLegs = Array.isArray(route?.legs) ? route.legs : [];
+  const legs = rawLegs.map((leg) => ({
+    distanceKm: Number.isFinite(Number(leg?.distance)) ? Number(leg!.distance) / 1000 : null,
+    durationMinutes: Number.isFinite(Number(leg?.duration)) ? Math.max(1, Math.round(Number(leg!.duration) / 60)) : 0,
+    polyline: [],
+  }));
+
+  return {
+    legs,
+    polyline: decodeGooglePolyline(route?.geometry),
+  };
+}
+
+async function computeRoute(points: RoutePoint[], apiKey?: string) {
+  const allLegs: RoutedLeg[] = [];
+  const fullPolyline: RoutePoint[] = [];
+
+  if (apiKey) {
+    try {
+      for (let index = 0; index < points.length - 1; index += MAX_POINTS_PER_REQUEST - 1) {
+        const chunk = points.slice(index, Math.min(points.length, index + MAX_POINTS_PER_REQUEST));
+        const result = await computeChunk(chunk, apiKey);
+        allLegs.push(...result.legs);
+        appendPolyline(fullPolyline, result.polyline);
+      }
+
+      return {
+        legs: allLegs,
+        polyline: fullPolyline,
+        provider: "google",
+      } as const;
+    } catch (error) {
+      console.warn("Google route computation failed, falling back to OSRM", error);
+    }
+  }
+
+  allLegs.length = 0;
+  fullPolyline.length = 0;
+
+  for (let index = 0; index < points.length - 1; index += OSRM_MAX_POINTS_PER_REQUEST - 1) {
+    const chunk = points.slice(index, Math.min(points.length, index + OSRM_MAX_POINTS_PER_REQUEST));
+    const result = await computeChunkWithOsrm(chunk);
+    allLegs.push(...result.legs);
+    appendPolyline(fullPolyline, result.polyline);
+  }
+
+  return {
+    legs: allLegs,
+    polyline: fullPolyline,
+    provider: "osrm",
+  } as const;
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
-  if (!apiKey) {
-    return NextResponse.json({ error: "GOOGLE_MAPS_API_KEY fehlt" }, { status: 500 });
-  }
 
   const body = await req.json().catch(() => null);
   const points = Array.isArray((body as { points?: unknown[] } | null)?.points)
@@ -110,19 +190,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const allLegs: RoutedLeg[] = [];
-    const fullPolyline: RoutePoint[] = [];
-
-    for (let index = 0; index < points.length - 1; index += MAX_POINTS_PER_REQUEST - 1) {
-      const chunk = points.slice(index, Math.min(points.length, index + MAX_POINTS_PER_REQUEST));
-      const result = await computeChunk(chunk, apiKey);
-      allLegs.push(...result.legs);
-      appendPolyline(fullPolyline, result.polyline);
-    }
+    const result = await computeRoute(points, apiKey);
 
     return NextResponse.json({
-      legs: allLegs,
-      polyline: fullPolyline,
+      legs: result.legs,
+      polyline: result.polyline,
+      provider: result.provider,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message ?? String(error) }, { status: 502 });

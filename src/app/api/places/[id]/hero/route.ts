@@ -238,7 +238,7 @@ export async function GET(req: NextRequest) {
   const targetedDebugPoi = isHeroDebugPoiName(place.name);
   const googlePhotoResource = extractGooglePhotoResourceName(heroImageUrl);
   const googleStreetViewLocation = extractGoogleStreetViewLocation(heroImageUrl);
-  const googleApiKey = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
+  const googleApiKey = String(process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
   const debug = getDebugFlag(req);
 
   if (debug) {

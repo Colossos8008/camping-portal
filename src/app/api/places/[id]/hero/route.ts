@@ -64,7 +64,9 @@ function getDebugFlag(req: NextRequest): boolean {
 }
 
 async function streamGooglePhoto(photoResourceName: string, apiKey: string): Promise<Response | null> {
-  const googleUrl = buildGooglePhotoMediaUrl(photoResourceName, GOOGLE_PHOTO_MAX_WIDTH);
+  const url = new URL(buildGooglePhotoMediaUrl(photoResourceName, GOOGLE_PHOTO_MAX_WIDTH));
+  url.searchParams.set("key", apiKey);
+  const googleUrl = url.toString();
   const upstream = await fetch(googleUrl, {
     method: "GET",
     headers: {

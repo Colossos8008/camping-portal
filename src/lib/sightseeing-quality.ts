@@ -356,7 +356,9 @@ async function fetchCurrentHeroAsset(place: PlaceRow): Promise<RemoteAsset | nul
   if (googlePhotoResource) {
     const apiKey = clean(process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY);
     if (!apiKey) return null;
-    return fetchImageWithRetries(buildGooglePhotoMediaUrl(googlePhotoResource, 1600), {
+    const url = new URL(buildGooglePhotoMediaUrl(googlePhotoResource, 1600));
+    url.searchParams.set("key", apiKey);
+    return fetchImageWithRetries(url.toString(), {
       headers: { "X-Goog-Api-Key": apiKey },
       label: `existing-google-hero:${place.id}`,
       retries: 2,

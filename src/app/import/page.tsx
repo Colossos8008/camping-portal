@@ -80,6 +80,7 @@ type HeroAutofillResponse = {
 type SightseeingQualityFailure = {
   id: number;
   name: string;
+  type: PlaceType;
   descriptionOk: boolean;
   descriptionLength: number;
   heroOk: boolean;
@@ -94,6 +95,7 @@ type SightseeingQualityFailure = {
 type SightseeingQualityResponse = {
   ok: boolean;
   error?: string;
+  placeType?: PlaceType;
   checkedAt?: string;
   total?: number;
   passed?: number;
@@ -162,6 +164,7 @@ export default function ImportPage() {
   const [repairBusy, setRepairBusy] = useState(false);
   const [repairResp, setRepairResp] = useState<SightseeingQualityRepairResponse | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
+  const [qualityType, setQualityType] = useState<PlaceType>("SEHENSWUERDIGKEIT");
 
   const hasErrors = useMemo(
     () => (resp?.results ?? []).some((r) => r.status === "error"),
@@ -374,7 +377,8 @@ export default function ImportPage() {
     setQualityResp(null);
 
     try {
-      const res = await fetch("/api/admin/sightseeing-quality-report", {
+      const params = new URLSearchParams({ type: qualityType });
+      const res = await fetch(`/api/admin/sightseeing-quality-report?${params.toString()}`, {
         method: "GET",
         headers: {
           Accept: "application/json",
@@ -413,7 +417,8 @@ export default function ImportPage() {
     setRepairError(null);
 
     try {
-      const res = await fetch("/api/admin/sightseeing-quality-repair", {
+      const params = new URLSearchParams({ type: qualityType });
+      const res = await fetch(`/api/admin/sightseeing-quality-repair?${params.toString()}`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -818,13 +823,41 @@ export default function ImportPage() {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ fontSize: 18, margin: 0 }}>Sightseeing Quality</h2>
+            <h2 style={{ fontSize: 18, margin: 0 }}>Place Quality</h2>
             <p style={{ marginTop: 6, marginBottom: 0, opacity: 0.8 }}>
-              Prueft alle Sehenswuerdigkeiten gegen echte Beschreibungen und den Hero-Endpoint ohne Placeholder-Fallback.
+              Prueft den ausgewaehlten Ortstyp gegen Hero-Probleme ohne Placeholder-Fallback. Fuer Sehenswuerdigkeiten wird zusaetzlich die Beschreibung geprueft.
             </p>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontWeight: 700,
+              }}
+            >
+              Ortstyp
+              <select
+                value={qualityType}
+                onChange={(e) => setQualityType(e.target.value as PlaceType)}
+                disabled={qualityBusy || repairBusy}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(0,0,0,0.2)",
+                  minWidth: 180,
+                }}
+              >
+                {PLACE_TYPES.map((placeType) => (
+                  <option key={placeType.type} value={placeType.type}>
+                    {placeType.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <button
               onClick={loadSightseeingQuality}
               disabled={qualityBusy || repairBusy}
@@ -923,6 +956,12 @@ export default function ImportPage() {
         {qualityResp?.ok && (
           <>
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Badge
+                label={`Type: ${
+                  PLACE_TYPES.find((item) => item.type === (qualityResp.placeType ?? qualityType))?.label ??
+                  (qualityResp.placeType ?? qualityType)
+                }`}
+              />
               <Badge label={`Total: ${qualityResp.total ?? 0}`} />
               <Badge label={`Passed: ${qualityResp.passed ?? 0}`} tone={(qualityResp.failed ?? 0) > 0 ? undefined : "ok"} />
               <Badge label={`Failed: ${qualityResp.failed ?? 0}`} tone={(qualityResp.failed ?? 0) > 0 ? "bad" : "ok"} />
@@ -964,7 +1003,7 @@ export default function ImportPage() {
                       <tr key={failure.id}>
                         <td style={td}>
                           <div style={{ fontWeight: 700 }}>{failure.name}</div>
-                          <div style={{ opacity: 0.7, fontSize: 12 }}>ID: {failure.id}</div>
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>ID: {failure.id} • {failure.type}</div>
                         </td>
                         <td style={td}>
                           <div>{failure.descriptionOk ? "OK" : "Zu kurz/fehlt"}</div>

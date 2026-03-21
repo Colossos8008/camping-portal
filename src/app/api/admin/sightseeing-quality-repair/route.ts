@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
-import path from "node:path";
+import { parseQualityPlaceType, runPlaceQualityRepair } from "@/lib/sightseeing-quality";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,53 +18,66 @@ function tail(value: string, maxChars = 12000): string {
   return value.slice(-maxChars);
 }
 
-async function runRepair(): Promise<RepairRunResult> {
-  const cwd = process.cwd();
-  const scriptPath = path.join(cwd, "scripts", "ensure-sightseeing-quality.ts");
+async function runRepair(placeType: string): Promise<RepairRunResult> {
   const startedAt = Date.now();
+  const baseUrl = String(process.env.SIGHTSEEING_QUALITY_BASE_URL ?? "").trim();
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--experimental-strip-types", "--experimental-specifier-resolution=node", scriptPath],
-      {
-        cwd,
-        env: process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      }
-    );
+  try {
+    const normalizedType = parseQualityPlaceType(placeType) ?? "SEHENSWUERDIGKEIT";
+    const report = await runPlaceQualityRepair(baseUrl, normalizedType);
+    const lines = [
+      `placeType=${report.placeType}`,
+      `checkedAt=${report.checkedAt}`,
+      `total=${report.total} passed=${report.passed} failed=${report.failed}`,
+      `missingDescription=${report.counts.missingDescription} brokenHero=${report.counts.brokenHero}`,
+      report.failures.length > 0 ? JSON.stringify(report.failures, null, 2) : "",
+    ].filter(Boolean);
 
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (exitCode, signal) => {
-      resolve({
-        ok: exitCode === 0,
-        exitCode,
-        signal,
-        durationMs: Date.now() - startedAt,
-        stdoutTail: tail(stdout),
-        stderrTail: tail(stderr),
-      });
-    });
-  });
+    return {
+      ok: true,
+      exitCode: 0,
+      signal: null,
+      durationMs: Date.now() - startedAt,
+      stdoutTail: tail(lines.join("\n")),
+      stderrTail: "",
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      exitCode: 1,
+      signal: null,
+      durationMs: Date.now() - startedAt,
+      stdoutTail: "",
+      stderrTail: tail(error?.stack ?? error?.message ?? String(error)),
+    };
+  }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const result = await runRepair();
+    const url = new URL(req.url);
+    const placeType = parseQualityPlaceType(url.searchParams.get("type")) ?? "SEHENSWUERDIGKEIT";
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+      process.env.SIGHTSEEING_QUALITY_BASE_URL?.trim() ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim().replace(/^https?:\/\//, "")}` : "");
+
+    if (!baseUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          exitCode: 1,
+          signal: null,
+          durationMs: 0,
+          stdoutTail: "",
+          stderrTail: "Missing base URL env for sightseeing quality repair (NEXT_PUBLIC_SITE_URL, SIGHTSEEING_QUALITY_BASE_URL, or VERCEL_URL).",
+        },
+        { status: 500 }
+      );
+    }
+
+    process.env.SIGHTSEEING_QUALITY_BASE_URL = baseUrl;
+    const result = await runRepair(placeType);
 
     return NextResponse.json(result, {
       status: result.ok ? 200 : 500,

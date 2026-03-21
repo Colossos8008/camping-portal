@@ -490,6 +490,11 @@ export default function MapPage() {
   }
 
   function scrollToTripAssignment() {
+    if (selectedTripId != null && !activeFormTripPlacements.length) {
+      const { nextForm, nextPlacementId } = buildUpsertedTripPlacementForm(form, {});
+      setForm(nextForm);
+      if (nextPlacementId != null) setActiveTripPlacementId(nextPlacementId);
+    }
     setWorkspaceTab("DETAIL");
     setDetailFocusTab("CORE");
     setSectionOpen((current) => ({ ...current, BASICS: true }));
@@ -503,6 +508,34 @@ export default function MapPage() {
 
   function nextTempTripPlacementId() {
     return -Date.now() - Math.floor(Math.random() * 1000);
+  }
+
+  function getTripPlacementDefaults(placementsInput?: TripFormPlacement[]) {
+    const placements = Array.isArray(placementsInput) ? placementsInput : [];
+    const selectedTripPlacements = selectedTripId != null ? placements.filter((item) => item.tripId === selectedTripId) : [];
+    const persistedTripPlacements =
+      selectedTripId != null
+        ? (selectedTrip?.places ?? [])
+            .filter((item) => item.tripId === selectedTripId)
+            .map((item) => ({
+              sortOrder: Number(item.sortOrder) || 0,
+              dayNumber: Number(item.dayNumber) || 1,
+            }))
+        : [];
+
+    const lastStop = [...selectedTripPlacements, ...persistedTripPlacements]
+      .map((item) => ({
+        sortOrder: Number(item.sortOrder) || 0,
+        dayNumber: Number(item.dayNumber) || 1,
+      }))
+      .filter((item) => item.sortOrder > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .at(-1);
+
+    return {
+      sortOrder: Math.max(1, (lastStop?.sortOrder ?? 0) + 1),
+      dayNumber: Math.max(1, lastStop?.dayNumber ?? 1),
+    };
   }
 
   useEffect(() => {
@@ -1109,16 +1142,19 @@ export default function MapPage() {
       coordinateReviewNote: "",
       tripPlacements:
         selectedTripId != null
-          ? [
-              {
-                id: initialTripPlacementId ?? nextTempTripPlacementId(),
-                tripId: selectedTripId,
-                sortOrder: (selectedTrip?.places?.length ?? 0) + 1,
-                dayNumber: 1,
-                status: "GEPLANT" as TripPlaceStatus,
-                note: "",
-              },
-            ]
+          ? (() => {
+              const defaults = getTripPlacementDefaults([]);
+              return [
+                {
+                  id: initialTripPlacementId ?? nextTempTripPlacementId(),
+                  tripId: selectedTripId,
+                  sortOrder: defaults.sortOrder,
+                  dayNumber: defaults.dayNumber,
+                  status: "GEPLANT" as TripPlaceStatus,
+                  note: "",
+                },
+              ];
+            })()
           : [],
     });
   }
@@ -1333,23 +1369,19 @@ export default function MapPage() {
     if (selectedTripId == null) return { nextForm: currentForm, nextPlacementId: null as number | null };
 
     const placements: TripFormPlacement[] = Array.isArray(currentForm?.tripPlacements) ? [...currentForm.tripPlacements] : [];
+    const defaults = getTripPlacementDefaults(placements);
     const index =
       activeTripPlacementId != null
         ? placements.findIndex((item) => Number(item.id) === activeTripPlacementId)
         : placements.findIndex((item) => item.tripId === selectedTripId);
-    const maxSortOrder = Math.max(
-      0,
-      ...placements.filter((item) => item.tripId === selectedTripId).map((item) => Number(item.sortOrder) || 0),
-      ...((selectedTrip?.places ?? []).map((item) => Number(item.sortOrder) || 0))
-    );
     const currentPlacement =
       index >= 0
         ? placements[index]
         : {
             id: nextTempTripPlacementId(),
             tripId: selectedTripId,
-            sortOrder: maxSortOrder + 1,
-            dayNumber: 1,
+            sortOrder: defaults.sortOrder,
+            dayNumber: defaults.dayNumber,
             status: "GEPLANT" as TripPlaceStatus,
             note: "",
           };
@@ -1375,17 +1407,13 @@ export default function MapPage() {
 
     const nextId = nextTempTripPlacementId();
     const placements: TripFormPlacement[] = Array.isArray(currentForm?.tripPlacements) ? [...currentForm.tripPlacements] : [];
-    const maxSortOrder = Math.max(
-      0,
-      ...placements.filter((item) => item.tripId === selectedTripId).map((item) => Number(item.sortOrder) || 0),
-      ...((selectedTrip?.places ?? []).map((item) => Number(item.sortOrder) || 0))
-    );
+    const defaults = getTripPlacementDefaults(placements);
 
     placements.push({
       id: nextId,
       tripId: selectedTripId,
-      sortOrder: maxSortOrder + 1,
-      dayNumber: activeFormTripPlacement?.dayNumber ?? 1,
+      sortOrder: defaults.sortOrder,
+      dayNumber: activeFormTripPlacement?.dayNumber ?? defaults.dayNumber,
       status: activeFormTripPlacement?.status ?? ("GEPLANT" as TripPlaceStatus),
       note: "",
     });
@@ -1415,16 +1443,12 @@ export default function MapPage() {
     const nextId = nextTempTripPlacementId();
     setForm((current: any) => {
       const placements: TripFormPlacement[] = Array.isArray(current?.tripPlacements) ? [...current.tripPlacements] : [];
-      const maxSortOrder = Math.max(
-        0,
-        ...placements.filter((item) => item.tripId === selectedTripId).map((item) => Number(item.sortOrder) || 0),
-        ...((selectedTrip?.places ?? []).map((item) => Number(item.sortOrder) || 0))
-      );
+      const defaults = getTripPlacementDefaults(placements);
       placements.push({
         id: nextId,
         tripId: selectedTripId,
-        sortOrder: maxSortOrder + 1,
-        dayNumber: activeFormTripPlacement?.dayNumber ?? 1,
+        sortOrder: defaults.sortOrder,
+        dayNumber: activeFormTripPlacement?.dayNumber ?? defaults.dayNumber,
         status: activeFormTripPlacement?.status ?? ("GEPLANT" as TripPlaceStatus),
         note: "",
       });

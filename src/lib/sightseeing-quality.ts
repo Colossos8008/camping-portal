@@ -778,11 +778,16 @@ export async function runPlaceQualityRepair(
     }
 
     if (attempt === maxAttempts) {
-      throw new Error(`Sightseeing quality check still failing after ${maxAttempts} attempts.`);
+      const remainingIds = after.failures.slice(0, 12).map((failure) => failure.id).join(",");
+      throw new Error(
+        `${placeType} quality check still failing after ${maxAttempts} attempts. ` +
+          `Remaining failed=${after.failed}, brokenHero=${after.counts.brokenHero}, missingDescription=${after.counts.missingDescription}` +
+          (remainingIds ? `, sampleIds=${remainingIds}` : "")
+      );
     }
   }
 
-  throw new Error("Sightseeing quality repair aborted unexpectedly.");
+  throw new Error(`${placeType} quality repair aborted unexpectedly.`);
 }
 
 export async function runSightseeingQualityRepair(baseUrl: string, maxAttempts = MAX_ATTEMPTS): Promise<SightseeingQualityReport> {

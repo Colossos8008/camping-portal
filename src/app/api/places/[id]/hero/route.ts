@@ -331,6 +331,21 @@ export async function GET(req: NextRequest) {
         // keep existing fallback behavior
       }
     }
+
+    try {
+      const response = await streamStoredImage(heroImageUrl, googleApiKey);
+      if (response) {
+        return appendDecisionHeaders(response, {
+          placeId,
+          source: "hero-storage-path",
+          targeted: targetedDebugPoi,
+          usedPlaceholder: false,
+          placeUpdatedAt: place.updatedAt,
+        });
+      }
+    } catch {
+      // keep existing fallback behavior
+    }
   }
 
   for (const fallbackImage of storedFallbackImageCandidates) {

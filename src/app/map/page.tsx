@@ -472,6 +472,8 @@ export default function MapPage() {
   const [activeTripPlacementId, setActiveTripPlacementId] = useState<number | null>(null);
   const [tripPositionDraft, setTripPositionDraft] = useState("1");
   const [tripDayDraft, setTripDayDraft] = useState("1");
+  const [tripStatusDraft, setTripStatusDraft] = useState<TripPlaceStatus>("GEPLANT");
+  const [tripNoteDraft, setTripNoteDraft] = useState("");
 
   const [sectionOpen, setSectionOpen] = useState<Record<EditorSectionId, boolean>>(collapsedSections());
 
@@ -490,11 +492,6 @@ export default function MapPage() {
   }
 
   function scrollToTripAssignment() {
-    if (selectedTripId != null && !activeFormTripPlacements.length) {
-      const { nextForm, nextPlacementId } = buildUpsertedTripPlacementForm(form, {});
-      setForm(nextForm);
-      if (nextPlacementId != null) setActiveTripPlacementId(nextPlacementId);
-    }
     setWorkspaceTab("DETAIL");
     setDetailFocusTab("CORE");
     setSectionOpen((current) => ({ ...current, BASICS: true }));
@@ -510,7 +507,7 @@ export default function MapPage() {
     return -Date.now() - Math.floor(Math.random() * 1000);
   }
 
-  function getTripPlacementDefaults(placementsInput?: TripFormPlacement[]) {
+  const getTripPlacementDefaults = useCallback((placementsInput?: TripFormPlacement[]) => {
     const placements = Array.isArray(placementsInput) ? placementsInput : [];
     const selectedTripPlacements = selectedTripId != null ? placements.filter((item) => item.tripId === selectedTripId) : [];
     const persistedTripPlacements =
@@ -536,7 +533,7 @@ export default function MapPage() {
       sortOrder: Math.max(1, (lastStop?.sortOrder ?? 0) + 1),
       dayNumber: Math.max(1, lastStop?.dayNumber ?? 1),
     };
-  }
+  }, [selectedTrip?.places, selectedTripId]);
 
   useEffect(() => {
     function onResize() {
@@ -672,6 +669,10 @@ export default function MapPage() {
     }
     return activeFormTripPlacements[0] ?? null;
   }, [activeFormTripPlacements, activeTripPlacementId]);
+  const tripPlacementDefaults = useMemo(
+    () => getTripPlacementDefaults(Array.isArray(form?.tripPlacements) ? form.tripPlacements : []),
+    [form?.tripPlacements, getTripPlacementDefaults]
+  );
   const selectedTripBaseStops = useMemo(() => {
     if (!selectedTrip) return [];
 
@@ -810,9 +811,18 @@ export default function MapPage() {
   }, [activeFormTripPlacements, activeTripPlacementId]);
 
   useEffect(() => {
-    setTripPositionDraft(String(activeFormTripPlacement?.sortOrder ?? 1));
-    setTripDayDraft(String(activeFormTripPlacement?.dayNumber ?? 1));
-  }, [activeFormTripPlacement?.id, activeFormTripPlacement?.sortOrder, activeFormTripPlacement?.dayNumber]);
+    setTripPositionDraft(String(activeFormTripPlacement?.sortOrder ?? tripPlacementDefaults.sortOrder));
+    setTripDayDraft(String(activeFormTripPlacement?.dayNumber ?? tripPlacementDefaults.dayNumber));
+    setTripStatusDraft(activeFormTripPlacement?.status ?? "GEPLANT");
+    setTripNoteDraft(String(activeFormTripPlacement?.note ?? ""));
+  }, [
+    activeFormTripPlacement?.id,
+    activeFormTripPlacement?.sortOrder,
+    activeFormTripPlacement?.dayNumber,
+    activeFormTripPlacement?.status,
+    activeFormTripPlacement?.note,
+    tripPlacementDefaults,
+  ]);
 
   const selectedTripGroups = useMemo(() => {
     const groups = new Map<number, { dayNumber: number; stops: typeof selectedTripStops; totalDistanceKm: number; totalDriveMinutes: number }>();
@@ -1432,9 +1442,16 @@ export default function MapPage() {
 
   async function addOrCreateTripPlacementAndSave() {
     if (selectedTripId == null || saving) return;
+    const nextSortOrder = Math.max(1, Number(String(tripPositionDraft ?? "").replace(/[^\d]/g, "")) || getTripPlacementDefaults(form.tripPlacements).sortOrder);
+    const nextDayNumber = Math.max(1, Number(String(tripDayDraft ?? "").replace(/[^\d]/g, "")) || getTripPlacementDefaults(form.tripPlacements).dayNumber);
     const { nextForm, nextPlacementId } = activeFormTripPlacements.length
       ? buildAddedTripPlacementForm(form)
-      : buildUpsertedTripPlacementForm(form, {});
+      : buildUpsertedTripPlacementForm(form, {
+          sortOrder: nextSortOrder,
+          dayNumber: nextDayNumber,
+          status: tripStatusDraft,
+          note: tripNoteDraft,
+        });
     await persistTripPlacementForm(nextForm, nextPlacementId, "Trip-Stopp gespeichert");
   }
 
@@ -1474,11 +1491,11 @@ export default function MapPage() {
     const nextValue = Math.max(1, Number(digitsOnly) || 1);
     if (field === "sortOrder") {
       setTripPositionDraft(String(nextValue));
-      upsertTripPlacementForForm({ sortOrder: nextValue });
+      if (activeFormTripPlacement) upsertTripPlacementForForm({ sortOrder: nextValue });
       return;
     }
     setTripDayDraft(String(nextValue));
-    upsertTripPlacementForForm({ dayNumber: nextValue });
+    if (activeFormTripPlacement) upsertTripPlacementForForm({ dayNumber: nextValue });
   }
 
   async function save(
@@ -2370,6 +2387,81 @@ export default function MapPage() {
                   </div>
                 </div>
 
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-sky-100/80">Position des Stopps</span>
+                    <input
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={tripPositionDraft}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d]/g, "");
+                        setTripPositionDraft(next);
+                      }}
+                      onBlur={() => commitTripPlacementNumberField("sortOrder", tripPositionDraft)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitTripPlacementNumberField("sortOrder", tripPositionDraft);
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-sky-100/80">Tag</span>
+                    <input
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={tripDayDraft}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d]/g, "");
+                        setTripDayDraft(next);
+                      }}
+                      onBlur={() => commitTripPlacementNumberField("dayNumber", tripDayDraft)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitTripPlacementNumberField("dayNumber", tripDayDraft);
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="grid gap-1 sm:col-span-2">
+                    <span className="text-xs font-medium text-sky-100/80">Status</span>
+                    <select
+                      className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      value={activeFormTripPlacement?.status ?? tripStatusDraft}
+                      onChange={(e) => {
+                        const nextStatus = e.target.value as TripPlaceStatus;
+                        setTripStatusDraft(nextStatus);
+                        if (activeFormTripPlacement) upsertTripPlacementForForm({ status: nextStatus });
+                      }}
+                    >
+                      <option value="GEPLANT">geplant</option>
+                      <option value="BOOKED">angefragt</option>
+                      <option value="CONFIRMED">bestaetigt</option>
+                      <option value="VISITED">besucht</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 sm:col-span-2">
+                    <span className="text-xs font-medium text-sky-100/80">Notiz</span>
+                    <textarea
+                      className="min-h-[68px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
+                      placeholder="Notiz zum Trip-Stopp"
+                      value={activeFormTripPlacement ? String(activeFormTripPlacement.note ?? "") : tripNoteDraft}
+                      onChange={(e) => {
+                        const nextNote = e.target.value;
+                        setTripNoteDraft(nextNote);
+                        if (activeFormTripPlacement) upsertTripPlacementForForm({ note: nextNote });
+                      }}
+                    />
+                  </label>
+                </div>
+
                 {activeFormTripPlacements.length ? (
                   <>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -2395,74 +2487,6 @@ export default function MapPage() {
                         })}
                     </div>
 
-                    {activeFormTripPlacement ? (
-                      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <label className="grid gap-1">
-                          <span className="text-xs font-medium text-sky-100/80">Position des Stopps</span>
-                          <input
-                            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={tripPositionDraft}
-                            onChange={(e) => {
-                              const next = e.target.value.replace(/[^\d]/g, "");
-                              setTripPositionDraft(next);
-                            }}
-                            onBlur={() => commitTripPlacementNumberField("sortOrder", tripPositionDraft)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                commitTripPlacementNumberField("sortOrder", tripPositionDraft);
-                              }
-                            }}
-                          />
-                        </label>
-                        <label className="grid gap-1">
-                          <span className="text-xs font-medium text-sky-100/80">Tag</span>
-                          <input
-                            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={tripDayDraft}
-                            onChange={(e) => {
-                              const next = e.target.value.replace(/[^\d]/g, "");
-                              setTripDayDraft(next);
-                            }}
-                            onBlur={() => commitTripPlacementNumberField("dayNumber", tripDayDraft)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                commitTripPlacementNumberField("dayNumber", tripDayDraft);
-                              }
-                            }}
-                          />
-                        </label>
-                        <label className="grid gap-1 sm:col-span-2">
-                          <span className="text-xs font-medium text-sky-100/80">Status</span>
-                          <select
-                            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            value={activeFormTripPlacement.status}
-                            onChange={(e) => upsertTripPlacementForForm({ status: e.target.value as TripPlaceStatus })}
-                          >
-                            <option value="GEPLANT">geplant</option>
-                            <option value="BOOKED">angefragt</option>
-                            <option value="CONFIRMED">bestaetigt</option>
-                            <option value="VISITED">besucht</option>
-                          </select>
-                        </label>
-                        <label className="grid gap-1 sm:col-span-2">
-                          <span className="text-xs font-medium text-sky-100/80">Notiz</span>
-                          <textarea
-                            className="min-h-[68px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                            placeholder="Notiz zum Trip-Stopp"
-                            value={String(activeFormTripPlacement.note ?? "")}
-                            onChange={(e) => upsertTripPlacementForForm({ note: e.target.value })}
-                          />
-                        </label>
-                      </div>
-                    ) : null}
                   </>
                 ) : null}
               </div>

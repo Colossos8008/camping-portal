@@ -510,9 +510,11 @@ export default function MapPage() {
   const getTripPlacementDefaults = useCallback((placementsInput?: TripFormPlacement[]) => {
     const placements = Array.isArray(placementsInput) ? placementsInput : [];
     const selectedTripPlacements = selectedTripId != null ? placements.filter((item) => item.tripId === selectedTripId) : [];
+    const selectedTripPlaces =
+      selectedTripId != null ? trips.find((trip) => trip.id === selectedTripId)?.places ?? [] : [];
     const persistedTripPlacements =
       selectedTripId != null
-        ? (selectedTrip?.places ?? [])
+        ? selectedTripPlaces
             .filter((item) => item.tripId === selectedTripId)
             .map((item) => ({
               sortOrder: Number(item.sortOrder) || 0,
@@ -533,7 +535,7 @@ export default function MapPage() {
       sortOrder: Math.max(1, (lastStop?.sortOrder ?? 0) + 1),
       dayNumber: Math.max(1, lastStop?.dayNumber ?? 1),
     };
-  }, [selectedTrip?.places, selectedTripId]);
+  }, [selectedTripId, trips]);
 
   useEffect(() => {
     function onResize() {

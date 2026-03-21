@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName } from "@/lib/hero-image";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
 import { POST as heroAutofillPost } from "@/app/api/admin/hero-autofill/route";
+import { discoverHeroCandidates, type PlaceType as HeroCandidatePlaceType } from "@/lib/hero-candidates";
 
 export type QualityPlaceType = "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
 
@@ -403,8 +404,51 @@ async function discoverReplacementAsset(baseUrl: string, place: PlaceRow): Promi
   return null;
 }
 
+function toHeroCandidatePlaceInput(place: PlaceRow): {
+  id: number;
+  name: string;
+  type: HeroCandidatePlaceType;
+  lat: number;
+  lng: number;
+  heroImageUrl: string | null;
+} {
+  return {
+    id: place.id,
+    name: place.name,
+    type: place.type as HeroCandidatePlaceType,
+    lat: place.lat,
+    lng: place.lng,
+    heroImageUrl: place.heroImageUrl,
+  };
+}
+
+async function discoverReplacementAssetWithoutGoogle(place: PlaceRow): Promise<RemoteAsset | null> {
+  for (const reloadRound of [0, 1, 2, 3, 4, 5]) {
+    const candidates = await discoverHeroCandidates(toHeroCandidatePlaceInput(place), {
+      googleKey: "",
+      limit: 12,
+      explorationLevel: reloadRound >= 4 ? 4 : reloadRound >= 2 ? 3 : 2,
+      reloadRound,
+    }).catch(() => []);
+
+    for (const candidate of candidates) {
+      if (candidate.source === "google") continue;
+      const asset = await fetchImageWithRetries(candidate.url, {
+        label: candidate.reason || `${candidate.source}:${place.id}`,
+        retries: /wikimedia/i.test(candidate.url) ? 4 : 3,
+      });
+      if (asset) return asset;
+    }
+  }
+
+  return null;
+}
+
 async function cacheHeroAsset(baseUrl: string, place: PlaceRow): Promise<boolean> {
-  const asset = (await fetchCurrentHeroAsset(place)) ?? (await discoverReplacementAsset(baseUrl, place));
+  const asset =
+    (await fetchCurrentHeroAsset(place)) ??
+    (await discoverReplacementAssetWithoutGoogle(place)) ??
+    (await discoverReplacementAsset(baseUrl, place));
   if (!asset) return false;
 
   const supabase = getSupabaseServerClient();
@@ -694,6 +738,12 @@ async function refillFailedHeroImagesByType(
   placeType: QualityPlaceType,
   placeIds: number[]
 ): Promise<void> {
+  const disableGoogleForRepair = placeType === "CAMPINGPLATZ" || placeType === "STELLPLATZ";
+
+  if (disableGoogleForRepair) {
+    return;
+  }
+
   for (let index = 0; index < placeIds.length; index += HERO_AUTOFILL_BATCH_SIZE) {
     const batch = placeIds.slice(index, index + HERO_AUTOFILL_BATCH_SIZE);
     const params = new URLSearchParams({

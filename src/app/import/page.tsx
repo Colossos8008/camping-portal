@@ -456,6 +456,10 @@ export default function ImportPage() {
   const totalCount = counts?.countsByType
     ? Object.values(counts.countsByType).reduce((a, b) => a + (b ?? 0), 0)
     : 0;
+  const repairDurationSeconds =
+    repairResp && Number.isFinite(repairResp.durationMs) ? Math.round(repairResp.durationMs / 1000) : "-";
+  const repairExitCode =
+    repairResp && typeof repairResp.exitCode === "number" ? repairResp.exitCode : "-";
 
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
@@ -932,7 +936,7 @@ export default function ImportPage() {
               {repairResp.ok ? "Auto-Repair abgeschlossen" : "Auto-Repair fehlgeschlagen"}
             </div>
             <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
-              Dauer: {Math.round(repairResp.durationMs / 1000)}s | Exit-Code: {repairResp.exitCode ?? "-"}
+              Dauer: {repairDurationSeconds === "-" ? "-" : `${repairDurationSeconds}s`} | Exit-Code: {repairExitCode}
             </div>
             {repairResp.stdoutTail && (
               <>

@@ -559,7 +559,11 @@ async function fetchPlacesByType(placeType: QualityPlaceType): Promise<PlaceRow[
 }
 
 async function verifyHero(baseUrl: string, placeId: number) {
-  const first = await fetch(`${baseUrl}/api/places/${placeId}/hero`, {
+  const cacheBuster = Date.now().toString(36);
+  const heroUrl = new URL(`${baseUrl}/api/places/${placeId}/hero`);
+  heroUrl.searchParams.set("qualityCheck", cacheBuster);
+
+  const first = await fetch(heroUrl.toString(), {
     method: "GET",
     redirect: "manual",
     cache: "no-store",

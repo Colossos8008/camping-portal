@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { buildGooglePhotoMediaUrl, extractGooglePhotoResourceName } from "@/lib/hero-image";
 import { rateSightseeing } from "@/lib/sightseeing-rating";
+import { POST as heroAutofillPost } from "@/app/api/admin/hero-autofill/route";
 
 export type QualityPlaceType = "CAMPINGPLATZ" | "STELLPLATZ" | "HVO_TANKSTELLE" | "SEHENSWUERDIGKEIT";
 
@@ -698,7 +699,7 @@ async function refillFailedHeroImagesByType(
       force: "1",
     });
 
-    const response = await fetch(`${baseUrl}/api/admin/hero-autofill?${params.toString()}`, {
+    const request = new Request(`${baseUrl}/api/admin/hero-autofill?${params.toString()}`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -709,12 +710,12 @@ async function refillFailedHeroImagesByType(
         maxCandidatesPerPlace: 12,
         provider: "auto",
       }),
-      cache: "no-store",
     });
+    const response = await heroAutofillPost(request);
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      throw new Error(`Hero autofill failed for sightseeing batch ${batch.join(",")}: HTTP ${response.status}${body ? ` - ${body.slice(0, 400)}` : ""}`);
+      throw new Error(`Hero autofill failed for ${placeType} batch ${batch.join(",")}: HTTP ${response.status}${body ? ` - ${body.slice(0, 400)}` : ""}`);
     }
   }
 }
